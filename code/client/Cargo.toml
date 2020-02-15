@@ -1,0 +1,13 @@
+[package]
+name = "client"
+version = "0.1.0"
+authors = ["Gabriel Konat <gabrielkonat@gmail.com>"]
+edition = "2018"
+publish = false
+
+[dependencies]
+core = {path = "../core"}
+server = {path = "../server"}
+anyhow = "1.0"
+metrics = "0.12"
+tracing = "0.1"

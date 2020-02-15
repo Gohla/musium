@@ -1,0 +1,14 @@
+[package]
+name = "server"
+version = "0.1.0"
+authors = ["Gabriel Konat <gabrielkonat@gmail.com>"]
+edition = "2018"
+publish = false
+
+[dependencies]
+core = {path = "../core"}
+diesel = { version = "1.4", features = ["sqlite"] }
+libsqlite3-sys = { version = ">=0.8.0, <0.18.0", features = ["bundled"] } # Make diesel use bundled sqlite.
+thiserror = "1.0"
+metrics = "0.12"
+tracing = "0.1"
