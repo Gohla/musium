@@ -9,6 +9,9 @@ publish = false
 core = {path = "../core"}
 diesel = { version = "1.4", features = ["sqlite"] }
 libsqlite3-sys = { version = ">=0.8.0, <0.18.0", features = ["bundled"] } # Make diesel use bundled sqlite.
+id3 = "0.5"
+walkdir = "2.3"
+itertools = "0.8"
 thiserror = "1.0"
 metrics = "0.12"
 tracing = "0.1"

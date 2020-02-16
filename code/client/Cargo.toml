@@ -8,6 +8,7 @@ publish = false
 [dependencies]
 core = {path = "../core"}
 server = {path = "../server"}
+structopt = "0.3"
 anyhow = "1.0"
 metrics = "0.12"
 tracing = "0.1"
