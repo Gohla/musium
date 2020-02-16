@@ -1,6 +1,7 @@
 use std::fmt::{Display, Error, Formatter};
 
 use crate::schema::{scan_directory, track};
+use std::path::PathBuf;
 
 // Track
 
@@ -67,6 +68,12 @@ impl Display for Track {
     }
     write!(f, " - {}", self.file_path)?;
     Ok(())
+  }
+}
+
+impl ScanDirectory {
+  pub fn track_file_path(&self, track: &Track) -> PathBuf {
+    PathBuf::from(&self.directory).join(&track.file_path)
   }
 }
 

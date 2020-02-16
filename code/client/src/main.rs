@@ -1,3 +1,4 @@
+use std::fs::File;
 use std::path::PathBuf;
 
 use anyhow::{Context, Result};
@@ -20,20 +21,31 @@ enum Command {
   /// Lists all tracks in the database
   #[structopt()]
   ListTracks,
-  /// Lists all music scan directories in the database
+  /// Lists all scan directories in the database
   #[structopt()]
   ListScanDirectories,
-  /// Add a music scan directory to the database
+  /// Lists all scan directories in the database, along with their tracks
+  #[structopt()]
+  ListScanDirectoriesWithTracks,
+  /// Plays a track
+  #[structopt()]
+  PlayTrack {
+    /// ID of the track to play
+    track_id: i32,
+    #[structopt(short, long, default_value = "0.2")]
+    volume: f32,
+  },
+  /// Add a scan directory to the database
   #[structopt()]
   AddScanDirectory {
-    /// Music scan directory to add
+    /// Scan directory to add
     #[structopt(parse(from_os_str))]
     directory: PathBuf,
   },
-  /// Removes a music scan directory to the database
+  /// Removes a scan directory to the database
   #[structopt()]
   RemoveScanDirectory {
-    /// Music scan directory to remove
+    /// Scan directory to remove
     #[structopt(parse(from_os_str))]
     directory: PathBuf,
   },
@@ -57,16 +69,40 @@ fn main() -> Result<()> {
         println!("{}", scan_directory);
       }
     },
+    Command::ListScanDirectoriesWithTracks => {
+      for (scan_directory, tracks) in server.list_scan_directories_with_tracks().with_context(|| "Failed to list scan directories")? {
+        println!("* {}", scan_directory);
+        for track in tracks {
+          println!("  - {}", track);
+        }
+      }
+    },
+    Command::PlayTrack { track_id, volume } => {
+      if let Some((scan_directory, track)) = server.get_track_by_id(track_id)? {
+        println!("* {}", scan_directory);
+        println!("  - {}", track);
+        let device = rodio::default_output_device()
+          .with_context(|| "No audio device was found")?;
+        let file = File::open(scan_directory.track_file_path(&track))
+          .with_context(|| "Failed to open audio file for playback")?;
+        let sink = rodio::play_once(&device, file)
+          .with_context(|| "Failed to start audio playback")?;
+        sink.set_volume(volume);
+        sink.sleep_until_end();
+      } else {
+        eprintln!("Could not play track, no track with ID '{}' was found", track_id);
+      }
+    },
     Command::AddScanDirectory { directory } => {
       server.add_scan_directory(&directory).with_context(|| "Failed to add scan directory")?;
-      println!("Added scan directory '{}'", directory.display());
+      eprintln!("Added scan directory '{}'", directory.display());
     },
     Command::RemoveScanDirectory { directory } => {
       let removed = server.remove_scan_directory(&directory).with_context(|| "Failed to remove scan directory")?;
       if removed {
-        println!("Removed scan directory '{}'", directory.display());
+        eprintln!("Removed scan directory '{}'", directory.display());
       } else {
-        println!("Could not remove scan directory '{}', it was not found", directory.display());
+        eprintln!("Could not remove scan directory '{}', it was not found", directory.display());
       }
     },
     Command::Scan => {

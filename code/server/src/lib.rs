@@ -1,4 +1,4 @@
-#[macro_use] // macro_use because diesel developers refuse to make create compatible with Rust 2018.
+#[macro_use] // extern crate with #[macro_use] because diesel does not fully support Rust 2018 yet.
 extern crate diesel;
 
 use std::borrow::Borrow;
@@ -38,23 +38,44 @@ impl Server {
   }
 }
 
-// Listing
+// Queries
 
 #[derive(Debug, Error)]
-pub enum ListError {
+pub enum QueryError {
   #[error(transparent)]
   QueryFail(#[from] diesel::result::Error),
 }
 
 impl Server {
-  pub fn list_tracks(&self) -> Result<Vec<Track>, ListError> {
+  pub fn list_tracks(&self) -> Result<Vec<Track>, QueryError> {
     use schema::track::dsl::*;
     Ok(track.load::<Track>(&self.connection)?)
   }
 
-  pub fn list_scan_directories(&self) -> Result<Vec<ScanDirectory>, ListError> {
+  pub fn list_scan_directories(&self) -> Result<Vec<ScanDirectory>, QueryError> {
     use schema::scan_directory::dsl::*;
     Ok(scan_directory.load::<ScanDirectory>(&self.connection)?)
+  }
+
+  pub fn list_scan_directories_with_tracks(&self) -> Result<impl Iterator<Item=(ScanDirectory, Vec<Track>)>, QueryError> {
+    let scan_directories = {
+      use schema::scan_directory::dsl::*;
+      scan_directory.load::<ScanDirectory>(&self.connection)?
+    };
+    let tracks = Track::belonging_to(&scan_directories)
+      .load::<Track>(&self.connection)?
+      .grouped_by(&scan_directories);
+    Ok(scan_directories.into_iter().zip(tracks))
+  }
+
+  pub fn get_track_by_id(&self, id: i32) -> Result<Option<(ScanDirectory, Track)>, QueryError> {
+    use schema::{track, scan_directory};
+    if let Some(track) = track::dsl::track.find(id).first::<Track>(&self.connection).optional()? {
+      let scan_directory = scan_directory::dsl::scan_directory.filter(scan_directory::dsl::id.eq(track.scan_directory_id)).first::<ScanDirectory>(&self.connection)?;
+      Ok(Some((scan_directory, track)))
+    } else {
+      Ok(None)
+    }
   }
 }
 
@@ -92,7 +113,7 @@ impl Server {
 #[derive(Debug, Error)]
 pub enum ScanError {
   #[error("Failed to list scan directories")]
-  ListScanDirectoriesFail(#[from] ListError),
+  ListScanDirectoriesFail(#[from] QueryError),
   #[error("Failed to mutate track")]
   MutateTrackFail(#[from] diesel::result::Error),
   #[error("One or more errors occurred during scanning, but successfully scanned tracks have been added")]

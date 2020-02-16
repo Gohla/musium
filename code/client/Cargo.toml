@@ -8,6 +8,7 @@ publish = false
 [dependencies]
 core = {path = "../core"}
 server = {path = "../server"}
+rodio = "0.10"
 structopt = "0.3"
 anyhow = "1.0"
 metrics = "0.12"
