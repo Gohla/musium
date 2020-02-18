@@ -64,6 +64,7 @@ fn main() -> Result<()> {
         println!("{}", track);
       }
     },
+
     Command::ListScanDirectories => {
       for scan_directory in server.list_scan_directories().with_context(|| "Failed to list scan directories")? {
         println!("{}", scan_directory);

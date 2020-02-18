@@ -2,6 +2,7 @@
 extern crate diesel;
 
 use std::borrow::Borrow;
+use std::collections::HashSet;
 use std::path::PathBuf;
 
 use diesel::prelude::*;
@@ -11,7 +12,7 @@ use thiserror::Error;
 use model::{ScanDirectory, Track};
 
 use crate::model::NewScanDirectory;
-use crate::scanner::Scanner;
+use crate::scanner::{ScannedTrack, Scanner};
 
 pub mod schema;
 pub mod model;
@@ -121,12 +122,12 @@ pub enum ScanError {
 }
 
 impl Server {
-  /// Scans all scan directories for music files, drops all tracks from the database, and adds all found tracks to the
-  /// database. When a ScanFail error is returned, tracks that were sucessfully scanned will still have been added to
-  /// the database.
+  /// Scans all scan directories for music files, drops all tracks, albums, and artists from the database, and adds all
+  /// found tracks, albums, and artists to the database. When a ScanFail error is returned, tracks that were sucessfully
+  /// scanned will still have been added to the database.
   pub fn scan(&self) -> Result<(), ScanError> {
-    let scan_directories = self.list_scan_directories()?;
-    let (new_tracks, scan_errors): (Vec<_>, Vec<_>) = scan_directories
+    let scan_directories: Vec<ScanDirectory> = self.list_scan_directories()?;
+    let (scanned_tracks, scan_errors): (Vec<ScannedTrack>, Vec<scanner::ScanError>) = scan_directories
       .into_iter()
       .flat_map(|scan_directory| self.scanner.scan(scan_directory.directory))
       .partition_map(|r| {
@@ -135,14 +136,26 @@ impl Server {
           Err(v) => Either::Right(v)
         }
       });
-    {
-      use schema::track;
-      diesel::delete(track::table)
-        .execute(&self.connection)?;
-      diesel::insert_into(track::table)
-        .values(new_tracks)
-        .execute(&self.connection)?;
+
+    let new_tracks = Vec::new();
+    let new_albums = HashSet::new();
+    let new_artists = HashSet::new();
+    let new_track_artists = HashSet::new();
+    let new_album_artists = HashSet::new();
+
+    for scanned_track in scanned_tracks {
+      let scanned_track: ScannedTrack = scanned_track;
+      scanned_track.
     }
+
+    // {
+    //   use schema::track;
+    //   diesel::delete(track::table)
+    //     .execute(&self.connection)?;
+    //   diesel::insert_into(track::table)
+    //     .values(scanned_tracks)
+    //     .execute(&self.connection)?;
+    // }
     if !scan_errors.is_empty() {
       return Err(ScanError::ScanFail(scan_errors));
     }
