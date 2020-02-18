@@ -1,16 +1,18 @@
 use std::fmt::{Display, Error, Formatter};
-
-use crate::schema::{scan_directory, track};
 use std::path::PathBuf;
+
+use crate::schema::{album, album_artist, artist, scan_directory, track, track_artist};
 
 // Track
 
 #[derive(Clone, PartialOrd, PartialEq, Debug, Identifiable, Queryable, Associations)]
 #[belongs_to(ScanDirectory)]
+#[belongs_to(Album)]
 #[table_name = "track"]
 pub struct Track {
   pub id: i32,
   pub scan_directory_id: i32,
+  pub album_id: i32,
   pub disc_number: Option<i32>,
   pub disc_total: Option<i32>,
   pub track_number: Option<i32>,
@@ -23,6 +25,7 @@ pub struct Track {
 #[table_name = "track"]
 pub struct NewTrack {
   pub scan_directory_id: i32,
+  pub album_id: i32,
   pub disc_number: Option<i32>,
   pub disc_total: Option<i32>,
   pub track_number: Option<i32>,
@@ -44,6 +47,74 @@ pub struct ScanDirectory {
 #[table_name = "scan_directory"]
 pub struct NewScanDirectory {
   pub directory: String,
+}
+
+// Album
+
+#[derive(Clone, PartialOrd, PartialEq, Debug, Identifiable, Queryable)]
+#[table_name = "album"]
+pub struct Album {
+  pub id: i32,
+  pub name: String,
+}
+
+#[derive(Debug, Insertable)]
+#[table_name = "album"]
+pub struct NewAlbum {
+  pub name: String,
+}
+
+// Artist
+
+#[derive(Clone, PartialOrd, PartialEq, Debug, Identifiable, Queryable)]
+#[table_name = "artist"]
+pub struct Artist {
+  pub id: i32,
+  pub name: String,
+}
+
+#[derive(Debug, Insertable)]
+#[table_name = "artist"]
+pub struct NewArtist {
+  pub name: String,
+}
+
+// Track artist
+
+#[derive(Clone, PartialOrd, PartialEq, Debug, Identifiable, Queryable, Associations)]
+#[primary_key(track_id, artist_id)]
+#[table_name = "track_artist"]
+#[belongs_to(Track)]
+#[belongs_to(Artist)]
+pub struct TrackArtist {
+  pub track_id: i32,
+  pub artist_id: i32,
+}
+
+#[derive(Debug, Insertable)]
+#[table_name = "track_artist"]
+pub struct NewTrackArtist {
+  pub track_id: i32,
+  pub artist_id: i32,
+}
+
+// Album artist
+
+#[derive(Clone, PartialOrd, PartialEq, Debug, Identifiable, Queryable, Associations)]
+#[primary_key(album_id, artist_id)]
+#[table_name = "album_artist"]
+#[belongs_to(Album)]
+#[belongs_to(Artist)]
+pub struct AlbumArtist {
+  pub album_id: i32,
+  pub artist_id: i32,
+}
+
+#[derive(Debug, Insertable)]
+#[table_name = "album_artist"]
+pub struct NewAlbumArtist {
+  pub album_id: i32,
+  pub artist_id: i32,
 }
 
 // Implementations

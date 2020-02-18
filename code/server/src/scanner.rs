@@ -2,8 +2,6 @@ use id3::Tag;
 use thiserror::Error;
 use walkdir::WalkDir;
 
-use crate::model::{NewTrack, ScanDirectory};
-
 #[derive(Debug)]
 pub struct Scanner {}
 
@@ -15,6 +13,18 @@ impl Scanner {
 
 // Scanning
 
+pub struct ScannedTrack {
+  pub disc_number: Option<i32>,
+  pub disc_total: Option<i32>,
+  pub track_number: Option<i32>,
+  pub track_total: Option<i32>,
+  pub title: Option<String>,
+  pub artist: Vec<String>, // OPTO: smallvec
+  pub album: Option<String>,
+  pub album_artists: Vec<String>, // OPTO: smallvec
+  pub file_path: String,
+}
+
 #[derive(Debug, Error)]
 pub enum ScanError {
   #[error("Failed to walk directory")]
@@ -24,8 +34,7 @@ pub enum ScanError {
 }
 
 impl Scanner {
-  pub fn scan(&self, scan_directory: ScanDirectory) -> impl Iterator<Item=Result<NewTrack, ScanError>> {
-    let ScanDirectory { id: scan_directory_id, directory } = scan_directory;
+  pub fn scan(&self, directory: String) -> impl Iterator<Item=Result<ScannedTrack, ScanError>> {
     WalkDir::new(&directory)
       .into_iter()
       .filter_map(move |entry| {
@@ -40,13 +49,15 @@ impl Scanner {
             Ok(tag) => tag,
             Err(e) => return Some(Err(ScanError::Id3ReadFail(e))),
           };
-          Some(Ok(NewTrack {
-            scan_directory_id,
+          Some(Ok(ScannedTrack {
             disc_number: tag.disc().map(|u| u as i32),
             disc_total: tag.total_discs().map(|u| u as i32),
             track_number: tag.track().map(|u| u as i32),
             track_total: tag.total_tracks().map(|u| u as i32),
             title: tag.title().map(|s| s.to_string()),
+            artist: tag.artist().map_or(vec![], |a|vec![a.to_string()]), // TODO: support multiple artists.
+            album: tag.album().map(|s| s.to_string()),
+            album_artists: tag.album_artist().map_or(vec![], |a|vec![a.to_string()]), // TODO: support multiple artists.
             file_path: entry.path().strip_prefix(&directory)
               .unwrap_or_else(|_| panic!("BUG: cannot strip prefix, path '{}' is not prefixed by '{}'", entry.path().display(), directory))
               .to_string_lossy().to_string()

@@ -128,7 +128,7 @@ impl Server {
     let scan_directories = self.list_scan_directories()?;
     let (new_tracks, scan_errors): (Vec<_>, Vec<_>) = scan_directories
       .into_iter()
-      .flat_map(|scan_directory| self.scanner.scan(scan_directory))
+      .flat_map(|scan_directory| self.scanner.scan(scan_directory.directory))
       .partition_map(|r| {
         match r {
           Ok(v) => Either::Left(v),

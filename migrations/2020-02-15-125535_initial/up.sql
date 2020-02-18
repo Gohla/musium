@@ -1,16 +1,54 @@
 CREATE TABLE track (
-  id INTEGER NOT NULL PRIMARY KEY,
+  id INTEGER NOT NULL,
   scan_directory_id INTEGER NOT NULL,
+  album_id INTEGER NOT NULL,
   disc_number INTEGER,
   disc_total INTEGER,
   track_number INTEGER,
   track_total INTEGER,
   title TEXT,
   file_path TEXT NOT NULL,
-  FOREIGN KEY(scan_directory_id) REFERENCES scan_directory(id)
+
+  PRIMARY KEY(id),
+  FOREIGN KEY(scan_directory_id) REFERENCES scan_directory(id),
+  FOREIGN KEY(album_id) REFERENCES album(id)
 );
 
 CREATE TABLE scan_directory (
-  id INTEGER NOT NULL PRIMARY KEY,
-  directory TEXT UNIQUE NOT NULL
+  id INTEGER NOT NULL,
+  directory TEXT UNIQUE NOT NULL,
+
+  PRIMARY KEY(id)
+);
+
+CREATE TABLE album (
+  id INTEGER NOT NULL,
+  name TEXT,
+
+  PRIMARY KEY(id)
+);
+
+CREATE TABLE artist (
+  id INTEGER NOT NULL,
+  name TEXT,
+
+  PRIMARY KEY(id)
+);
+
+CREATE TABLE track_artist (
+  track_id INTEGER NOT NULL,
+  artist_id INTEGER NOT NULL,
+
+  PRIMARY KEY(track_id, artist_id),
+  FOREIGN KEY(track_id) REFERENCES track(id),
+  FOREIGN KEY(artist_id) REFERENCES artist(id)
+);
+
+CREATE TABLE album_artist (
+  album_id INTEGER NOT NULL,
+  artist_id INTEGER NOT NULL,
+
+  PRIMARY KEY(album_id, album_id),
+  FOREIGN KEY(album_id) REFERENCES album(id),
+  FOREIGN KEY(artist_id) REFERENCES artist(id)
 );
