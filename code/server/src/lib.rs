@@ -139,6 +139,10 @@ impl Server {
       });
 
     // Split into tracks, albums, artists, and associations between those which can be inserted into the database.
+    // See: https://github.com/diesel-rs/diesel/issues/771
+    // See: http://docs.diesel.rs/diesel/fn.replace_into.html
+    // See: http://www.sqlite.org/c3ref/last_insert_rowid.html
+    // See: https://stackoverflow.com/questions/52279553/what-is-the-standard-pattern-to-relate-three-tables-many-to-many-relation-with
     self.connection.transaction(||{
       let tracks = Vec::new();
       let albums = HashSet::new();
