@@ -1,6 +1,7 @@
 use id3::Tag;
 use thiserror::Error;
 use walkdir::WalkDir;
+use crate::model::ScanDirectory;
 
 #[derive(Debug)]
 pub struct Scanner {}
@@ -14,6 +15,7 @@ impl Scanner {
 // Scanning
 
 pub struct ScannedTrack {
+  pub scan_directory: ScanDirectory,
   pub disc_number: Option<i32>,
   pub disc_total: Option<i32>,
   pub track_number: Option<i32>,
@@ -34,7 +36,8 @@ pub enum ScanError {
 }
 
 impl Scanner {
-  pub fn scan(&self, directory: String) -> impl Iterator<Item=Result<ScannedTrack, ScanError>> {
+  pub fn scan(&self, scan_directory: ScanDirectory) -> impl Iterator<Item=Result<ScannedTrack, ScanError>> {
+    let directory = scan_directory.directory.clone();
     WalkDir::new(&directory)
       .into_iter()
       .filter_map(move |entry| {
@@ -50,6 +53,7 @@ impl Scanner {
             Err(e) => return Some(Err(ScanError::Id3ReadFail(e))),
           };
           Some(Ok(ScannedTrack {
+            scan_directory,
             disc_number: tag.disc().map(|u| u as i32),
             disc_total: tag.total_discs().map(|u| u as i32),
             track_number: tag.track().map(|u| u as i32),

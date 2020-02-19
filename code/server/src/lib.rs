@@ -11,7 +11,7 @@ use thiserror::Error;
 
 use model::{ScanDirectory, Track};
 
-use crate::model::NewScanDirectory;
+use crate::model::{NewScanDirectory, NewTrack};
 use crate::scanner::{ScannedTrack, Scanner};
 
 pub mod schema;
@@ -126,6 +126,7 @@ impl Server {
   /// found tracks, albums, and artists to the database. When a ScanFail error is returned, tracks that were sucessfully
   /// scanned will still have been added to the database.
   pub fn scan(&self) -> Result<(), ScanError> {
+    // Scan for all tracks.
     let scan_directories: Vec<ScanDirectory> = self.list_scan_directories()?;
     let (scanned_tracks, scan_errors): (Vec<ScannedTrack>, Vec<scanner::ScanError>) = scan_directories
       .into_iter()
@@ -137,16 +138,35 @@ impl Server {
         }
       });
 
-    let new_tracks = Vec::new();
-    let new_albums = HashSet::new();
-    let new_artists = HashSet::new();
-    let new_track_artists = HashSet::new();
-    let new_album_artists = HashSet::new();
+    // Split into tracks, albums, artists, and associations between those which can be inserted into the database.
+    self.connection.transaction(||{
+      let tracks = Vec::new();
+      let albums = HashSet::new();
+      let artists = HashSet::new();
+      let track_artists = HashSet::new();
+      let album_artists = HashSet::new();
+      for scanned_track in scanned_tracks {
+        let scanned_track: ScannedTrack = scanned_track;
+        let album = {
+          use schema::album;
+          diesel::replace_into(album::table).values()
+        }
+        {
+          let new_track = NewTrack {
+            scan_directory_id: scanned_track.scan_directory.id,
+            album_id: 0,
+            disc_number: Option::None,
+            disc_total: Option::None,
+            track_number: Option::None,
+            track_total: Option::None,
+            title: Option::None,
+            file_path: "".to_string()
+          };
+        }
+      }
+      Ok(())
+    });
 
-    for scanned_track in scanned_tracks {
-      let scanned_track: ScannedTrack = scanned_track;
-      scanned_track.
-    }
 
     // {
     //   use schema::track;

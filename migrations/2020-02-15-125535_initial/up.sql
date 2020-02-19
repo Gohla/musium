@@ -23,14 +23,14 @@ CREATE TABLE scan_directory (
 
 CREATE TABLE album (
   id INTEGER NOT NULL,
-  name TEXT,
+  name TEXT UNIQUE NOT NULL,
 
   PRIMARY KEY(id)
 );
 
 CREATE TABLE artist (
   id INTEGER NOT NULL,
-  name TEXT,
+  name TEXT UNIQUE NOT NULL,
 
   PRIMARY KEY(id)
 );
