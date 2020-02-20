@@ -11,7 +11,7 @@ use thiserror::Error;
 
 use model::{ScanDirectory, Track};
 
-use crate::model::{NewScanDirectory, NewTrack};
+use crate::model::{Album, Artist, NewAlbum, NewArtist, NewScanDirectory, NewTrack};
 use crate::scanner::{ScannedTrack, Scanner};
 
 pub mod schema;
@@ -130,7 +130,7 @@ impl Server {
     let scan_directories: Vec<ScanDirectory> = self.list_scan_directories()?;
     let (scanned_tracks, scan_errors): (Vec<ScannedTrack>, Vec<scanner::ScanError>) = scan_directories
       .into_iter()
-      .flat_map(|scan_directory| self.scanner.scan(scan_directory.directory))
+      .flat_map(|scan_directory| self.scanner.scan(scan_directory))
       .partition_map(|r| {
         match r {
           Ok(v) => Either::Left(v),
@@ -143,43 +143,60 @@ impl Server {
     // See: http://docs.diesel.rs/diesel/fn.replace_into.html
     // See: http://www.sqlite.org/c3ref/last_insert_rowid.html
     // See: https://stackoverflow.com/questions/52279553/what-is-the-standard-pattern-to-relate-three-tables-many-to-many-relation-with
-    self.connection.transaction(||{
-      let tracks = Vec::new();
-      let albums = HashSet::new();
-      let artists = HashSet::new();
-      let track_artists = HashSet::new();
-      let album_artists = HashSet::new();
+    self.connection.transaction(|| {
+      // TODO: drop tables?
+      // Insert tracks and related entities.
       for scanned_track in scanned_tracks {
         let scanned_track: ScannedTrack = scanned_track;
-        let album = {
-          use schema::album;
-          diesel::replace_into(album::table).values()
-        }
-        {
+        // Replace ('upsert') album.
+        let album: Album = {
+          use schema::album::dsl::*;
+          let album_name = scanned_track.album;
+          let new_album = NewAlbum { name: album_name.clone() };
+          diesel::replace_into(album)
+            .values(new_album)
+            .execute(&self.connection)?;
+          album
+            .filter(name.eq(album_name))
+            .first::<Album>(&self.connection)?
+        };
+        // Replace ('upsert') track
+        let track: Track = {
+          use schema::track::dsl::*;
           let new_track = NewTrack {
-            scan_directory_id: scanned_track.scan_directory.id,
-            album_id: 0,
-            disc_number: Option::None,
-            disc_total: Option::None,
-            track_number: Option::None,
-            track_total: Option::None,
-            title: Option::None,
-            file_path: "".to_string()
+            scan_directory_id: scanned_track.scan_directory_id,
+            album_id: album.id,
+            disc_number: scanned_track.disc_number,
+            disc_total: scanned_track.disc_total,
+            track_number: scanned_track.track_number,
+            track_total: scanned_track.track_number,
+            title: scanned_track.title,
+            file_path: scanned_track.file_path.clone(),
           };
-        }
+          diesel::replace_into(track)
+            .values(new_track)
+            .execute(&self.connection)?;
+          track
+            .filter(scan_directory_id.eq(scanned_track.scan_directory_id))
+            .filter(file_path.eq(scanned_track.file_path))
+            .first::<Track>(&self.connection)?
+        };
+        // Replace ('upsert') artist.
+        let artists: Result<Vec<Artist>, _> = scanned_track.artist.iter().map(|artist_name| {
+          use schema::artist::dsl::*;
+          let new_artist = NewArtist { name: artist_name.clone() };
+          diesel::replace_into(artist)
+            .values(new_artist)
+            .execute(&self.connection)?;
+          Ok(artist
+            .filter(name.eq(artist_name))
+            .first::<Artist>(&self.connection)?)
+        }).collect();
+        let artists = artists?;
       }
       Ok(())
     });
 
-
-    // {
-    //   use schema::track;
-    //   diesel::delete(track::table)
-    //     .execute(&self.connection)?;
-    //   diesel::insert_into(track::table)
-    //     .values(scanned_tracks)
-    //     .execute(&self.connection)?;
-    // }
     if !scan_errors.is_empty() {
       return Err(ScanError::ScanFail(scan_errors));
     }

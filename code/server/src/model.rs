@@ -30,7 +30,7 @@ pub struct NewTrack {
   pub disc_total: Option<i32>,
   pub track_number: Option<i32>,
   pub track_total: Option<i32>,
-  pub title: Option<String>,
+  pub title: String,
   pub file_path: String,
 }
 

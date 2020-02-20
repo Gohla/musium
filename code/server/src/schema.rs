@@ -1,7 +1,7 @@
 table! {
     album (id) {
         id -> Integer,
-        name -> Nullable<Text>,
+        name -> Text,
     }
 }
 
@@ -15,7 +15,7 @@ table! {
 table! {
     artist (id) {
         id -> Integer,
-        name -> Nullable<Text>,
+        name -> Text,
     }
 }
 

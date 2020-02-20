@@ -11,7 +11,8 @@ CREATE TABLE track (
 
   PRIMARY KEY(id),
   FOREIGN KEY(scan_directory_id) REFERENCES scan_directory(id),
-  FOREIGN KEY(album_id) REFERENCES album(id)
+  FOREIGN KEY(album_id) REFERENCES album(id),
+  UNIQUE(scan_directory_id, file_path)
 );
 
 CREATE TABLE scan_directory (
