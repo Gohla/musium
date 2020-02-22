@@ -1,12 +1,16 @@
+#![feature(backtrace)]
+
 #[macro_use] // extern crate with #[macro_use] because diesel does not fully support Rust 2018 yet.
 extern crate diesel;
 
+use std::backtrace::Backtrace;
 use std::borrow::Borrow;
-use std::collections::HashSet;
 use std::path::PathBuf;
+use std::time::Instant;
 
 use diesel::prelude::*;
 use itertools::{Either, Itertools};
+use metrics::{counter, timing};
 use thiserror::Error;
 
 use model::{ScanDirectory, Track};
@@ -17,6 +21,16 @@ use crate::scanner::{ScannedTrack, Scanner};
 pub mod schema;
 pub mod model;
 pub mod scanner;
+
+macro_rules! time {
+  ($s:expr, $e:expr) => {{
+    let start = Instant::now();
+    let result = $e;
+    timing!($s, start.elapsed());
+    result
+  }}
+}
+
 
 pub struct Server {
   connection: SqliteConnection,
@@ -115,35 +129,47 @@ impl Server {
 pub enum ScanError {
   #[error("Failed to list scan directories")]
   ListScanDirectoriesFail(#[from] QueryError),
-  #[error("Failed to mutate track")]
-  MutateTrackFail(#[from] diesel::result::Error),
+  #[error("Failed to query database")]
+  DatabaseFail(#[from] diesel::result::Error, Backtrace),
   #[error("One or more errors occurred during scanning, but successfully scanned tracks have been added")]
   ScanFail(Vec<scanner::ScanError>),
 }
+
+// fn print_database_error_info<'a>(error: &'a diesel::result::Error) -> &'a str {
+//   match error {
+//     diesel::result::Error::DatabaseError(_, info) => {
+//       info.message()
+//     }
+//     _ => {
+//       ""
+//     }
+//   }
+// }
 
 impl Server {
   /// Scans all scan directories for music files, drops all tracks, albums, and artists from the database, and adds all
   /// found tracks, albums, and artists to the database. When a ScanFail error is returned, tracks that were sucessfully
   /// scanned will still have been added to the database.
   pub fn scan(&self) -> Result<(), ScanError> {
-    // Scan for all tracks.
-    let scan_directories: Vec<ScanDirectory> = self.list_scan_directories()?;
-    let (scanned_tracks, scan_errors): (Vec<ScannedTrack>, Vec<scanner::ScanError>) = scan_directories
-      .into_iter()
-      .flat_map(|scan_directory| self.scanner.scan(scan_directory))
-      .partition_map(|r| {
-        match r {
-          Ok(v) => Either::Left(v),
-          Err(v) => Either::Right(v)
-        }
-      });
+    let scan_directories: Vec<ScanDirectory> = time!("scan.list_scan_directories", self.list_scan_directories()?);
+    let (scanned_tracks, scan_errors): (Vec<ScannedTrack>, Vec<scanner::ScanError>) = time!("scan.scan", {
+      scan_directories
+        .into_iter()
+        .flat_map(|scan_directory| self.scanner.scan(scan_directory))
+        .partition_map(|r| {
+          match r {
+            Ok(v) => Either::Left(v),
+            Err(v) => Either::Right(v)
+          }
+        })
+    });
 
     // Split into tracks, albums, artists, and associations between those which can be inserted into the database.
     // See: https://github.com/diesel-rs/diesel/issues/771
     // See: http://docs.diesel.rs/diesel/fn.replace_into.html
     // See: http://www.sqlite.org/c3ref/last_insert_rowid.html
     // See: https://stackoverflow.com/questions/52279553/what-is-the-standard-pattern-to-relate-three-tables-many-to-many-relation-with
-    self.connection.transaction(|| {
+    self.connection.transaction::<_, ScanError, _>(|| {
       // TODO: drop tables?
       // Insert tracks and related entities.
       for scanned_track in scanned_tracks {
@@ -153,12 +179,12 @@ impl Server {
           use schema::album::dsl::*;
           let album_name = scanned_track.album;
           let new_album = NewAlbum { name: album_name.clone() };
-          diesel::replace_into(album)
+          time!("scan.replace_album", diesel::replace_into(album)
             .values(new_album)
-            .execute(&self.connection)?;
-          album
+            .execute(&self.connection)?);
+          time!("scan.get_replaced_album", album
             .filter(name.eq(album_name))
-            .first::<Album>(&self.connection)?
+            .first::<Album>(&self.connection)?)
         };
         // Replace ('upsert') track
         let track: Track = {
@@ -173,29 +199,29 @@ impl Server {
             title: scanned_track.title,
             file_path: scanned_track.file_path.clone(),
           };
-          diesel::replace_into(track)
+          time!("scan.replace_track", diesel::replace_into(track)
             .values(new_track)
-            .execute(&self.connection)?;
-          track
+            .execute(&self.connection)?);
+          time!("scan.get_replaced_track", track
             .filter(scan_directory_id.eq(scanned_track.scan_directory_id))
             .filter(file_path.eq(scanned_track.file_path))
-            .first::<Track>(&self.connection)?
+            .first::<Track>(&self.connection)?)
         };
         // Replace ('upsert') artist.
-        let artists: Result<Vec<Artist>, _> = scanned_track.artist.iter().map(|artist_name| {
+        let artists: Result<Vec<Artist>, diesel::result::Error> = scanned_track.artist.iter().map(|artist_name| {
           use schema::artist::dsl::*;
           let new_artist = NewArtist { name: artist_name.clone() };
-          diesel::replace_into(artist)
+          time!("scan.replace_artist", diesel::replace_into(artist)
             .values(new_artist)
-            .execute(&self.connection)?;
-          Ok(artist
+            .execute(&self.connection)?);
+          Ok(time!("scan.get_replaced_artist", artist
             .filter(name.eq(artist_name))
-            .first::<Artist>(&self.connection)?)
+            .first::<Artist>(&self.connection)?))
         }).collect();
         let artists = artists?;
       }
       Ok(())
-    });
+    })?;
 
     if !scan_errors.is_empty() {
       return Err(ScanError::ScanFail(scan_errors));

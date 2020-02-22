@@ -1,8 +1,14 @@
 use std::fs::File;
+use std::io;
 use std::path::PathBuf;
 
 use anyhow::{Context, Result};
+use metrics_core::{Builder, Drain, Observe};
+use metrics_observer_yaml::{YamlBuilder, YamlObserver};
+use metrics_runtime::{Controller, Receiver};
 use structopt::StructOpt;
+use tracing::{Level, trace};
+use tracing_subscriber::FmtSubscriber;
 
 use server::Server;
 
@@ -55,7 +61,30 @@ enum Command {
 }
 
 fn main() -> Result<()> {
+  let subscriber = FmtSubscriber::builder()
+    .with_writer(io::stderr)
+    .with_max_level(Level::TRACE)
+    .finish();
+  tracing::subscriber::set_global_default(subscriber)
+    .with_context(|| "Failed to initialize global tracing subscriber")?;
+
+  let metrics_receiver: Receiver = Receiver::builder().build()
+    .with_context(|| "Failed to initialize metrics receiver")?;
+  let controller: Controller = metrics_receiver.controller();
+  let mut observer: YamlObserver = YamlBuilder::new().build();
+  metrics_receiver.install();
+
   let opt: Opt = Opt::from_args();
+  let result = run(opt);
+
+  controller.observe(&mut observer);
+  let output = observer.drain();
+  trace!(metrics = %output);
+
+  Ok(result?)
+}
+
+fn run(opt: Opt) -> Result<()> {
   let server: Server = Server::new(opt.database_file.to_string_lossy())
     .with_context(|| "Failed to initialize server")?;
   match opt.command {
@@ -63,13 +92,12 @@ fn main() -> Result<()> {
       for track in server.list_tracks().with_context(|| "Failed to list tracks")? {
         println!("{}", track);
       }
-    },
-
+    }
     Command::ListScanDirectories => {
       for scan_directory in server.list_scan_directories().with_context(|| "Failed to list scan directories")? {
         println!("{}", scan_directory);
       }
-    },
+    }
     Command::ListScanDirectoriesWithTracks => {
       for (scan_directory, tracks) in server.list_scan_directories_with_tracks().with_context(|| "Failed to list scan directories")? {
         println!("* {}", scan_directory);
@@ -77,7 +105,7 @@ fn main() -> Result<()> {
           println!("  - {}", track);
         }
       }
-    },
+    }
     Command::PlayTrack { track_id, volume } => {
       if let Some((scan_directory, track)) = server.get_track_by_id(track_id)? {
         println!("* {}", scan_directory);
@@ -93,11 +121,11 @@ fn main() -> Result<()> {
       } else {
         eprintln!("Could not play track, no track with ID '{}' was found", track_id);
       }
-    },
+    }
     Command::AddScanDirectory { directory } => {
       server.add_scan_directory(&directory).with_context(|| "Failed to add scan directory")?;
       eprintln!("Added scan directory '{}'", directory.display());
-    },
+    }
     Command::RemoveScanDirectory { directory } => {
       let removed = server.remove_scan_directory(&directory).with_context(|| "Failed to remove scan directory")?;
       if removed {
@@ -105,10 +133,10 @@ fn main() -> Result<()> {
       } else {
         eprintln!("Could not remove scan directory '{}', it was not found", directory.display());
       }
-    },
+    }
     Command::Scan => {
       server.scan().with_context(|| "Failed to scan music files")?;
-    },
+    }
   }
   Ok(())
 }
