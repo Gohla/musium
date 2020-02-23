@@ -5,7 +5,7 @@ use crate::schema::{album, album_artist, artist, scan_directory, track, track_ar
 
 // Track
 
-#[derive(Clone, PartialOrd, PartialEq, Debug, Identifiable, Queryable, Associations)]
+#[derive(Clone, PartialOrd, PartialEq, Debug, Identifiable, Queryable, Associations, AsChangeset)]
 #[belongs_to(ScanDirectory)]
 #[belongs_to(Album)]
 #[table_name = "track"]
@@ -17,7 +17,7 @@ pub struct Track {
   pub disc_total: Option<i32>,
   pub track_number: Option<i32>,
   pub track_total: Option<i32>,
-  pub title: Option<String>,
+  pub title: String,
   pub file_path: String,
 }
 
@@ -36,7 +36,7 @@ pub struct NewTrack {
 
 // Scan directory
 
-#[derive(Clone, PartialOrd, PartialEq, Debug, Identifiable, Queryable)]
+#[derive(Clone, PartialOrd, PartialEq, Debug, Identifiable, Queryable, AsChangeset)]
 #[table_name = "scan_directory"]
 pub struct ScanDirectory {
   pub id: i32,
@@ -51,7 +51,7 @@ pub struct NewScanDirectory {
 
 // Album
 
-#[derive(Clone, PartialOrd, PartialEq, Debug, Identifiable, Queryable)]
+#[derive(Clone, PartialOrd, PartialEq, Debug, Identifiable, Queryable, AsChangeset)]
 #[table_name = "album"]
 pub struct Album {
   pub id: i32,
@@ -66,7 +66,7 @@ pub struct NewAlbum {
 
 // Artist
 
-#[derive(Clone, PartialOrd, PartialEq, Debug, Identifiable, Queryable)]
+#[derive(Clone, PartialOrd, PartialEq, Debug, Identifiable, Queryable, AsChangeset)]
 #[table_name = "artist"]
 pub struct Artist {
   pub id: i32,
@@ -119,6 +119,14 @@ pub struct NewAlbumArtist {
 
 // Implementations
 
+impl ScanDirectory {
+  pub fn track_file_path(&self, track: &Track) -> PathBuf {
+    PathBuf::from(&self.directory).join(&track.file_path)
+  }
+}
+
+// Display implementations
+
 impl Display for Track {
   fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), Error> {
     write!(f, "{:>6}:", self.id)?;
@@ -132,19 +140,9 @@ impl Display for Track {
       (Some(number), _) => write!(f, "     {:>3}.", number)?,
       _ => write!(f, "         ")?,
     }
-    if let Some(ref title) = self.title {
-      write!(f, " {:<50}", title)?;
-    } else {
-      write!(f, " {:<50}", "<no title>")?;
-    }
+    write!(f, " {:<50}", self.title)?;
     write!(f, " - {}", self.file_path)?;
     Ok(())
-  }
-}
-
-impl ScanDirectory {
-  pub fn track_file_path(&self, track: &Track) -> PathBuf {
-    PathBuf::from(&self.directory).join(&track.file_path)
   }
 }
 

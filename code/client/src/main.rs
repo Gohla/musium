@@ -12,13 +12,15 @@ use tracing_subscriber::FmtSubscriber;
 
 use server::Server;
 
+use dotenv;
+
 #[derive(Debug, StructOpt)]
 #[structopt(name = "music_composer", about = "Music Composer")]
 struct Opt {
   #[structopt(subcommand)]
   command: Command,
   /// Database file to use. Relative paths are resolved relative to the current directory
-  #[structopt(short, long, default_value = "database.sql", parse(from_os_str))]
+  #[structopt(short, long, env = "DATABASE_URL", parse(from_os_str))]
   database_file: PathBuf,
 }
 
@@ -73,6 +75,8 @@ fn main() -> Result<()> {
   let controller: Controller = metrics_receiver.controller();
   let mut observer: YamlObserver = YamlBuilder::new().build();
   metrics_receiver.install();
+
+  dotenv::dotenv().ok();
 
   let opt: Opt = Opt::from_args();
   let result = run(opt);

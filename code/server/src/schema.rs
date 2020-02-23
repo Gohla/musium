@@ -35,7 +35,7 @@ table! {
         disc_total -> Nullable<Integer>,
         track_number -> Nullable<Integer>,
         track_total -> Nullable<Integer>,
-        title -> Nullable<Text>,
+        title -> Text,
         file_path -> Text,
     }
 }

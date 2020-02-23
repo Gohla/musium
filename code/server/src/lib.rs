@@ -10,12 +10,12 @@ use std::time::Instant;
 
 use diesel::prelude::*;
 use itertools::{Either, Itertools};
-use metrics::{counter, timing};
+use metrics::timing;
 use thiserror::Error;
 
 use model::{ScanDirectory, Track};
 
-use crate::model::{Album, Artist, NewAlbum, NewArtist, NewScanDirectory, NewTrack};
+use crate::model::{Album, AlbumArtist, Artist, NewAlbum, NewAlbumArtist, NewArtist, NewScanDirectory, NewTrack, NewTrackArtist, TrackArtist};
 use crate::scanner::{ScannedTrack, Scanner};
 
 pub mod schema;
@@ -135,24 +135,13 @@ pub enum ScanError {
   ScanFail(Vec<scanner::ScanError>),
 }
 
-// fn print_database_error_info<'a>(error: &'a diesel::result::Error) -> &'a str {
-//   match error {
-//     diesel::result::Error::DatabaseError(_, info) => {
-//       info.message()
-//     }
-//     _ => {
-//       ""
-//     }
-//   }
-// }
-
 impl Server {
   /// Scans all scan directories for music files, drops all tracks, albums, and artists from the database, and adds all
   /// found tracks, albums, and artists to the database. When a ScanFail error is returned, tracks that were sucessfully
   /// scanned will still have been added to the database.
   pub fn scan(&self) -> Result<(), ScanError> {
     let scan_directories: Vec<ScanDirectory> = time!("scan.list_scan_directories", self.list_scan_directories()?);
-    let (scanned_tracks, scan_errors): (Vec<ScannedTrack>, Vec<scanner::ScanError>) = time!("scan.scan", {
+    let (scanned_tracks, scan_errors): (Vec<ScannedTrack>, Vec<scanner::ScanError>) = time!("scan.file_scan", {
       scan_directories
         .into_iter()
         .flat_map(|scan_directory| self.scanner.scan(scan_directory))
@@ -163,69 +152,129 @@ impl Server {
           }
         })
     });
-
-    // Split into tracks, albums, artists, and associations between those which can be inserted into the database.
-    // See: https://github.com/diesel-rs/diesel/issues/771
-    // See: http://docs.diesel.rs/diesel/fn.replace_into.html
-    // See: http://www.sqlite.org/c3ref/last_insert_rowid.html
-    // See: https://stackoverflow.com/questions/52279553/what-is-the-standard-pattern-to-relate-three-tables-many-to-many-relation-with
     self.connection.transaction::<_, ScanError, _>(|| {
-      // TODO: drop tables?
       // Insert tracks and related entities.
       for scanned_track in scanned_tracks {
         let scanned_track: ScannedTrack = scanned_track;
-        // Replace ('upsert') album.
+        // Get and update album, or insert it.
         let album: Album = {
           use schema::album::dsl::*;
           let album_name = scanned_track.album;
-          let new_album = NewAlbum { name: album_name.clone() };
-          time!("scan.replace_album", diesel::replace_into(album)
-            .values(new_album)
-            .execute(&self.connection)?);
-          time!("scan.get_replaced_album", album
-            .filter(name.eq(album_name))
-            .first::<Album>(&self.connection)?)
+          let select_query = album
+            .filter(name.eq(&album_name));
+          let db_album = time!("scan.select_album", select_query.first::<Album>(&self.connection).optional()?);
+          if let Some(db_album) = db_album {
+            let db_album: Album = db_album;
+            // TODO: update album columns when they are added.
+            //time!("scan.update_album", db_album.save_changes(&self.connection)?)
+            db_album
+          } else {
+            let new_album = NewAlbum { name: album_name.clone() };
+            let insert_query = diesel::insert_into(album)
+              .values(new_album);
+            time!("scan.insert_album", insert_query.execute(&self.connection)?);
+            time!("scan.select_inserted_album", select_query.first::<Album>(&self.connection)?)
+          }
         };
-        // Replace ('upsert') track
+        // Get and update track, or insert it.
         let track: Track = {
           use schema::track::dsl::*;
-          let new_track = NewTrack {
-            scan_directory_id: scanned_track.scan_directory_id,
-            album_id: album.id,
-            disc_number: scanned_track.disc_number,
-            disc_total: scanned_track.disc_total,
-            track_number: scanned_track.track_number,
-            track_total: scanned_track.track_number,
-            title: scanned_track.title,
-            file_path: scanned_track.file_path.clone(),
-          };
-          time!("scan.replace_track", diesel::replace_into(track)
-            .values(new_track)
-            .execute(&self.connection)?);
-          time!("scan.get_replaced_track", track
+          let track_file_path = scanned_track.file_path;
+          let select_query = track
             .filter(scan_directory_id.eq(scanned_track.scan_directory_id))
-            .filter(file_path.eq(scanned_track.file_path))
-            .first::<Track>(&self.connection)?)
+            .filter(file_path.eq(&track_file_path));
+          let db_track = time!("scan.select_track", select_query.first::<Track>(&self.connection).optional()?);
+          if let Some(db_track) = db_track {
+            let mut db_track: Track = db_track;
+            db_track.album_id = album.id;
+            db_track.disc_number = scanned_track.disc_number;
+            db_track.disc_total = scanned_track.disc_total;
+            db_track.track_number = scanned_track.disc_number;
+            db_track.track_total = scanned_track.track_total;
+            db_track.title = scanned_track.title;
+            time!("scan.update_track", db_track.save_changes(&self.connection)?)
+          } else {
+            let new_track = NewTrack {
+              scan_directory_id: scanned_track.scan_directory_id,
+              album_id: album.id,
+              disc_number: scanned_track.disc_number,
+              disc_total: scanned_track.disc_total,
+              track_number: scanned_track.track_number,
+              track_total: scanned_track.track_number,
+              title: scanned_track.title,
+              file_path: track_file_path.clone(),
+            };
+            let insert_query = diesel::insert_into(track)
+              .values(new_track);
+            time!("scan.insert_track", insert_query.execute(&self.connection)?);
+            time!("scan.select_inserted_track", select_query.first::<Track>(&self.connection)?)
+          }
         };
-        // Replace ('upsert') artist.
-        let artists: Result<Vec<Artist>, diesel::result::Error> = scanned_track.artist.iter().map(|artist_name| {
-          use schema::artist::dsl::*;
-          let new_artist = NewArtist { name: artist_name.clone() };
-          time!("scan.replace_artist", diesel::replace_into(artist)
-            .values(new_artist)
-            .execute(&self.connection)?);
-          Ok(time!("scan.get_replaced_artist", artist
-            .filter(name.eq(artist_name))
-            .first::<Artist>(&self.connection)?))
-        }).collect();
-        let artists = artists?;
+        // Get and update artists from track, or insert them.
+        let track_artists = self.update_or_insert_artists(scanned_track.artist.into_iter())?;
+        // Insert track-artist association if it doesn't exist.
+        for db_artist in track_artists {
+          let db_artist: Artist = db_artist;
+          use schema::track_artist::dsl::*;
+          let select_query = track_artist
+            .filter(track_id.eq(track.id))
+            .filter(artist_id.eq(db_artist.id));
+          let db_track_artist = time!("scan.select_track_artist", select_query.first::<TrackArtist>(&self.connection).optional()?);
+          if db_track_artist.is_none() {
+            let new_track_artist = NewTrackArtist { track_id: track.id, artist_id: db_artist.id };
+            let insert_query = diesel::insert_into(track_artist)
+              .values(new_track_artist);
+            time!("scan.insert_track_artist", insert_query.execute(&self.connection)?);
+            time!("scan.select_inserted_track_artist", select_query.first::<TrackArtist>(&self.connection)?);
+          }
+        }
+        // Get and update artists from albums, or insert them.
+        let album_artists = self.update_or_insert_artists(scanned_track.album_artists.into_iter())?;
+        // Insert album-artist association if it doesn't exist.
+        for db_artist in album_artists {
+          let db_artist: Artist = db_artist;
+          use schema::album_artist::dsl::*;
+          let select_query = album_artist
+            .filter(album_id.eq(album.id))
+            .filter(artist_id.eq(db_artist.id));
+          let db_album_artist = time!("scan.select_album_artist", select_query.first::<AlbumArtist>(&self.connection).optional()?);
+          if db_album_artist.is_none() {
+            let new_album_artist = NewAlbumArtist { album_id: album.id, artist_id: db_artist.id };
+            let insert_query = diesel::insert_into(album_artist)
+              .values(new_album_artist);
+            time!("scan.insert_album_artist", insert_query.execute(&self.connection)?);
+            time!("scan.select_inserted_album_artist", select_query.first::<AlbumArtist>(&self.connection)?);
+          }
+        }
       }
       Ok(())
     })?;
-
     if !scan_errors.is_empty() {
       return Err(ScanError::ScanFail(scan_errors));
     }
     Ok(())
+  }
+
+  fn update_or_insert_artists<I: IntoIterator<Item=String>>(&self, artist_names: I) -> Result<Vec<Artist>, diesel::result::Error> {
+    let artists: Result<Vec<Artist>, diesel::result::Error> = artist_names.into_iter().map(|artist_name| {
+      use schema::artist::dsl::*;
+      let select_query = artist
+        .filter(name.eq(&artist_name));
+      let db_artist = time!("scan.select_artist", select_query.first::<Artist>(&self.connection).optional()?);
+      let db_artist = if let Some(db_artist) = db_artist {
+        let db_artist: Artist = db_artist;
+        // TODO: update artist columns when they are added.
+        //time!("scan.update_artist", db_artist.save_changes(&self.connection)?)
+        db_artist
+      } else {
+        let new_artist = NewArtist { name: artist_name.clone() };
+        let insert_query = diesel::insert_into(artist)
+          .values(new_artist);
+        time!("scan.insert_artist", insert_query.execute(&self.connection)?);
+        time!("scan.select_inserted_artist", select_query.first::<Artist>(&self.connection)?)
+      };
+      Ok(db_artist)
+    }).collect();
+    artists
   }
 }
