@@ -61,15 +61,61 @@ pub enum QueryError {
   QueryFail(#[from] diesel::result::Error),
 }
 
+pub struct TrackWithAssociated {
+  pub track: Track,
+  pub album: AlbumWithAssociated,
+  pub artists: Vec<Artist>,
+}
+
+pub struct AlbumWithAssociated {
+  pub album: Album,
+  pub artists: Vec<Artist>,
+}
+
 impl Server {
+  pub fn list_scan_directories(&self) -> Result<Vec<ScanDirectory>, QueryError> {
+    use schema::scan_directory::dsl::*;
+    Ok(scan_directory.load::<ScanDirectory>(&self.connection)?)
+  }
+
   pub fn list_tracks(&self) -> Result<Vec<Track>, QueryError> {
     use schema::track::dsl::*;
     Ok(track.load::<Track>(&self.connection)?)
   }
 
-  pub fn list_scan_directories(&self) -> Result<Vec<ScanDirectory>, QueryError> {
-    use schema::scan_directory::dsl::*;
-    Ok(scan_directory.load::<ScanDirectory>(&self.connection)?)
+  pub fn list_tracks_with_associated(&self) -> Result<Vec<Track>, QueryError> {
+    let tracks: Vec<Track> = {
+      use schema::track::dsl::*;
+      track.load::<Track>(&self.connection)?
+    };
+    let albums = Album::belonging_to(&tracks)
+      .load::<Album>(&self.connection)?
+      .grouped_by(&tracks);
+    let artists = Artist::belonging_to(&tracks)
+      .load::<Artist>(&self.connection)?
+      .grouped_by(&tracks);
+    Ok(tracks)
+  }
+
+  pub fn list_albums_with_associated(&self) -> Result<Vec<Album>, QueryError> {
+    let albums: Vec<Album> = {
+      use schema::album::dsl::*;
+      album.load::<Album>(&self.connection)?
+    };
+    let album_artists = AlbumArtist::belonging_to(&albums)
+      .load::<AlbumArtist>(&self.connection)
+      .grouped_by(&albums);
+    Ok(albums)
+  }
+
+  pub fn list_albums(&self) -> Result<Vec<Album>, QueryError> {
+    use schema::album::dsl::*;
+    Ok(album.load::<Album>(&self.connection)?)
+  }
+
+  pub fn list_artists(&self) -> Result<Vec<Artist>, QueryError> {
+    use schema::artist::dsl::*;
+    Ok(artist.load::<Artist>(&self.connection)?)
   }
 
   pub fn list_scan_directories_with_tracks(&self) -> Result<impl Iterator<Item=(ScanDirectory, Vec<Track>)>, QueryError> {

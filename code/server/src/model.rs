@@ -1,7 +1,37 @@
 use std::fmt::{Display, Error, Formatter};
 use std::path::PathBuf;
 
-use crate::schema::{album, album_artist, artist, scan_directory, track, track_artist};
+use crate::schema::*;
+
+// Scan directory
+
+#[derive(Clone, PartialOrd, PartialEq, Debug, Identifiable, Queryable, AsChangeset)]
+#[table_name = "scan_directory"]
+pub struct ScanDirectory {
+  pub id: i32,
+  pub directory: String,
+}
+
+#[derive(Debug, Insertable)]
+#[table_name = "scan_directory"]
+pub struct NewScanDirectory {
+  pub directory: String,
+}
+
+// Album
+
+#[derive(Clone, PartialOrd, PartialEq, Debug, Identifiable, Queryable, AsChangeset)]
+#[table_name = "album"]
+pub struct Album {
+  pub id: i32,
+  pub name: String,
+}
+
+#[derive(Debug, Insertable)]
+#[table_name = "album"]
+pub struct NewAlbum {
+  pub name: String,
+}
 
 // Track
 
@@ -34,36 +64,6 @@ pub struct NewTrack {
   pub file_path: String,
 }
 
-// Scan directory
-
-#[derive(Clone, PartialOrd, PartialEq, Debug, Identifiable, Queryable, AsChangeset)]
-#[table_name = "scan_directory"]
-pub struct ScanDirectory {
-  pub id: i32,
-  pub directory: String,
-}
-
-#[derive(Debug, Insertable)]
-#[table_name = "scan_directory"]
-pub struct NewScanDirectory {
-  pub directory: String,
-}
-
-// Album
-
-#[derive(Clone, PartialOrd, PartialEq, Debug, Identifiable, Queryable, AsChangeset)]
-#[table_name = "album"]
-pub struct Album {
-  pub id: i32,
-  pub name: String,
-}
-
-#[derive(Debug, Insertable)]
-#[table_name = "album"]
-pub struct NewAlbum {
-  pub name: String,
-}
-
 // Artist
 
 #[derive(Clone, PartialOrd, PartialEq, Debug, Identifiable, Queryable, AsChangeset)]
@@ -79,7 +79,7 @@ pub struct NewArtist {
   pub name: String,
 }
 
-// Track artist
+// Track-artist
 
 #[derive(Clone, PartialOrd, PartialEq, Debug, Identifiable, Queryable, Associations)]
 #[primary_key(track_id, artist_id)]
@@ -98,7 +98,7 @@ pub struct NewTrackArtist {
   pub artist_id: i32,
 }
 
-// Album artist
+// Album-artist
 
 #[derive(Clone, PartialOrd, PartialEq, Debug, Identifiable, Queryable, Associations)]
 #[primary_key(album_id, artist_id)]
@@ -115,6 +115,84 @@ pub struct AlbumArtist {
 pub struct NewAlbumArtist {
   pub album_id: i32,
   pub artist_id: i32,
+}
+
+// User
+
+#[derive(Clone, PartialOrd, PartialEq, Debug, Identifiable, Queryable, AsChangeset)]
+#[table_name = "user"]
+pub struct User {
+  pub id: i32,
+  pub name: String,
+}
+
+#[derive(Debug, Insertable)]
+#[table_name = "user"]
+pub struct NewUser {
+  pub name: String,
+}
+
+// User-track rating
+
+#[derive(Clone, PartialOrd, PartialEq, Debug, Identifiable, Queryable, Associations)]
+#[primary_key(user_id, track_id)]
+#[table_name = "user_track_rating"]
+#[belongs_to(User)]
+#[belongs_to(Track)]
+pub struct UserTrackRating {
+  pub user_id: i32,
+  pub track_id: i32,
+  pub rating: i32,
+}
+
+#[derive(Debug, Insertable)]
+#[table_name = "user_track_rating"]
+pub struct NewUserTrackRating {
+  pub user_id: i32,
+  pub track_id: i32,
+  pub rating: i32,
+}
+
+// User-album rating
+
+#[derive(Clone, PartialOrd, PartialEq, Debug, Identifiable, Queryable, Associations)]
+#[primary_key(user_id, album_id)]
+#[table_name = "user_album_rating"]
+#[belongs_to(User)]
+#[belongs_to(Album)]
+pub struct UserAlbumRating {
+  pub user_id: i32,
+  pub album_id: i32,
+  pub rating: i32,
+}
+
+#[derive(Debug, Insertable)]
+#[table_name = "user_album_rating"]
+pub struct NewUserAlbumRating {
+  pub user_id: i32,
+  pub album_id: i32,
+  pub rating: i32,
+}
+
+// User-artist rating
+
+#[derive(Clone, PartialOrd, PartialEq, Debug, Identifiable, Queryable, Associations)]
+#[primary_key(user_id, artist_id)]
+#[table_name = "user_artist_rating"]
+#[belongs_to(User)]
+#[belongs_to(Artist)]
+pub struct UserArtistRating {
+  pub user_id: i32,
+  pub artist_id: i32,
+  pub rating: i32,
+}
+
+#[derive(Debug, Insertable)]
+#[table_name = "user_artist_rating"]
+pub struct NewUserArtistRating {
+  pub user_id: i32,
+  pub artist_id: i32,
+  pub rating: i32,
 }
 
 // Implementations

@@ -54,3 +54,41 @@ CREATE TABLE album_artist (
   FOREIGN KEY(album_id) REFERENCES album(id),
   FOREIGN KEY(artist_id) REFERENCES artist(id)
 );
+
+CREATE TABLE user (
+  id INTEGER NOT NULL,
+  name TEXT NOT NULL,
+
+  PRIMARY KEY(id),
+  UNIQUE(name)
+);
+
+CREATE TABLE user_track_rating (
+  user_id INTEGER NOT NULL,
+  track_id INTEGER NOT NULL,
+  rating INTEGER NOT NULL,
+
+  PRIMARY KEY(user_id, track_id),
+  FOREIGN KEY(user_id) REFERENCES user(id),
+  FOREIGN KEY(track_id) REFERENCES track(id)
+);
+
+CREATE TABLE user_album_rating (
+  user_id INTEGER NOT NULL,
+  album_id INTEGER NOT NULL,
+  rating INTEGER NOT NULL,
+
+  PRIMARY KEY(user_id, user_id),
+  FOREIGN KEY(user_id) REFERENCES user(id),
+  FOREIGN KEY(album_id) REFERENCES album(id)
+);
+
+CREATE TABLE user_artist_rating (
+  user_id INTEGER NOT NULL,
+  artist_id INTEGER NOT NULL,
+  rating INTEGER NOT NULL,
+
+  PRIMARY KEY(user_id, artist_id),
+  FOREIGN KEY(user_id) REFERENCES user(id),
+  FOREIGN KEY(artist_id) REFERENCES artist(id)
+);
