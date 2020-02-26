@@ -5,6 +5,7 @@ extern crate diesel;
 
 use std::backtrace::Backtrace;
 use std::borrow::Borrow;
+use std::fmt::Debug;
 use std::path::PathBuf;
 use std::time::Instant;
 
@@ -17,7 +18,6 @@ use model::{ScanDirectory, Track};
 
 use crate::model::{Album, AlbumArtist, Artist, NewAlbum, NewAlbumArtist, NewArtist, NewScanDirectory, NewTrack, NewTrackArtist, TrackArtist};
 use crate::scanner::{ScannedTrack, Scanner};
-use std::fmt::Debug;
 
 pub mod schema;
 pub mod model;
@@ -80,14 +80,16 @@ impl Server {
     )>,
     QueryError
   > {
-    let tracks_with_albums: Vec<(Track, Album)> = {
+    let tracks_with_assoc: Vec<(Track, ScanDirectory, Album)> = {
       use schema::track::dsl::*;
+      use schema::scan_directory::dsl::*;
       use schema::album::dsl::*;
       track
+        .inner_join(scan_directory)
         .inner_join(album)
         .load(&self.connection)?
     };
-    let (tracks, albums): (Vec<_>, Vec<_>) = tracks_with_albums.into_iter().unzip();
+    let (tracks, scan_directories, albums): (Vec<_>, Vec<_>, Vec<_>) = tracks_with_assoc.into_iter().unzip();
 
     let track_artists: Vec<Vec<(TrackArtist, Artist)>> = {
       use schema::artist::dsl::*;
