@@ -93,8 +93,15 @@ fn run(opt: Opt) -> Result<()> {
     .with_context(|| "Failed to initialize server")?;
   match opt.command {
     Command::ListTracks => {
-      for track in server.list_tracks().with_context(|| "Failed to list tracks")? {
-        println!("{}", track);
+      for ((track, track_artists), (album, album_artists)) in server.list_tracks_with_associated().with_context(|| "Failed to list tracks")? {
+        println!("{:?}", track);
+        for artist in track_artists {
+          println!("{:?}", artist);
+        }
+        println!("{:?}", album);
+        for artist in album_artists {
+          println!("{:?}", artist);
+        }
       }
     }
     Command::ListScanDirectories => {

@@ -23,7 +23,7 @@ pub struct ScannedTrack {
   pub track_total: Option<i32>,
   pub title: String,
   pub album: String,
-  pub artist: Vec<String>,
+  pub track_artists: Vec<String>,
   // OPTO: smallvec
   pub album_artists: Vec<String>,
   // OPTO: smallvec
@@ -85,7 +85,7 @@ impl Scanner {
             track_total: tag.total_tracks().map(|u| u as i32),
             title,
             album,
-            artist: tag.artist().map_or(vec![], |a| vec![a.to_string()]), // TODO: support multiple artists.
+            track_artists: tag.artist().map_or(vec![], |a| vec![a.to_string()]), // TODO: support multiple artists.
             album_artists: tag.album_artist().map_or(vec![], |a| vec![a.to_string()]), // TODO: support multiple artists.
             file_path,
           }))

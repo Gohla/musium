@@ -17,6 +17,7 @@ use model::{ScanDirectory, Track};
 
 use crate::model::{Album, AlbumArtist, Artist, NewAlbum, NewAlbumArtist, NewArtist, NewScanDirectory, NewTrack, NewTrackArtist, TrackArtist};
 use crate::scanner::{ScannedTrack, Scanner};
+use std::fmt::Debug;
 
 pub mod schema;
 pub mod model;
@@ -41,8 +42,8 @@ pub struct Server {
 
 #[derive(Debug, Error)]
 pub enum ServerCreateError {
-  #[error(transparent)]
-  ConnectionCreateFail(#[from] ConnectionError),
+  #[error("Failed to create database connection")]
+  ConnectionCreateFail(#[from] ConnectionError, Backtrace),
 }
 
 impl Server {
@@ -57,14 +58,8 @@ impl Server {
 
 #[derive(Debug, Error)]
 pub enum QueryError {
-  #[error(transparent)]
-  QueryFail(#[from] diesel::result::Error),
-}
-
-pub struct TrackWithAssociated {
-  pub track: Track,
-  pub album: AlbumWithAssociated,
-  pub artists: Vec<Artist>,
+  #[error("Failed to execute a database query")]
+  QueryFail(#[from] diesel::result::Error, Backtrace),
 }
 
 impl Server {
@@ -78,21 +73,48 @@ impl Server {
     Ok(track.load::<Track>(&self.connection)?)
   }
 
-  pub fn list_tracks_with_associated(&self) -> Result<impl Iterator<Item=(Track, (Album, impl Iterator<Item=Artist>), impl Iterator<Item=Artist>)>, QueryError> {
-    let tracks: Vec<Track> = {
+  pub fn list_tracks_with_associated(&self) -> Result<
+    impl Iterator<Item=(
+      (Track, impl Iterator<Item=Artist>),
+      (Album, impl Iterator<Item=Artist>)
+    )>,
+    QueryError
+  > {
+    let tracks_with_albums: Vec<(Track, Album)> = {
       use schema::track::dsl::*;
-      track.load::<Track>(&self.connection)?
+      use schema::album::dsl::*;
+      track
+        .inner_join(album)
+        .load(&self.connection)?
     };
-    // let albums = Album::belonging_to(&tracks)
-    //   .load::<Album>(&self.connection)?
-    //   .grouped_by(&tracks);
-    // let artists = Artist::belonging_to(&tracks)
-    //   .load::<Artist>(&self.connection)?
-    //   .grouped_by(&tracks);
-    Ok(tracks)
+    let (tracks, albums): (Vec<_>, Vec<_>) = tracks_with_albums.into_iter().unzip();
+
+    let track_artists: Vec<Vec<(TrackArtist, Artist)>> = {
+      use schema::artist::dsl::*;
+      TrackArtist::belonging_to(&tracks)
+        .inner_join(artist)
+        .load(&self.connection)?
+        .grouped_by(&tracks)
+    };
+    let tracks_with_artists = tracks.into_iter()
+      .zip(track_artists)
+      .map(|(track, track_artists)| (track, track_artists.into_iter().map(|(_, artist)| artist)));
+
+    let album_artists: Vec<Vec<(AlbumArtist, Artist)>> = {
+      use schema::artist::dsl::*;
+      AlbumArtist::belonging_to(&albums)
+        .inner_join(artist)
+        .load(&self.connection)?
+        .grouped_by(&albums)
+    };
+    let albums_with_artists = albums.into_iter()
+      .zip(album_artists)
+      .map(|(album, album_artists)| (album, album_artists.into_iter().map(|(_, artist)| artist)));
+
+    Ok(tracks_with_artists.zip(albums_with_artists))
   }
 
-  pub fn list_albums_with_associated(&self) -> Result<impl Iterator<Item=(Album, impl Iterator<Item=Artist>)>, QueryError> {
+  pub fn list_albums_with_associated(&self) -> Result<impl Iterator<Item=(Album, impl Iterator<Item=Artist> + Debug)>, QueryError> {
     let albums: Vec<Album> = {
       use schema::album::dsl::*;
       album.load::<Album>(&self.connection)?
@@ -147,8 +169,8 @@ impl Server {
 
 #[derive(Debug, Error)]
 pub enum MutateError {
-  #[error(transparent)]
-  MutateFail(#[from] diesel::result::Error),
+  #[error("Failed to execute a database query")]
+  MutateFail(#[from] diesel::result::Error, Backtrace),
 }
 
 impl Server {
@@ -177,7 +199,7 @@ impl Server {
 #[derive(Debug, Error)]
 pub enum ScanError {
   #[error("Failed to list scan directories")]
-  ListScanDirectoriesFail(#[from] QueryError),
+  ListScanDirectoriesFail(#[from] QueryError, Backtrace),
   #[error("Failed to query database")]
   DatabaseFail(#[from] diesel::result::Error, Backtrace),
   #[error("One or more errors occurred during scanning, but successfully scanned tracks have been added")]
@@ -260,7 +282,7 @@ impl Server {
           }
         };
         // Get and update artists from track, or insert them.
-        let track_artists = self.update_or_insert_artists(scanned_track.artist.into_iter())?;
+        let track_artists = self.update_or_insert_artists(scanned_track.track_artists.into_iter())?;
         // Insert track-artist association if it doesn't exist.
         for db_artist in track_artists {
           let db_artist: Artist = db_artist;
