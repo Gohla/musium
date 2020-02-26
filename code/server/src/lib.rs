@@ -67,11 +67,6 @@ pub struct TrackWithAssociated {
   pub artists: Vec<Artist>,
 }
 
-pub struct AlbumWithAssociated {
-  pub album: Album,
-  pub artists: Vec<Artist>,
-}
-
 impl Server {
   pub fn list_scan_directories(&self) -> Result<Vec<ScanDirectory>, QueryError> {
     use schema::scan_directory::dsl::*;
@@ -83,29 +78,37 @@ impl Server {
     Ok(track.load::<Track>(&self.connection)?)
   }
 
-  pub fn list_tracks_with_associated(&self) -> Result<Vec<Track>, QueryError> {
+  pub fn list_tracks_with_associated(&self) -> Result<impl Iterator<Item=(Track, (Album, impl Iterator<Item=Artist>), impl Iterator<Item=Artist>)>, QueryError> {
     let tracks: Vec<Track> = {
       use schema::track::dsl::*;
       track.load::<Track>(&self.connection)?
     };
-    let albums = Album::belonging_to(&tracks)
-      .load::<Album>(&self.connection)?
-      .grouped_by(&tracks);
-    let artists = Artist::belonging_to(&tracks)
-      .load::<Artist>(&self.connection)?
-      .grouped_by(&tracks);
+    // let albums = Album::belonging_to(&tracks)
+    //   .load::<Album>(&self.connection)?
+    //   .grouped_by(&tracks);
+    // let artists = Artist::belonging_to(&tracks)
+    //   .load::<Artist>(&self.connection)?
+    //   .grouped_by(&tracks);
     Ok(tracks)
   }
 
-  pub fn list_albums_with_associated(&self) -> Result<Vec<Album>, QueryError> {
+  pub fn list_albums_with_associated(&self) -> Result<impl Iterator<Item=(Album, impl Iterator<Item=Artist>)>, QueryError> {
     let albums: Vec<Album> = {
       use schema::album::dsl::*;
       album.load::<Album>(&self.connection)?
     };
-    let album_artists = AlbumArtist::belonging_to(&albums)
-      .load::<AlbumArtist>(&self.connection)
-      .grouped_by(&albums);
-    Ok(albums)
+    let album_artists: Vec<Vec<(AlbumArtist, Artist)>> = {
+      use schema::artist::dsl::*;
+      AlbumArtist::belonging_to(&albums)
+        .inner_join(artist)
+        .load(&self.connection)?
+        .grouped_by(&albums)
+    };
+    Ok(
+      albums.into_iter()
+        .zip(album_artists)
+        .map(|(album, album_artists)| (album, album_artists.into_iter().map(|(_, artist)| artist)))
+    )
   }
 
   pub fn list_albums(&self) -> Result<Vec<Album>, QueryError> {
