@@ -5,6 +5,7 @@ extern crate diesel;
 
 use std::backtrace::Backtrace;
 use std::borrow::Borrow;
+use std::collections::HashMap;
 use std::fmt::Debug;
 use std::path::PathBuf;
 use std::time::Instant;
@@ -15,11 +16,9 @@ use metrics::timing;
 use thiserror::Error;
 
 use model::{ScanDirectory, Track};
-use itertools::izip;
 
 use crate::model::{Album, AlbumArtist, Artist, NewAlbum, NewAlbumArtist, NewArtist, NewScanDirectory, NewTrack, NewTrackArtist, TrackArtist};
 use crate::scanner::{ScannedTrack, Scanner};
-use std::collections::HashMap;
 
 pub mod schema;
 pub mod model;
@@ -58,6 +57,47 @@ impl Server {
 
 // Queries
 
+#[derive(Default, Clone, Debug)]
+pub struct Tracks {
+  pub tracks: Vec<Track>,
+  pub scan_directories: HashMap<i32, ScanDirectory>,
+  pub albums: HashMap<i32, Album>,
+  pub artists: HashMap<i32, Artist>,
+  pub track_artists: HashMap<i32, Vec<i32>>,
+  pub album_artists: HashMap<i32, Vec<i32>>,
+}
+
+impl Tracks {
+  pub fn from(
+    tracks: Vec<Track>,
+    scan_directories: Vec<ScanDirectory>,
+    albums: Vec<Album>,
+    artists: Vec<Artist>,
+    track_artists: Vec<TrackArtist>,
+    album_artists: Vec<AlbumArtist>,
+  ) -> Self {
+    let scan_directories = scan_directories.into_iter().map(|sd| (sd.id, sd)).collect();
+    let albums = albums.into_iter().map(|a| (a.id, a)).collect();
+    let artists = artists.into_iter().map(|a| (a.id, a)).collect();
+    let track_artists = track_artists.into_iter().map(|ta| (ta.track_id, ta.artist_id)).into_group_map();
+    let album_artists = album_artists.into_iter().map(|aa| (aa.album_id, aa.artist_id)).into_group_map();
+    Self { tracks, scan_directories, albums, artists, track_artists, album_artists }
+  }
+
+  pub fn iter(&self) -> impl Iterator<Item=(&ScanDirectory, &Track, impl Iterator<Item=&Artist>, &Album, impl Iterator<Item=&Artist>)> + '_ {
+    let Tracks { tracks, scan_directories, albums, artists, track_artists, album_artists } = &self;
+    tracks.into_iter().filter_map(move |track| {
+      let scan_directory = scan_directories.get(&track.scan_directory_id)?;
+      let track_artists: &Vec<i32> = track_artists.get(&track.id)?;
+      let track_artists: Vec<&Artist> = track_artists.into_iter().filter_map(|ta| artists.get(ta)).collect();
+      let album = albums.get(&track.album_id)?;
+      let album_artists: &Vec<i32> = album_artists.get(&album.id)?;
+      let album_artists: Vec<&Artist> = album_artists.into_iter().filter_map(|aa| artists.get(aa)).collect();
+      return Some((scan_directory, track, track_artists.into_iter(), album, album_artists.into_iter()));
+    })
+  }
+}
+
 #[derive(Debug, Error)]
 pub enum QueryError {
   #[error("Failed to execute a database query")]
@@ -75,51 +115,14 @@ impl Server {
     Ok(track.load::<Track>(&self.connection)?)
   }
 
-  pub fn list_tracks_with_associated(&self) -> Result<
-    impl Iterator<Item=(
-      ScanDirectory,
-      (Track, impl Iterator<Item=Artist>),
-      (Album, impl Iterator<Item=Artist>)
-    )>,
-    QueryError
-  > {
-    let tracks_with_assoc: Vec<(Track, ScanDirectory, Album)> = {
-      use schema::track::dsl::*;
-      use schema::scan_directory::dsl::*;
-      use schema::album::dsl::*;
-      track
-        .inner_join(scan_directory)
-        .inner_join(album)
-        .load(&self.connection)?
-    };
-    let (tracks, scan_directories_and_albums): (Vec<Track>, Vec<(ScanDirectory, Album)>) = tracks_with_assoc.into_iter()
-      .map(|(t, s, a)| (t, (s, a)))
-      .unzip();
-    let (scan_directories, albums): (Vec<ScanDirectory>, Vec<Album>) = scan_directories_and_albums.into_iter().unzip();
-
-    let track_artists: Vec<Vec<(TrackArtist, Artist)>> = {
-      use schema::artist::dsl::*;
-      TrackArtist::belonging_to(&tracks)
-        .inner_join(artist)
-        .load(&self.connection)?
-        .grouped_by(&tracks)
-    };
-    let tracks_with_artists = tracks.into_iter()
-      .zip(track_artists)
-      .map(|(track, track_artists)| (track, track_artists.into_iter().map(|(_, artist)| artist)));
-
-    let album_artists: Vec<Vec<(AlbumArtist, Artist)>> = {
-      use schema::artist::dsl::*;
-      AlbumArtist::belonging_to(&albums)
-        .inner_join(artist)
-        .load(&self.connection)?
-        .grouped_by(&albums)
-    };
-    let albums_with_artists = albums.into_iter()
-      .zip(album_artists)
-      .map(|(album, album_artists)| (album, album_artists.into_iter().map(|(_, artist)| artist)));
-
-    Ok(izip!(scan_directories.into_iter(), tracks_with_artists, albums_with_artists))
+  pub fn list_tracks_with_associated(&self) -> Result<Tracks, QueryError> {
+    let tracks = schema::track::table.load::<Track>(&self.connection)?;
+    let scan_directories = schema::scan_directory::table.load::<ScanDirectory>(&self.connection)?;
+    let albums = schema::album::table.load::<Album>(&self.connection)?;
+    let artists = schema::artist::table.load::<Artist>(&self.connection)?;
+    let track_artists = schema::track_artist::table.load::<TrackArtist>(&self.connection)?;
+    let album_artists = schema::album_artist::table.load::<AlbumArtist>(&self.connection)?;
+    Ok(Tracks::from(tracks, scan_directories, albums, artists, track_artists, album_artists))
   }
 
   pub fn list_albums_with_associated(&self) -> Result<impl Iterator<Item=(Album, impl Iterator<Item=Artist> + Debug)>, QueryError> {
