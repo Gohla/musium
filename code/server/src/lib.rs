@@ -15,9 +15,11 @@ use metrics::timing;
 use thiserror::Error;
 
 use model::{ScanDirectory, Track};
+use itertools::izip;
 
 use crate::model::{Album, AlbumArtist, Artist, NewAlbum, NewAlbumArtist, NewArtist, NewScanDirectory, NewTrack, NewTrackArtist, TrackArtist};
 use crate::scanner::{ScannedTrack, Scanner};
+use std::collections::HashMap;
 
 pub mod schema;
 pub mod model;
@@ -75,6 +77,7 @@ impl Server {
 
   pub fn list_tracks_with_associated(&self) -> Result<
     impl Iterator<Item=(
+      ScanDirectory,
       (Track, impl Iterator<Item=Artist>),
       (Album, impl Iterator<Item=Artist>)
     )>,
@@ -89,7 +92,10 @@ impl Server {
         .inner_join(album)
         .load(&self.connection)?
     };
-    let (tracks, scan_directories, albums): (Vec<_>, Vec<_>, Vec<_>) = tracks_with_assoc.into_iter().unzip();
+    let (tracks, scan_directories_and_albums): (Vec<Track>, Vec<(ScanDirectory, Album)>) = tracks_with_assoc.into_iter()
+      .map(|(t, s, a)| (t, (s, a)))
+      .unzip();
+    let (scan_directories, albums): (Vec<ScanDirectory>, Vec<Album>) = scan_directories_and_albums.into_iter().unzip();
 
     let track_artists: Vec<Vec<(TrackArtist, Artist)>> = {
       use schema::artist::dsl::*;
@@ -113,7 +119,7 @@ impl Server {
       .zip(album_artists)
       .map(|(album, album_artists)| (album, album_artists.into_iter().map(|(_, artist)| artist)));
 
-    Ok(tracks_with_artists.zip(albums_with_artists))
+    Ok(izip!(scan_directories.into_iter(), tracks_with_artists, albums_with_artists))
   }
 
   pub fn list_albums_with_associated(&self) -> Result<impl Iterator<Item=(Album, impl Iterator<Item=Artist> + Debug)>, QueryError> {

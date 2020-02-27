@@ -3,6 +3,7 @@ use std::io;
 use std::path::PathBuf;
 
 use anyhow::{Context, Result};
+use dotenv;
 use metrics_core::{Builder, Drain, Observe};
 use metrics_observer_yaml::{YamlBuilder, YamlObserver};
 use metrics_runtime::{Controller, Receiver};
@@ -11,8 +12,6 @@ use tracing::{Level, trace};
 use tracing_subscriber::FmtSubscriber;
 
 use server::Server;
-
-use dotenv;
 
 #[derive(Debug, StructOpt)]
 #[structopt(name = "music_composer", about = "Music Composer")]
@@ -93,14 +92,15 @@ fn run(opt: Opt) -> Result<()> {
     .with_context(|| "Failed to initialize server")?;
   match opt.command {
     Command::ListTracks => {
-      for ((track, track_artists), (album, album_artists)) in server.list_tracks_with_associated().with_context(|| "Failed to list tracks")? {
-        println!("{:?}", track);
+      for (scan_directory, (track, track_artists), (album, album_artists)) in server.list_tracks_with_associated().with_context(|| "Failed to list tracks")? {
+        println!("{:?}", scan_directory);
+        println!("  {:?}", track);
         for artist in track_artists {
-          println!("{:?}", artist);
+          println!("    {:?}", artist);
         }
-        println!("{:?}", album);
+        println!("    {:?}", album);
         for artist in album_artists {
-          println!("{:?}", artist);
+          println!("      {:?}", artist);
         }
       }
     }
