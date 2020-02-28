@@ -35,7 +35,7 @@ enum Command {
     #[structopt(parse(from_os_str))]
     directory: PathBuf,
   },
-  /// Removes a scan directory to the database
+  /// Removes a scan directory from the database
   #[structopt()]
   RemoveScanDirectory {
     /// Scan directory to remove
@@ -66,6 +66,22 @@ enum Command {
   /// Scan for music files in all scan directories, and add their tracks to the database
   #[structopt()]
   Scan,
+
+  /// Lists all users in the database
+  #[structopt()]
+  ListUsers,
+  /// Add a user to the database
+  #[structopt()]
+  AddUser {
+    /// Name of the user to add
+    name: String,
+  },
+  /// Removes a user from the database
+  #[structopt()]
+  RemoveUser {
+    /// Name of the user to remove
+    name: String,
+  },
 }
 
 fn main() -> Result<()> {
@@ -163,6 +179,23 @@ fn run(opt: Opt) -> Result<()> {
 
     Command::Scan => {
       server.scan().with_context(|| "Failed to scan music files")?;
+    }
+    Command::ListUsers => {
+      for user in server.list_users().with_context(|| "Failed to list users")? {
+        println!("{:?}", user);
+      }
+    }
+    Command::AddUser { name } => {
+      let user = server.add_user(name).with_context(|| "Failed to add user")?;
+      eprintln!("Added user {:?}", user);
+    }
+    Command::RemoveUser { name } => {
+      let removed = server.remove_user(&name).with_context(|| "Failed to remove user")?;
+      if removed {
+        eprintln!("Removed user with name '{}'", name);
+      } else {
+        eprintln!("Could not remove user with name '{}', it was not found", name);
+      }
     }
   }
   Ok(())

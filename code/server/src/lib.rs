@@ -17,7 +17,7 @@ use thiserror::Error;
 
 use model::{ScanDirectory, Track};
 
-use crate::model::{Album, AlbumArtist, Artist, NewAlbum, NewAlbumArtist, NewArtist, NewScanDirectory, NewTrack, NewTrackArtist, TrackArtist};
+use crate::model::{Album, AlbumArtist, Artist, NewAlbum, NewAlbumArtist, NewArtist, NewScanDirectory, NewTrack, NewTrackArtist, TrackArtist, User, NewUser};
 use crate::scanner::{ScannedTrack, Scanner};
 
 pub mod schema;
@@ -71,23 +71,23 @@ impl Server {
     Ok(scan_directory.load::<ScanDirectory>(&self.connection)?)
   }
 
-  pub fn add_scan_directory<P: Borrow<PathBuf>>(&self, directory: P) -> Result<(), DatabaseQueryError> {
+  pub fn add_scan_directory<P: Borrow<PathBuf>>(&self, directory: P) -> Result<ScanDirectory, DatabaseQueryError> {
     use schema::scan_directory;
     let directory = directory.borrow().to_string_lossy().to_string();
-    diesel::insert_into(scan_directory::table)
-      .values(NewScanDirectory { directory })
-      .execute(&self.connection)?;
-    Ok(())
+    time!("add_scan_directory.insert", diesel::insert_into(scan_directory::table)
+      .values(NewScanDirectory { directory: directory.clone() })
+      .execute(&self.connection))?;
+    let select_query = scan_directory::table
+      .filter(scan_directory::directory.eq(&directory));
+    Ok(time!("add_scan_directory.select", select_query.first::<ScanDirectory>(&self.connection)?))
   }
 
   pub fn remove_scan_directory<P: Borrow<PathBuf>>(&self, directory: P) -> Result<bool, DatabaseQueryError> {
-    let directory_input = directory.borrow().to_string_lossy().to_string();
-    {
-      use schema::scan_directory::dsl::*;
-      let result = diesel::delete(scan_directory.filter(directory.like(directory_input)))
-        .execute(&self.connection)?;
-      Ok(result == 1)
-    }
+    use schema::scan_directory;
+    let directory = directory.borrow().to_string_lossy().to_string();
+    let result = time!("remove_scan_directory.delete", diesel::delete(scan_directory::table.filter(scan_directory::directory.like(&directory)))
+      .execute(&self.connection))?;
+    Ok(result == 1)
   }
 }
 
@@ -200,6 +200,34 @@ impl Server {
   pub fn list_artists(&self) -> Result<Vec<Artist>, DatabaseQueryError> {
     use schema::artist::dsl::*;
     Ok(artist.load::<Artist>(&self.connection)?)
+  }
+}
+
+// User database queries
+
+impl Server {
+  pub fn list_users(&self) -> Result<Vec<User>, DatabaseQueryError> {
+    use schema::user::dsl::*;
+    Ok(user.load::<User>(&self.connection)?)
+  }
+
+  pub fn add_user<S: Into<String>>(&self, name: S) -> Result<User, DatabaseQueryError> {
+    use schema::user;
+    let name = name.into();
+    time!("add_user.insert", diesel::insert_into(user::table)
+      .values(NewUser { name: name.clone() })
+      .execute(&self.connection))?;
+    let select_query = user::table
+      .filter(user::name.eq(&name));
+    Ok(time!("add_user.select", select_query.first::<User>(&self.connection)?))
+  }
+
+  pub fn remove_user<S: AsRef<str>>(&self,  name: S) -> Result<bool, DatabaseQueryError> {
+    use schema::user;
+    let name = name.as_ref();
+    let result = time!("remove_user.delete", diesel::delete(user::table.filter(user::name.like(name)))
+      .execute(&self.connection))?;
+    Ok(result == 1)
   }
 }
 
