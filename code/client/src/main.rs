@@ -26,17 +26,14 @@ struct Opt {
 #[derive(Debug, StructOpt)]
 enum Command {
   /// Lists all scan directories in the database
-  #[structopt()]
   ListScanDirectories,
   /// Add a scan directory to the database
-  #[structopt()]
   AddScanDirectory {
     /// Scan directory to add
     #[structopt(parse(from_os_str))]
     directory: PathBuf,
   },
   /// Removes a scan directory from the database
-  #[structopt()]
   RemoveScanDirectory {
     /// Scan directory to remove
     #[structopt(parse(from_os_str))]
@@ -44,14 +41,11 @@ enum Command {
   },
 
   /// Lists all albums in the database
-  #[structopt()]
   ListAlbums,
 
   /// Lists all tracks in the database
-  #[structopt()]
   ListTracks,
   /// Plays a track
-  #[structopt()]
   PlayTrack {
     /// ID of the track to play
     track_id: i32,
@@ -60,57 +54,49 @@ enum Command {
   },
 
   /// Lists all artists in the database
-  #[structopt()]
   ListArtists,
 
   /// Scan for music files in all scan directories, and add their tracks to the database
-  #[structopt()]
   Scan,
 
   /// Lists all users in the database
-  #[structopt()]
   ListUsers,
   /// Add a user to the database
-  #[structopt()]
   AddUser {
     /// Name of the user to add
     name: String,
   },
   /// Removes a user from the database
-  #[structopt()]
   RemoveUser {
     /// Name of the user to remove
     name: String,
   },
 
-  // Sets the user-rating for an album
-  #[structopt()]
+  /// Sets the user-rating for an album
   SetUserAlbumRating {
-    // ID of the user to set the rating for
+    /// ID of the user to set the rating for
     user_id: i32,
-    // ID of the album to set the rating for
+    /// ID of the album to set the rating for
     album_id: i32,
-    // The rating to set
+    /// The rating to set
     rating: i32,
   },
-  // Sets the user-rating for an track
-  #[structopt()]
+  /// Sets the user-rating for an track
   SetUserTrackRating {
-    // ID of the user to set the rating for
+    /// ID of the user to set the rating for
     user_id: i32,
-    // ID of the track to set the rating for
+    /// ID of the track to set the rating for
     track_id: i32,
-    // The rating to set
+    /// The rating to set
     rating: i32,
   },
-  // Sets the user-rating for an artist
-  #[structopt()]
+  /// Sets the user-rating for an artist
   SetUserArtistRating {
-    // ID of the user to set the rating for
+    /// ID of the user to set the rating for
     user_id: i32,
-    // ID of the artist to set the rating for
+    /// ID of the artist to set the rating for
     artist_id: i32,
-    // The rating to set
+    /// The rating to set
     rating: i32,
   },
 }
