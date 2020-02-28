@@ -1,5 +1,5 @@
-DROP TABLE user_artist_rating;
 DROP TABLE user_album_rating;
+DROP TABLE user_artist_rating;
 DROP TABLE user_track_rating;
 DROP TABLE user;
 DROP TABLE album_artist;

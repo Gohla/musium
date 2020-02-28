@@ -82,6 +82,37 @@ enum Command {
     /// Name of the user to remove
     name: String,
   },
+
+  // Sets the user-rating for an album
+  #[structopt()]
+  SetUserAlbumRating {
+    // ID of the user to set the rating for
+    user_id: i32,
+    // ID of the album to set the rating for
+    album_id: i32,
+    // The rating to set
+    rating: i32,
+  },
+  // Sets the user-rating for an track
+  #[structopt()]
+  SetUserTrackRating {
+    // ID of the user to set the rating for
+    user_id: i32,
+    // ID of the track to set the rating for
+    track_id: i32,
+    // The rating to set
+    rating: i32,
+  },
+  // Sets the user-rating for an artist
+  #[structopt()]
+  SetUserArtistRating {
+    // ID of the user to set the rating for
+    user_id: i32,
+    // ID of the artist to set the rating for
+    artist_id: i32,
+    // The rating to set
+    rating: i32,
+  },
 }
 
 fn main() -> Result<()> {
@@ -155,7 +186,7 @@ fn run(opt: Opt) -> Result<()> {
       }
     }
     Command::PlayTrack { track_id, volume } => {
-      if let Some((scan_directory, track)) = server.get_track_by_id(track_id)? {
+      if let Some((scan_directory, track)) = server.get_track_by_id(track_id).with_context(|| "Failed to get track")? {
         println!("* {}", scan_directory);
         println!("  - {}", track);
         let device = rodio::default_output_device()
@@ -178,24 +209,43 @@ fn run(opt: Opt) -> Result<()> {
     }
 
     Command::Scan => {
-      server.scan().with_context(|| "Failed to scan music files")?;
+      server.scan()
+        .with_context(|| "Failed to scan music files")?;
     }
     Command::ListUsers => {
-      for user in server.list_users().with_context(|| "Failed to list users")? {
+      for user in server.list_users()
+        .with_context(|| "Failed to list users")? {
         println!("{:?}", user);
       }
     }
     Command::AddUser { name } => {
-      let user = server.add_user(name).with_context(|| "Failed to add user")?;
-      eprintln!("Added user {:?}", user);
+      let user = server.add_user(name)
+        .with_context(|| "Failed to add user")?;
+      eprintln!("Added {:?}", user);
     }
     Command::RemoveUser { name } => {
-      let removed = server.remove_user(&name).with_context(|| "Failed to remove user")?;
+      let removed = server.remove_user(&name)
+        .with_context(|| "Failed to remove user")?;
       if removed {
         eprintln!("Removed user with name '{}'", name);
       } else {
         eprintln!("Could not remove user with name '{}', it was not found", name);
       }
+    }
+    Command::SetUserAlbumRating { user_id, album_id, rating } => {
+      let user_album_rating = server.set_user_album_rating(user_id, album_id, rating)
+        .with_context(|| "Failed to set user album rating")?;
+      eprintln!("Set {:?}", user_album_rating);
+    }
+    Command::SetUserTrackRating { user_id, track_id, rating } => {
+      let user_track_rating = server.set_user_track_rating(user_id, track_id, rating)
+        .with_context(|| "Failed to set user track rating")?;
+      eprintln!("Set {:?}", user_track_rating);
+    }
+    Command::SetUserArtistRating { user_id, artist_id, rating } => {
+      let user_artist_rating = server.set_user_artist_rating(user_id, artist_id, rating)
+        .with_context(|| "Failed to set user artist rating")?;
+      eprintln!("Set {:?}", user_artist_rating);
     }
   }
   Ok(())

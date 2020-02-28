@@ -132,30 +132,9 @@ pub struct NewUser {
   pub name: String,
 }
 
-// User-track rating
-
-#[derive(Clone, PartialOrd, PartialEq, Debug, Identifiable, Queryable, Associations)]
-#[primary_key(user_id, track_id)]
-#[table_name = "user_track_rating"]
-#[belongs_to(User)]
-#[belongs_to(Track)]
-pub struct UserTrackRating {
-  pub user_id: i32,
-  pub track_id: i32,
-  pub rating: i32,
-}
-
-#[derive(Debug, Insertable)]
-#[table_name = "user_track_rating"]
-pub struct NewUserTrackRating {
-  pub user_id: i32,
-  pub track_id: i32,
-  pub rating: i32,
-}
-
 // User-album rating
 
-#[derive(Clone, PartialOrd, PartialEq, Debug, Identifiable, Queryable, Associations)]
+#[derive(Clone, PartialOrd, PartialEq, Debug, Identifiable, Queryable, Associations, AsChangeset)]
 #[primary_key(user_id, album_id)]
 #[table_name = "user_album_rating"]
 #[belongs_to(User)]
@@ -174,9 +153,30 @@ pub struct NewUserAlbumRating {
   pub rating: i32,
 }
 
+// User-track rating
+
+#[derive(Clone, PartialOrd, PartialEq, Debug, Identifiable, Queryable, Associations, AsChangeset)]
+#[primary_key(user_id, track_id)]
+#[table_name = "user_track_rating"]
+#[belongs_to(User)]
+#[belongs_to(Track)]
+pub struct UserTrackRating {
+  pub user_id: i32,
+  pub track_id: i32,
+  pub rating: i32,
+}
+
+#[derive(Debug, Insertable)]
+#[table_name = "user_track_rating"]
+pub struct NewUserTrackRating {
+  pub user_id: i32,
+  pub track_id: i32,
+  pub rating: i32,
+}
+
 // User-artist rating
 
-#[derive(Clone, PartialOrd, PartialEq, Debug, Identifiable, Queryable, Associations)]
+#[derive(Clone, PartialOrd, PartialEq, Debug, Identifiable, Queryable, Associations, AsChangeset)]
 #[primary_key(user_id, artist_id)]
 #[table_name = "user_artist_rating"]
 #[belongs_to(User)]

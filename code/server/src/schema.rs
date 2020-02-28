@@ -55,7 +55,7 @@ table! {
 }
 
 table! {
-    user_album_rating (user_id) {
+    user_album_rating (user_id, album_id) {
         user_id -> Integer,
         album_id -> Integer,
         rating -> Integer,

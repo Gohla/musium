@@ -17,7 +17,7 @@ use thiserror::Error;
 
 use model::{ScanDirectory, Track};
 
-use crate::model::{Album, AlbumArtist, Artist, NewAlbum, NewAlbumArtist, NewArtist, NewScanDirectory, NewTrack, NewTrackArtist, TrackArtist, User, NewUser};
+use crate::model::*;
 use crate::scanner::{ScannedTrack, Scanner};
 
 pub mod schema;
@@ -76,7 +76,7 @@ impl Server {
     let directory = directory.borrow().to_string_lossy().to_string();
     time!("add_scan_directory.insert", diesel::insert_into(scan_directory::table)
       .values(NewScanDirectory { directory: directory.clone() })
-      .execute(&self.connection))?;
+      .execute(&self.connection)?);
     let select_query = scan_directory::table
       .filter(scan_directory::directory.eq(&directory));
     Ok(time!("add_scan_directory.select", select_query.first::<ScanDirectory>(&self.connection)?))
@@ -216,18 +216,76 @@ impl Server {
     let name = name.into();
     time!("add_user.insert", diesel::insert_into(user::table)
       .values(NewUser { name: name.clone() })
-      .execute(&self.connection))?;
+      .execute(&self.connection)?);
     let select_query = user::table
       .filter(user::name.eq(&name));
     Ok(time!("add_user.select", select_query.first::<User>(&self.connection)?))
   }
 
-  pub fn remove_user<S: AsRef<str>>(&self,  name: S) -> Result<bool, DatabaseQueryError> {
+  pub fn remove_user<S: AsRef<str>>(&self, name: S) -> Result<bool, DatabaseQueryError> {
     use schema::user;
     let name = name.as_ref();
     let result = time!("remove_user.delete", diesel::delete(user::table.filter(user::name.like(name)))
-      .execute(&self.connection))?;
+      .execute(&self.connection)?);
     Ok(result == 1)
+  }
+}
+
+// User data database queries
+
+impl Server {
+  pub fn set_user_album_rating(&self, user_id: i32, album_id: i32, rating: i32) -> Result<UserAlbumRating, DatabaseQueryError> {
+    use schema::user_album_rating;
+    let select_query = user_album_rating::table
+      .filter(user_album_rating::user_id.eq(user_id))
+      .filter(user_album_rating::album_id.eq(album_id));
+    let db_user_album_rating = time!("set_user_album_rating.select", select_query.first::<UserAlbumRating>(&self.connection).optional()?);
+    if let Some(db_user_album_rating) = db_user_album_rating {
+      let mut db_user_album_rating: UserAlbumRating = db_user_album_rating;
+      db_user_album_rating.rating = rating;
+      Ok(time!("set_user_album_rating.update", db_user_album_rating.save_changes(&self.connection)?))
+    } else {
+      time!("set_user_album_rating.insert", diesel::insert_into(user_album_rating::table)
+        .values(NewUserAlbumRating { user_id, album_id, rating })
+        .execute(&self.connection)?);
+      Ok(time!("set_user_album_rating.select_inserted", select_query.first::<UserAlbumRating>(&self.connection)?))
+    }
+  }
+
+  pub fn set_user_track_rating(&self, user_id: i32, track_id: i32, rating: i32) -> Result<UserTrackRating, DatabaseQueryError> {
+    use schema::user_track_rating;
+    let select_query = user_track_rating::table
+      .filter(user_track_rating::user_id.eq(user_id))
+      .filter(user_track_rating::track_id.eq(track_id));
+    let db_user_track_rating = time!("set_user_track_rating.select", select_query.first::<UserTrackRating>(&self.connection).optional()?);
+    if let Some(db_user_track_rating) = db_user_track_rating {
+      let mut db_user_track_rating: UserTrackRating = db_user_track_rating;
+      db_user_track_rating.rating = rating;
+      Ok(time!("set_user_track_rating.update", db_user_track_rating.save_changes(&self.connection)?))
+    } else {
+      time!("set_user_track_rating.insert", diesel::insert_into(user_track_rating::table)
+        .values(NewUserTrackRating { user_id, track_id, rating })
+        .execute(&self.connection)?);
+      Ok(time!("set_user_track_rating.select_inserted", select_query.first::<UserTrackRating>(&self.connection)?))
+    }
+  }
+
+  pub fn set_user_artist_rating(&self, user_id: i32, artist_id: i32, rating: i32) -> Result<UserArtistRating, DatabaseQueryError> {
+    use schema::user_artist_rating;
+    let select_query = user_artist_rating::table
+      .filter(user_artist_rating::user_id.eq(user_id))
+      .filter(user_artist_rating::artist_id.eq(artist_id));
+    let db_user_artist_rating = time!("set_user_artist_rating.select", select_query.first::<UserArtistRating>(&self.connection).optional()?);
+    if let Some(db_user_artist_rating) = db_user_artist_rating {
+      let mut db_user_artist_rating: UserArtistRating = db_user_artist_rating;
+      db_user_artist_rating.rating = rating;
+      Ok(time!("set_user_artist_rating.update", db_user_artist_rating.save_changes(&self.connection)?))
+    } else {
+      time!("set_user_artist_rating.insert", diesel::insert_into(user_artist_rating::table)
+        .values(NewUserArtistRating { user_id, artist_id, rating })
+        .execute(&self.connection)?);
+      Ok(time!("set_user_artist_rating.select_inserted", select_query.first::<UserArtistRating>(&self.connection)?))
+    }
   }
 }
 
