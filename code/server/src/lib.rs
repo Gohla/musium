@@ -55,7 +55,81 @@ impl Server {
   }
 }
 
-// Queries
+// Database queries
+
+#[derive(Debug, Error)]
+pub enum DatabaseQueryError {
+  #[error("Failed to execute a database query")]
+  DatabaseQueryFail(#[from] diesel::result::Error, Backtrace),
+}
+
+// Scan directory database queries
+
+impl Server {
+  pub fn list_scan_directories(&self) -> Result<Vec<ScanDirectory>, DatabaseQueryError> {
+    use schema::scan_directory::dsl::*;
+    Ok(scan_directory.load::<ScanDirectory>(&self.connection)?)
+  }
+
+  pub fn add_scan_directory<P: Borrow<PathBuf>>(&self, directory: P) -> Result<(), DatabaseQueryError> {
+    use schema::scan_directory;
+    let directory = directory.borrow().to_string_lossy().to_string();
+    diesel::insert_into(scan_directory::table)
+      .values(NewScanDirectory { directory })
+      .execute(&self.connection)?;
+    Ok(())
+  }
+
+  pub fn remove_scan_directory<P: Borrow<PathBuf>>(&self, directory: P) -> Result<bool, DatabaseQueryError> {
+    let directory_input = directory.borrow().to_string_lossy().to_string();
+    {
+      use schema::scan_directory::dsl::*;
+      let result = diesel::delete(scan_directory.filter(directory.like(directory_input)))
+        .execute(&self.connection)?;
+      Ok(result == 1)
+    }
+  }
+}
+
+// Album database queries
+
+pub struct Albums {
+  pub albums: Vec<Album>,
+  pub artists: HashMap<i32, Artist>,
+  pub album_artists: HashMap<i32, Vec<i32>>,
+}
+
+impl Albums {
+  pub fn from(
+    albums: Vec<Album>,
+    artists: Vec<Artist>,
+    album_artists: Vec<AlbumArtist>,
+  ) -> Self {
+    let artists = artists.into_iter().map(|a| (a.id, a)).collect();
+    let album_artists = album_artists.into_iter().map(|aa| (aa.album_id, aa.artist_id)).into_group_map();
+    Self { albums, artists, album_artists }
+  }
+
+  pub fn iter(&self) -> impl Iterator<Item=(&Album, impl Iterator<Item=&Artist>)> + '_ {
+    let Albums { albums, artists, album_artists } = &self;
+    albums.into_iter().filter_map(move |album| {
+      let album_artists: &Vec<i32> = album_artists.get(&album.id)?;
+      let album_artists: Vec<&Artist> = album_artists.into_iter().filter_map(|aa| artists.get(aa)).collect();
+      return Some((album, album_artists.into_iter()));
+    })
+  }
+}
+
+impl Server {
+  pub fn list_albums(&self) -> Result<Albums, DatabaseQueryError> {
+    let albums = schema::album::table.load::<Album>(&self.connection)?;
+    let artists = schema::artist::table.load::<Artist>(&self.connection)?;
+    let album_artists = schema::album_artist::table.load::<AlbumArtist>(&self.connection)?;
+    Ok(Albums::from(albums, artists, album_artists))
+  }
+}
+
+// Track database queries
 
 #[derive(Default, Clone, Debug)]
 pub struct Tracks {
@@ -98,24 +172,8 @@ impl Tracks {
   }
 }
 
-#[derive(Debug, Error)]
-pub enum QueryError {
-  #[error("Failed to execute a database query")]
-  QueryFail(#[from] diesel::result::Error, Backtrace),
-}
-
 impl Server {
-  pub fn list_scan_directories(&self) -> Result<Vec<ScanDirectory>, QueryError> {
-    use schema::scan_directory::dsl::*;
-    Ok(scan_directory.load::<ScanDirectory>(&self.connection)?)
-  }
-
-  pub fn list_tracks(&self) -> Result<Vec<Track>, QueryError> {
-    use schema::track::dsl::*;
-    Ok(track.load::<Track>(&self.connection)?)
-  }
-
-  pub fn list_tracks_with_associated(&self) -> Result<Tracks, QueryError> {
+  pub fn list_tracks(&self) -> Result<Tracks, DatabaseQueryError> {
     let tracks = schema::track::table.load::<Track>(&self.connection)?;
     let scan_directories = schema::scan_directory::table.load::<ScanDirectory>(&self.connection)?;
     let albums = schema::album::table.load::<Album>(&self.connection)?;
@@ -125,47 +183,7 @@ impl Server {
     Ok(Tracks::from(tracks, scan_directories, albums, artists, track_artists, album_artists))
   }
 
-  pub fn list_albums_with_associated(&self) -> Result<impl Iterator<Item=(Album, impl Iterator<Item=Artist> + Debug)>, QueryError> {
-    let albums: Vec<Album> = {
-      use schema::album::dsl::*;
-      album.load::<Album>(&self.connection)?
-    };
-    let album_artists: Vec<Vec<(AlbumArtist, Artist)>> = {
-      use schema::artist::dsl::*;
-      AlbumArtist::belonging_to(&albums)
-        .inner_join(artist)
-        .load(&self.connection)?
-        .grouped_by(&albums)
-    };
-    Ok(
-      albums.into_iter()
-        .zip(album_artists)
-        .map(|(album, album_artists)| (album, album_artists.into_iter().map(|(_, artist)| artist)))
-    )
-  }
-
-  pub fn list_albums(&self) -> Result<Vec<Album>, QueryError> {
-    use schema::album::dsl::*;
-    Ok(album.load::<Album>(&self.connection)?)
-  }
-
-  pub fn list_artists(&self) -> Result<Vec<Artist>, QueryError> {
-    use schema::artist::dsl::*;
-    Ok(artist.load::<Artist>(&self.connection)?)
-  }
-
-  pub fn list_scan_directories_with_tracks(&self) -> Result<impl Iterator<Item=(ScanDirectory, Vec<Track>)>, QueryError> {
-    let scan_directories = {
-      use schema::scan_directory::dsl::*;
-      scan_directory.load::<ScanDirectory>(&self.connection)?
-    };
-    let tracks = Track::belonging_to(&scan_directories)
-      .load::<Track>(&self.connection)?
-      .grouped_by(&scan_directories);
-    Ok(scan_directories.into_iter().zip(tracks))
-  }
-
-  pub fn get_track_by_id(&self, id: i32) -> Result<Option<(ScanDirectory, Track)>, QueryError> {
+  pub fn get_track_by_id(&self, id: i32) -> Result<Option<(ScanDirectory, Track)>, DatabaseQueryError> {
     use schema::{track, scan_directory};
     if let Some(track) = track::dsl::track.find(id).first::<Track>(&self.connection).optional()? {
       let scan_directory = scan_directory::dsl::scan_directory.filter(scan_directory::dsl::id.eq(track.scan_directory_id)).first::<ScanDirectory>(&self.connection)?;
@@ -176,32 +194,12 @@ impl Server {
   }
 }
 
-// Mutation
-
-#[derive(Debug, Error)]
-pub enum MutateError {
-  #[error("Failed to execute a database query")]
-  MutateFail(#[from] diesel::result::Error, Backtrace),
-}
+// Artist database queries
 
 impl Server {
-  pub fn add_scan_directory<P: Borrow<PathBuf>>(&self, directory: P) -> Result<(), MutateError> {
-    use schema::scan_directory;
-    let directory = directory.borrow().to_string_lossy().to_string();
-    diesel::insert_into(scan_directory::table)
-      .values(NewScanDirectory { directory })
-      .execute(&self.connection)?;
-    Ok(())
-  }
-
-  pub fn remove_scan_directory<P: Borrow<PathBuf>>(&self, directory: P) -> Result<bool, MutateError> {
-    let directory_input = directory.borrow().to_string_lossy().to_string();
-    {
-      use schema::scan_directory::dsl::*;
-      let result = diesel::delete(scan_directory.filter(directory.like(directory_input)))
-        .execute(&self.connection)?;
-      Ok(result == 1)
-    }
+  pub fn list_artists(&self) -> Result<Vec<Artist>, DatabaseQueryError> {
+    use schema::artist::dsl::*;
+    Ok(artist.load::<Artist>(&self.connection)?)
   }
 }
 
@@ -210,7 +208,7 @@ impl Server {
 #[derive(Debug, Error)]
 pub enum ScanError {
   #[error("Failed to list scan directories")]
-  ListScanDirectoriesFail(#[from] QueryError, Backtrace),
+  ListScanDirectoriesFail(#[from] DatabaseQueryError, Backtrace),
   #[error("Failed to query database")]
   DatabaseFail(#[from] diesel::result::Error, Backtrace),
   #[error("One or more errors occurred during scanning, but successfully scanned tracks have been added")]

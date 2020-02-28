@@ -25,23 +25,9 @@ struct Opt {
 
 #[derive(Debug, StructOpt)]
 enum Command {
-  /// Lists all tracks in the database
-  #[structopt()]
-  ListTracks,
   /// Lists all scan directories in the database
   #[structopt()]
   ListScanDirectories,
-  /// Lists all scan directories in the database, along with their tracks
-  #[structopt()]
-  ListScanDirectoriesWithTracks,
-  /// Plays a track
-  #[structopt()]
-  PlayTrack {
-    /// ID of the track to play
-    track_id: i32,
-    #[structopt(short, long, default_value = "0.2")]
-    volume: f32,
-  },
   /// Add a scan directory to the database
   #[structopt()]
   AddScanDirectory {
@@ -56,6 +42,27 @@ enum Command {
     #[structopt(parse(from_os_str))]
     directory: PathBuf,
   },
+
+  /// Lists all albums in the database
+  #[structopt()]
+  ListAlbums,
+
+  /// Lists all tracks in the database
+  #[structopt()]
+  ListTracks,
+  /// Plays a track
+  #[structopt()]
+  PlayTrack {
+    /// ID of the track to play
+    track_id: i32,
+    #[structopt(short, long, default_value = "0.2")]
+    volume: f32,
+  },
+
+  /// Lists all artists in the database
+  #[structopt()]
+  ListArtists,
+
   /// Scan for music files in all scan directories, and add their tracks to the database
   #[structopt()]
   Scan,
@@ -91,8 +98,35 @@ fn run(opt: Opt) -> Result<()> {
   let server: Server = Server::new(opt.database_file.to_string_lossy())
     .with_context(|| "Failed to initialize server")?;
   match opt.command {
+    Command::ListScanDirectories => {
+      for scan_directory in server.list_scan_directories().with_context(|| "Failed to list scan directories")? {
+        println!("{}", scan_directory);
+      }
+    }
+    Command::AddScanDirectory { directory } => {
+      server.add_scan_directory(&directory).with_context(|| "Failed to add scan directory")?;
+      eprintln!("Added scan directory '{}'", directory.display());
+    }
+    Command::RemoveScanDirectory { directory } => {
+      let removed = server.remove_scan_directory(&directory).with_context(|| "Failed to remove scan directory")?;
+      if removed {
+        eprintln!("Removed scan directory '{}'", directory.display());
+      } else {
+        eprintln!("Could not remove scan directory '{}', it was not found", directory.display());
+      }
+    }
+
+    Command::ListAlbums => {
+      for (album, album_artists) in server.list_albums().with_context(|| "Failed to list albums")?.iter() {
+        println!("{:?}", album);
+        for artist in album_artists {
+          println!("  {:?}", artist);
+        }
+      }
+    }
+
     Command::ListTracks => {
-      for (scan_directory, track, track_artists, album, album_artists) in server.list_tracks_with_associated().with_context(|| "Failed to list tracks")?.iter() {
+      for (scan_directory, track, track_artists, album, album_artists) in server.list_tracks().with_context(|| "Failed to list tracks")?.iter() {
         println!("{:?}", scan_directory);
         println!("  {:?}", track);
         for artist in track_artists {
@@ -101,19 +135,6 @@ fn run(opt: Opt) -> Result<()> {
         println!("    {:?}", album);
         for artist in album_artists {
           println!("      {:?}", artist);
-        }
-      }
-    }
-    Command::ListScanDirectories => {
-      for scan_directory in server.list_scan_directories().with_context(|| "Failed to list scan directories")? {
-        println!("{}", scan_directory);
-      }
-    }
-    Command::ListScanDirectoriesWithTracks => {
-      for (scan_directory, tracks) in server.list_scan_directories_with_tracks().with_context(|| "Failed to list scan directories")? {
-        println!("* {}", scan_directory);
-        for track in tracks {
-          println!("  - {}", track);
         }
       }
     }
@@ -133,18 +154,13 @@ fn run(opt: Opt) -> Result<()> {
         eprintln!("Could not play track, no track with ID '{}' was found", track_id);
       }
     }
-    Command::AddScanDirectory { directory } => {
-      server.add_scan_directory(&directory).with_context(|| "Failed to add scan directory")?;
-      eprintln!("Added scan directory '{}'", directory.display());
-    }
-    Command::RemoveScanDirectory { directory } => {
-      let removed = server.remove_scan_directory(&directory).with_context(|| "Failed to remove scan directory")?;
-      if removed {
-        eprintln!("Removed scan directory '{}'", directory.display());
-      } else {
-        eprintln!("Could not remove scan directory '{}', it was not found", directory.display());
+
+    Command::ListArtists => {
+      for artist in server.list_artists().with_context(|| "Failed to list artists")?.iter() {
+        println!("{:?}", artist);
       }
     }
+
     Command::Scan => {
       server.scan().with_context(|| "Failed to scan music files")?;
     }
