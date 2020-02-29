@@ -34,16 +34,6 @@ macro_rules! time {
   }}
 }
 
-macro_rules! update {
-  ($t:expr, $u:expr, $c:expr) => {
-    if $t != $u {
-      event!(Level::TRACE, old = ?$t, new = ?$u, "Value changed");
-      $t = $u;
-      $c = true;
-    }
-  }
-}
-
 
 pub struct Server {
   connection: SqliteConnection,
@@ -308,6 +298,8 @@ pub enum ScanError {
   ListScanDirectoriesFail(#[from] DatabaseQueryError, Backtrace),
   #[error("Failed to query database")]
   DatabaseFail(#[from] diesel::result::Error, Backtrace),
+  #[error("Attempted to update possibly moved track {0:?}, but found multiple tracks in the database with the same scan directory and hash: {1:?}")]
+  HashCollisionFail(ScannedTrack, Vec<Track>),
   #[error("One or more errors occurred during scanning, but successfully scanned tracks have been added")]
   ScanFail(Vec<scanner::ScanError>),
 }
@@ -318,6 +310,8 @@ impl Server {
   /// found tracks, albums, and artists to the database. When a ScanFail error is returned, tracks that were sucessfully
   /// scanned will still have been added to the database.
   pub fn scan(&self) -> Result<(), ScanError> {
+    use ScanError::*;
+
     let scan_directories: Vec<ScanDirectory> = time!("scan.list_scan_directories", self.list_scan_directories()?);
     let (scanned_tracks, scan_errors): (Vec<ScannedTrack>, Vec<scanner::ScanError>) = time!("scan.file_scan", {
       scan_directories
@@ -339,7 +333,7 @@ impl Server {
         // Get and update album, or insert it.
         let album: Album = {
           use schema::album::dsl::*;
-          let album_name = scanned_track.album;
+          let album_name = scanned_track.album.clone();
           let select_query = album
             .filter(name.eq(&album_name));
           let db_album = time!("scan.select_album", select_query.first::<Album>(&self.connection).optional()?);
@@ -360,21 +354,14 @@ impl Server {
         // Get and update track, or insert it.
         let track: Track = {
           use schema::track::dsl::*;
-          let track_file_path = scanned_track.file_path;
+          let track_file_path = scanned_track.file_path.clone();
           let select_query = track
             .filter(scan_directory_id.eq(scanned_track.scan_directory_id))
             .filter(file_path.eq(&track_file_path));
           let db_track = time!("scan.select_track", select_query.first::<Track>(&self.connection).optional()?);
           if let Some(db_track) = db_track {
             let mut db_track: Track = db_track;
-            let mut changed = false;
-            update!(db_track.album_id, album.id, changed);
-            update!(db_track.disc_number, scanned_track.disc_number, changed);
-            update!(db_track.disc_total, scanned_track.disc_total, changed);
-            update!(db_track.track_number, scanned_track.track_number, changed);
-            update!(db_track.track_total, scanned_track.track_total, changed);
-            update!(db_track.title, scanned_track.title, changed);
-            update!(db_track.hash, scanned_track.hash as i64, changed);
+            let changed = db_track.update_from(&album, &scanned_track);
             if changed {
               event!(Level::DEBUG, ?db_track, "Updating track");
               time!("scan.update_track", db_track.save_changes(&self.connection)?)
@@ -382,22 +369,42 @@ impl Server {
               db_track
             }
           } else {
-            let new_track = NewTrack {
-              scan_directory_id: scanned_track.scan_directory_id,
-              album_id: album.id,
-              disc_number: scanned_track.disc_number,
-              disc_total: scanned_track.disc_total,
-              track_number: scanned_track.track_number,
-              track_total: scanned_track.track_total,
-              title: scanned_track.title,
-              file_path: track_file_path.clone(),
-              hash: scanned_track.hash as i64,
-            };
-            event!(Level::DEBUG, ?new_track, "Inserting track");
-            let insert_query = diesel::insert_into(track)
-              .values(new_track);
-            time!("scan.insert_track", insert_query.execute(&self.connection)?);
-            time!("scan.select_inserted_track", select_query.first::<Track>(&self.connection)?)
+            // First attempt to find a track with the same hash, and in the same scan directory, as the scanned track.
+            let select_by_hash_query = track
+              .filter(scan_directory_id.eq(scanned_track.scan_directory_id))
+              .filter(hash.eq(scanned_track.hash as i64));
+            let tracks_by_hash: Vec<Track> = time!("scan.select_track_by_hash", select_by_hash_query.load::<Track>(&self.connection)?);
+            if tracks_by_hash.is_empty() {
+              // No track with the same has was found, insert a new track.
+              let new_track = NewTrack {
+                scan_directory_id: scanned_track.scan_directory_id,
+                album_id: album.id,
+                disc_number: scanned_track.disc_number,
+                disc_total: scanned_track.disc_total,
+                track_number: scanned_track.track_number,
+                track_total: scanned_track.track_total,
+                title: scanned_track.title,
+                file_path: track_file_path.clone(),
+                hash: scanned_track.hash as i64,
+              };
+              event!(Level::DEBUG, ?new_track, "Inserting track");
+              let insert_query = diesel::insert_into(track)
+                .values(new_track);
+              time!("scan.insert_track", insert_query.execute(&self.connection)?);
+              time!("scan.select_inserted_track", select_query.first::<Track>(&self.connection)?)
+            } else if tracks_by_hash.len() == 1 {
+              let mut db_track: Track = tracks_by_hash.into_iter().take(1).next().unwrap();
+              let changed = db_track.update_from(&album, &scanned_track);
+              if changed {
+                event!(Level::DEBUG, ?db_track, "Updating moved track");
+                time!("scan.update_moved_track", db_track.save_changes(&self.connection)?)
+              } else {
+                db_track
+              }
+            } else {
+              // For now, if we find multiple tracks with the same hash, we error out.
+              return Err(HashCollisionFail(scanned_track.clone(), tracks_by_hash));
+            }
           }
         };
         // Process track artists.

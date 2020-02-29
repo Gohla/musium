@@ -76,6 +76,9 @@ impl Scanner {
             Ok(tag) => tag,
             Err(e) => return Some(Err(Id3ReadFail(e))),
           };
+          if let Err(e) = Tag::skip(&mut buf_reader) {
+            return Some(Err(Id3ReadFail(e)));
+          }
           let mut buffer = Vec::new();
           if let Err(e) = buf_reader.read_to_end(&mut buffer) {
             return Some(Err(FileReadFail(e)));

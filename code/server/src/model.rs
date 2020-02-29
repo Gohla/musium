@@ -1,7 +1,20 @@
 use std::fmt::{Display, Error, Formatter};
 use std::path::PathBuf;
 
+use crate::scanner::ScannedTrack;
 use crate::schema::*;
+
+// Helper macros
+
+macro_rules! update {
+  ($t:expr, $u:expr, $c:expr) => {
+    if $t != $u {
+      //event!(Level::TRACE, old = ?$t, new = ?$u, "Value changed");
+      $t = $u;
+      $c = true;
+    }
+  }
+}
 
 // Scan directory
 
@@ -210,6 +223,21 @@ pub struct NewUserArtistRating {
 impl ScanDirectory {
   pub fn track_file_path(&self, track: &Track) -> PathBuf {
     PathBuf::from(&self.directory).join(&track.file_path)
+  }
+}
+
+impl Track {
+  pub fn update_from(&mut self, album: &Album, scanned_track: &ScannedTrack) -> bool {
+    let mut changed = false;
+    update!(self.album_id, album.id, changed);
+    update!(self.disc_number, scanned_track.disc_number, changed);
+    update!(self.disc_total, scanned_track.disc_total, changed);
+    update!(self.track_number, scanned_track.track_number, changed);
+    update!(self.track_total, scanned_track.track_total, changed);
+    update!(self.title, scanned_track.title.clone(), changed);
+    update!(self.file_path, scanned_track.file_path.clone(), changed);
+    update!(self.hash, self.hash as i64, changed);
+    changed
   }
 }
 
