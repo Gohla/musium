@@ -1,16 +1,21 @@
+use std::fs::File;
+use std::io::{Read, BufReader};
+
 use id3::Tag;
 use thiserror::Error;
 use walkdir::WalkDir;
 
 use crate::model::ScanDirectory;
 
-#[derive(Debug)]
+#[derive(Default, Debug)]
 pub struct Scanner {}
 
 // Creation
 
 impl Scanner {
-  pub fn new() -> Self { Self {} }
+  pub fn new() -> Self {
+    Self {}
+  }
 }
 
 // Scanning
@@ -29,12 +34,17 @@ pub struct ScannedTrack {
   pub album_artists: Vec<String>,
   // OPTO: smallvec
   pub file_path: String,
+  pub hash: u32,
 }
 
 #[derive(Debug, Error)]
 pub enum ScanError {
   #[error("Failed to walk directory")]
   WalkDirFail(#[from] walkdir::Error),
+  #[error("Failed to open file for reading")]
+  FileOpenFail(std::io::Error),
+  #[error("Failed to read from file")]
+  FileReadFail(std::io::Error),
   #[error("Failed to read ID3 tag")]
   Id3ReadFail(#[from] id3::Error),
   #[error("File '{0}' does not have a title")]
@@ -57,10 +67,19 @@ impl Scanner {
         if !entry.file_type().is_file() { return None; }
         let file_name = entry.file_name().to_string_lossy();
         if file_name.ends_with(".mp3") {
-          let tag = match Tag::read_from_path(entry.path()) {
+          let file = match File::open(entry.path()) {
+            Ok(file) => file,
+            Err(e) => return Some(Err(FileReadFail(e))),
+          };
+          let mut buf_reader = BufReader::new(file);
+          let tag = match Tag::read_from(&mut buf_reader) {
             Ok(tag) => tag,
             Err(e) => return Some(Err(Id3ReadFail(e))),
           };
+          let mut buffer = Vec::new();
+          if let Err(e) = buf_reader.read_to_end(&mut buffer) {
+            return Some(Err(FileReadFail(e)));
+          }
 
           let file_path = entry.path()
             .strip_prefix(&directory)
@@ -77,6 +96,9 @@ impl Scanner {
           } else {
             return Some(Err(NoAlbumFail(file_path.clone())));
           };
+          let mut hasher = crc32fast::Hasher::new();
+          hasher.update(&buffer);
+          let hash = hasher.finalize();
 
           Some(Ok(ScannedTrack {
             scan_directory_id,
@@ -89,6 +111,7 @@ impl Scanner {
             track_artists: tag.artist().map_or(vec![], |a| vec![a.to_string()]), // TODO: support multiple artists.
             album_artists: tag.album_artist().map_or(vec![], |a| vec![a.to_string()]), // TODO: support multiple artists.
             file_path,
+            hash,
           }))
         } else {
           None

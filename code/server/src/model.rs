@@ -52,6 +52,7 @@ pub struct Track {
   pub track_total: Option<i32>,
   pub title: String,
   pub file_path: String,
+  pub hash: i64,
 }
 
 #[derive(Debug, Insertable)]
@@ -65,6 +66,7 @@ pub struct NewTrack {
   pub track_total: Option<i32>,
   pub title: String,
   pub file_path: String,
+  pub hash: i64,
 }
 
 // Artist

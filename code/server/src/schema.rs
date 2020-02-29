@@ -37,6 +37,7 @@ table! {
         track_total -> Nullable<Integer>,
         title -> Text,
         file_path -> Text,
+        hash -> BigInt,
     }
 }
 

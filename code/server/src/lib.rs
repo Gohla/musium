@@ -37,6 +37,7 @@ macro_rules! time {
 macro_rules! update {
   ($t:expr, $u:expr, $c:expr) => {
     if $t != $u {
+      event!(Level::TRACE, old = ?$t, new = ?$u, "Value changed");
       $t = $u;
       $c = true;
     }
@@ -373,6 +374,7 @@ impl Server {
             update!(db_track.track_number, scanned_track.track_number, changed);
             update!(db_track.track_total, scanned_track.track_total, changed);
             update!(db_track.title, scanned_track.title, changed);
+            update!(db_track.hash, scanned_track.hash as i64, changed);
             if changed {
               event!(Level::DEBUG, ?db_track, "Updating track");
               time!("scan.update_track", db_track.save_changes(&self.connection)?)
@@ -386,9 +388,10 @@ impl Server {
               disc_number: scanned_track.disc_number,
               disc_total: scanned_track.disc_total,
               track_number: scanned_track.track_number,
-              track_total: scanned_track.track_number,
+              track_total: scanned_track.track_total,
               title: scanned_track.title,
               file_path: track_file_path.clone(),
+              hash: scanned_track.hash as i64,
             };
             event!(Level::DEBUG, ?new_track, "Inserting track");
             let insert_query = diesel::insert_into(track)
@@ -487,6 +490,6 @@ impl Server {
 
 impl Debug for Server {
   fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-    Ok(write!(f, "Server {{scanner: {:?}}}", self.scanner)?)
+    Ok(write!(f, "Server")?)
   }
 }

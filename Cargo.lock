@@ -1271,6 +1271,7 @@ name = "server"
 version = "0.1.0"
 dependencies = [
  "core",
+ "crc32fast",
  "diesel",
  "id3",
  "itertools",
