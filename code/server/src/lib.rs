@@ -5,8 +5,8 @@ extern crate diesel;
 
 use std::backtrace::Backtrace;
 use std::borrow::Borrow;
-use std::collections::HashMap;
-use std::fmt::Debug;
+use std::collections::{HashMap, HashSet};
+use std::fmt::{Debug, Formatter};
 use std::path::PathBuf;
 use std::time::Instant;
 
@@ -14,6 +14,7 @@ use diesel::prelude::*;
 use itertools::{Either, Itertools};
 use metrics::timing;
 use thiserror::Error;
+use tracing::{event, instrument, Level};
 
 use model::{ScanDirectory, Track};
 
@@ -31,6 +32,15 @@ macro_rules! time {
     timing!($s, start.elapsed());
     result
   }}
+}
+
+macro_rules! update {
+  ($t:expr, $u:expr, $c:expr) => {
+    if $t != $u {
+      $t = $u;
+      $c = true;
+    }
+  }
 }
 
 
@@ -302,6 +312,7 @@ pub enum ScanError {
 }
 
 impl Server {
+  #[instrument]
   /// Scans all scan directories for music files, drops all tracks, albums, and artists from the database, and adds all
   /// found tracks, albums, and artists to the database. When a ScanFail error is returned, tracks that were sucessfully
   /// scanned will still have been added to the database.
@@ -318,10 +329,12 @@ impl Server {
           }
         })
     });
+
     self.connection.transaction::<_, ScanError, _>(|| {
       // Insert tracks and related entities.
       for scanned_track in scanned_tracks {
         let scanned_track: ScannedTrack = scanned_track;
+        event!(Level::TRACE, ?scanned_track, "Processing scanned track");
         // Get and update album, or insert it.
         let album: Album = {
           use schema::album::dsl::*;
@@ -336,6 +349,7 @@ impl Server {
             db_album
           } else {
             let new_album = NewAlbum { name: album_name.clone() };
+            event!(Level::DEBUG, ?new_album, "Inserting album");
             let insert_query = diesel::insert_into(album)
               .values(new_album);
             time!("scan.insert_album", insert_query.execute(&self.connection)?);
@@ -352,13 +366,19 @@ impl Server {
           let db_track = time!("scan.select_track", select_query.first::<Track>(&self.connection).optional()?);
           if let Some(db_track) = db_track {
             let mut db_track: Track = db_track;
-            db_track.album_id = album.id;
-            db_track.disc_number = scanned_track.disc_number;
-            db_track.disc_total = scanned_track.disc_total;
-            db_track.track_number = scanned_track.disc_number;
-            db_track.track_total = scanned_track.track_total;
-            db_track.title = scanned_track.title;
-            time!("scan.update_track", db_track.save_changes(&self.connection)?)
+            let mut changed = false;
+            update!(db_track.album_id, album.id, changed);
+            update!(db_track.disc_number, scanned_track.disc_number, changed);
+            update!(db_track.disc_total, scanned_track.disc_total, changed);
+            update!(db_track.track_number, scanned_track.track_number, changed);
+            update!(db_track.track_total, scanned_track.track_total, changed);
+            update!(db_track.title, scanned_track.title, changed);
+            if changed {
+              event!(Level::DEBUG, ?db_track, "Updating track");
+              time!("scan.update_track", db_track.save_changes(&self.connection)?)
+            } else {
+              db_track
+            }
           } else {
             let new_track = NewTrack {
               scan_directory_id: scanned_track.scan_directory_id,
@@ -370,46 +390,65 @@ impl Server {
               title: scanned_track.title,
               file_path: track_file_path.clone(),
             };
+            event!(Level::DEBUG, ?new_track, "Inserting track");
             let insert_query = diesel::insert_into(track)
               .values(new_track);
             time!("scan.insert_track", insert_query.execute(&self.connection)?);
             time!("scan.select_inserted_track", select_query.first::<Track>(&self.connection)?)
           }
         };
-        // Get and update artists from track, or insert them.
-        let track_artists = self.update_or_insert_artists(scanned_track.track_artists.into_iter())?;
-        // Insert track-artist association if it doesn't exist.
-        for db_artist in track_artists {
-          let db_artist: Artist = db_artist;
+        // Process track artists.
+        {
+          let mut db_artists: HashSet<Artist> = self.update_or_insert_artists(scanned_track.track_artists.into_iter())?;
           use schema::track_artist::dsl::*;
-          let select_query = track_artist
+          let db_track_artists: Vec<(TrackArtist, Artist)> = time!("scan.select_track_artists", track_artist
             .filter(track_id.eq(track.id))
-            .filter(artist_id.eq(db_artist.id));
-          let db_track_artist = time!("scan.select_track_artist", select_query.first::<TrackArtist>(&self.connection).optional()?);
-          if db_track_artist.is_none() {
-            let new_track_artist = NewTrackArtist { track_id: track.id, artist_id: db_artist.id };
-            let insert_query = diesel::insert_into(track_artist)
-              .values(new_track_artist);
-            time!("scan.insert_track_artist", insert_query.execute(&self.connection)?);
-            time!("scan.select_inserted_track_artist", select_query.first::<TrackArtist>(&self.connection)?);
+            .inner_join(schema::artist::table)
+            .load(&self.connection)?);
+          for (db_track_artist, db_artist) in db_track_artists {
+            if db_artists.contains(&db_artist) {
+              // TODO: update track_artist columns if they are added.
+              //let mut db_track_artist = db_track_artist;
+              //time!("scan.update_track_artist", db_track_artist.save_changes(&self.connection)?)
+            } else {
+              event!(Level::DEBUG, ?db_track_artist, "Deleting track artist");
+              time!("scan.delete_track_artist", diesel::delete(&db_track_artist).execute(&self.connection)?);
+            }
+            db_artists.remove(&db_artist); // Remove from set, so we know what to insert afterwards.
+          }
+          for artist in db_artists {
+            let new_track_artist = NewTrackArtist { track_id: track.id, artist_id: artist.id };
+            event!(Level::DEBUG, ?new_track_artist, "Inserting track artist");
+            time!("scan.insert_track_artist", diesel::insert_into(track_artist)
+              .values(new_track_artist)
+              .execute(&self.connection)?);
           }
         }
-        // Get and update artists from albums, or insert them.
-        let album_artists = self.update_or_insert_artists(scanned_track.album_artists.into_iter())?;
-        // Insert album-artist association if it doesn't exist.
-        for db_artist in album_artists {
-          let db_artist: Artist = db_artist;
+        // Process album artists.
+        {
+          let mut db_artists: HashSet<Artist> = self.update_or_insert_artists(scanned_track.album_artists.into_iter())?;
           use schema::album_artist::dsl::*;
-          let select_query = album_artist
+          let db_album_artists: Vec<(AlbumArtist, Artist)> = time!("scan.select_album_artists", album_artist
             .filter(album_id.eq(album.id))
-            .filter(artist_id.eq(db_artist.id));
-          let db_album_artist = time!("scan.select_album_artist", select_query.first::<AlbumArtist>(&self.connection).optional()?);
-          if db_album_artist.is_none() {
-            let new_album_artist = NewAlbumArtist { album_id: album.id, artist_id: db_artist.id };
-            let insert_query = diesel::insert_into(album_artist)
-              .values(new_album_artist);
-            time!("scan.insert_album_artist", insert_query.execute(&self.connection)?);
-            time!("scan.select_inserted_album_artist", select_query.first::<AlbumArtist>(&self.connection)?);
+            .inner_join(schema::artist::table)
+            .load(&self.connection)?);
+          for (db_album_artist, db_artist) in db_album_artists {
+            if db_artists.contains(&db_artist) {
+              // TODO: update album_artist columns if they are added.
+              //let mut db_album_artist = db_album_artist;
+              //time!("scan.update_album_artist", db_album_artist.save_changes(&self.connection)?)
+            } else {
+              event!(Level::DEBUG, ?db_album_artist, "Deleting album artist");
+              time!("scan.delete_album_artist", diesel::delete(&db_album_artist).execute(&self.connection)?);
+            }
+            db_artists.remove(&db_artist); // Remove from set, so we know what to insert afterwards.
+          }
+          for artist in db_artists {
+            let new_album_artist = NewAlbumArtist { album_id: album.id, artist_id: artist.id };
+            event!(Level::DEBUG, ?new_album_artist, "Inserting album artist");
+            time!("scan.insert_album_artist", diesel::insert_into(album_artist)
+              .values(new_album_artist)
+              .execute(&self.connection)?);
           }
         }
       }
@@ -421,8 +460,8 @@ impl Server {
     Ok(())
   }
 
-  fn update_or_insert_artists<I: IntoIterator<Item=String>>(&self, artist_names: I) -> Result<Vec<Artist>, diesel::result::Error> {
-    let artists: Result<Vec<Artist>, diesel::result::Error> = artist_names.into_iter().map(|artist_name| {
+  fn update_or_insert_artists<I: IntoIterator<Item=String>>(&self, artist_names: I) -> Result<HashSet<Artist>, diesel::result::Error> {
+    artist_names.into_iter().map(|artist_name| {
       use schema::artist::dsl::*;
       let select_query = artist
         .filter(name.eq(&artist_name));
@@ -440,7 +479,14 @@ impl Server {
         time!("scan.select_inserted_artist", select_query.first::<Artist>(&self.connection)?)
       };
       Ok(db_artist)
-    }).collect();
-    artists
+    }).collect()
+  }
+}
+
+// Implementations
+
+impl Debug for Server {
+  fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+    Ok(write!(f, "Server {{scanner: {:?}}}", self.scanner)?)
   }
 }

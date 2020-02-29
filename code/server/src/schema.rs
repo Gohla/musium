@@ -6,7 +6,7 @@ table! {
 }
 
 table! {
-    album_artist (album_id) {
+    album_artist (album_id, artist_id) {
         album_id -> Integer,
         artist_id -> Integer,
     }

@@ -15,6 +15,7 @@ impl Scanner {
 
 // Scanning
 
+#[derive(Clone, Debug)]
 pub struct ScannedTrack {
   pub scan_directory_id: i32,
   pub disc_number: Option<i32>,

@@ -50,7 +50,7 @@ CREATE TABLE album_artist (
   album_id INTEGER NOT NULL,
   artist_id INTEGER NOT NULL,
 
-  PRIMARY KEY(album_id, album_id),
+  PRIMARY KEY(album_id, artist_id),
   FOREIGN KEY(album_id) REFERENCES album(id),
   FOREIGN KEY(artist_id) REFERENCES artist(id)
 );

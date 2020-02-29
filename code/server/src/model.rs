@@ -7,6 +7,7 @@ use crate::schema::*;
 
 #[derive(Clone, PartialOrd, PartialEq, Debug, Identifiable, Queryable, AsChangeset)]
 #[table_name = "scan_directory"]
+#[changeset_options(treat_none_as_null = "true")]
 pub struct ScanDirectory {
   pub id: i32,
   pub directory: String,
@@ -22,6 +23,7 @@ pub struct NewScanDirectory {
 
 #[derive(Clone, PartialOrd, PartialEq, Debug, Identifiable, Queryable, AsChangeset)]
 #[table_name = "album"]
+#[changeset_options(treat_none_as_null = "true")]
 pub struct Album {
   pub id: i32,
   pub name: String,
@@ -39,6 +41,7 @@ pub struct NewAlbum {
 #[belongs_to(ScanDirectory)]
 #[belongs_to(Album)]
 #[table_name = "track"]
+#[changeset_options(treat_none_as_null = "true")]
 pub struct Track {
   pub id: i32,
   pub scan_directory_id: i32,
@@ -66,8 +69,9 @@ pub struct NewTrack {
 
 // Artist
 
-#[derive(Clone, PartialOrd, PartialEq, Debug, Identifiable, Queryable, AsChangeset)]
+#[derive(Clone, PartialOrd, Ord, PartialEq, Eq, Hash, Debug, Identifiable, Queryable, AsChangeset)]
 #[table_name = "artist"]
+#[changeset_options(treat_none_as_null = "true")]
 pub struct Artist {
   pub id: i32,
   pub name: String,
@@ -81,7 +85,7 @@ pub struct NewArtist {
 
 // Track-artist
 
-#[derive(Clone, PartialOrd, PartialEq, Debug, Identifiable, Queryable, Associations)]
+#[derive(Clone, PartialOrd, Ord, PartialEq, Eq, Hash, Debug, Identifiable, Queryable, Associations)]
 #[primary_key(track_id, artist_id)]
 #[table_name = "track_artist"]
 #[belongs_to(Track)]
@@ -100,7 +104,7 @@ pub struct NewTrackArtist {
 
 // Album-artist
 
-#[derive(Clone, PartialOrd, PartialEq, Debug, Identifiable, Queryable, Associations)]
+#[derive(Clone, PartialOrd, Ord, PartialEq, Eq, Hash, Debug, Identifiable, Queryable, Associations)]
 #[primary_key(album_id, artist_id)]
 #[table_name = "album_artist"]
 #[belongs_to(Album)]
@@ -119,8 +123,9 @@ pub struct NewAlbumArtist {
 
 // User
 
-#[derive(Clone, PartialOrd, PartialEq, Debug, Identifiable, Queryable, AsChangeset)]
+#[derive(Clone, PartialOrd, Ord, PartialEq, Eq, Hash, Debug, Identifiable, Queryable, AsChangeset)]
 #[table_name = "user"]
+#[changeset_options(treat_none_as_null = "true")]
 pub struct User {
   pub id: i32,
   pub name: String,
@@ -134,11 +139,12 @@ pub struct NewUser {
 
 // User-album rating
 
-#[derive(Clone, PartialOrd, PartialEq, Debug, Identifiable, Queryable, Associations, AsChangeset)]
+#[derive(Clone, PartialOrd, Ord, PartialEq, Eq, Hash, Debug, Identifiable, Queryable, Associations, AsChangeset)]
 #[primary_key(user_id, album_id)]
 #[table_name = "user_album_rating"]
 #[belongs_to(User)]
 #[belongs_to(Album)]
+#[changeset_options(treat_none_as_null = "true")]
 pub struct UserAlbumRating {
   pub user_id: i32,
   pub album_id: i32,
@@ -155,11 +161,12 @@ pub struct NewUserAlbumRating {
 
 // User-track rating
 
-#[derive(Clone, PartialOrd, PartialEq, Debug, Identifiable, Queryable, Associations, AsChangeset)]
+#[derive(Clone, PartialOrd, Ord, PartialEq, Eq, Hash, Debug, Identifiable, Queryable, Associations, AsChangeset)]
 #[primary_key(user_id, track_id)]
 #[table_name = "user_track_rating"]
 #[belongs_to(User)]
 #[belongs_to(Track)]
+#[changeset_options(treat_none_as_null = "true")]
 pub struct UserTrackRating {
   pub user_id: i32,
   pub track_id: i32,
@@ -176,11 +183,12 @@ pub struct NewUserTrackRating {
 
 // User-artist rating
 
-#[derive(Clone, PartialOrd, PartialEq, Debug, Identifiable, Queryable, Associations, AsChangeset)]
+#[derive(Clone, PartialOrd, Ord, PartialEq, Eq, Hash, Debug, Identifiable, Queryable, Associations, AsChangeset)]
 #[primary_key(user_id, artist_id)]
 #[table_name = "user_artist_rating"]
 #[belongs_to(User)]
 #[belongs_to(Artist)]
+#[changeset_options(treat_none_as_null = "true")]
 pub struct UserArtistRating {
   pub user_id: i32,
   pub artist_id: i32,
