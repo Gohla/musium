@@ -236,7 +236,7 @@ impl Track {
     update!(self.track_total, scanned_track.track_total, changed);
     update!(self.title, scanned_track.title.clone(), changed);
     update!(self.file_path, scanned_track.file_path.clone(), changed);
-    update!(self.hash, self.hash as i64, changed);
+    update!(self.hash, scanned_track.hash as i64, changed);
     changed
   }
 }
