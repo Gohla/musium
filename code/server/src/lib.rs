@@ -361,9 +361,10 @@ impl Server {
           let db_track = time!("scan.select_track", select_query.first::<Track>(&self.connection).optional()?);
           if let Some(db_track) = db_track {
             let mut db_track: Track = db_track;
+            event!(Level::TRACE, ?db_track, "Updating track with values from scanned track");
             let changed = db_track.update_from(&album, &scanned_track);
             if changed {
-              event!(Level::DEBUG, ?db_track, "Updating track");
+              event!(Level::DEBUG, ?db_track, "Track has changed, updating the track in the database");
               time!("scan.update_track", db_track.save_changes(&self.connection)?)
             } else {
               db_track

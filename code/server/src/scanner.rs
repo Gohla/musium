@@ -1,5 +1,5 @@
 use std::fs::File;
-use std::io::{BufReader, Read};
+use std::io::{BufReader, Read, Seek};
 
 use thiserror::Error;
 use walkdir::WalkDir;
@@ -44,6 +44,8 @@ pub enum ScanError {
   FileOpenFail(std::io::Error),
   #[error("Failed to read from file")]
   FileReadFail(std::io::Error),
+  #[error("Failed to seek file")]
+  FileSeekFail(std::io::Error),
   #[error("Failed to check for ID3v2 tag")]
   Id3v2CheckFail(id3::Error),
   #[error("Failed to check for ID3v2 tag")]
@@ -92,8 +94,6 @@ impl Scanner {
             Ok(b) => b,
             Err(e) => return Some(Err(Id3v1CheckFail(e))),
           };
-          let id3v1_len = 128; // Length of ID3v1 tag
-          let id3v1_enhanced_len = 227; // Length of ID3v1 enhanced tag
           if !has_id3v2_tag && !has_id3v1_tag {
             return None;
           }
@@ -128,25 +128,22 @@ impl Scanner {
               return Some(Err(NoAlbumFail(file_path.clone())));
             };
 
-            // Calculate hash over the audio data. Reader is already positioned after the tag by read_from. May need to
-            // skip the ID3v1 tag which is at the end of the file.
+            // Reset reader to start and skip the ID3v2 tag to get to the audio data.
+            match buf_reader.seek(std::io::SeekFrom::Start(0)) {
+              Err(e) => return Some(Err(FileSeekFail(e))),
+              _ => {}
+            }
+            match id3::Tag::skip(&mut buf_reader) {
+              Err(e) => return Some(Err(Id3v2SkipFail(e))),
+              _ => {}
+            }
+            // Read file to buffer.
             let mut buffer = Vec::new();
             if let Err(e) = buf_reader.read_to_end(&mut buffer) {
               return Some(Err(FileReadFail(e)));
             }
-            hasher.update(if has_id3v1_tag {
-              let len = buffer.len();
-              let offset = if len > id3v1_len + id3v1_enhanced_len {
-                id3v1_len + id3v1_enhanced_len
-              } else if len > id3v1_len {
-                id3v1_len
-              } else {
-                0
-              };
-              &buffer[0..(len - offset)]
-            } else {
-              &buffer
-            });
+            // Calculate hash over the audio data.
+            hasher.update(Scanner::skip_id3v1(&buffer)); // Possibly skip the ID3v1 tag which is at the end of the file.
             let hash = hasher.finalize();
 
             ScannedTrack {
@@ -168,22 +165,13 @@ impl Scanner {
               Err(e) => return Some(Err(Id3v1ReadFail(e))),
             };
 
-            // Calculate hash over the audio data. Skip the ID3v1 tag which is at the end of the file.
+            // Read file to buffer.
             let mut buffer = Vec::new();
             if let Err(e) = buf_reader.read_to_end(&mut buffer) {
               return Some(Err(FileReadFail(e)));
             }
-            hasher.update({
-              let len = buffer.len();
-              let offset = if len > id3v1_len + id3v1_enhanced_len {
-                id3v1_len + id3v1_enhanced_len
-              } else if len > id3v1_len {
-                id3v1_len
-              } else {
-                0
-              };
-              &buffer[0..(len - offset)]
-            });
+            // Calculate hash over the audio data.
+            hasher.update(Scanner::skip_id3v1(&buffer)); // Skip the ID3v1 tag which is at the end of the file.
             let hash = hasher.finalize();
 
             ScannedTrack {
@@ -208,5 +196,16 @@ impl Scanner {
           None
         }
       })
+  }
+
+  fn skip_id3v1(buffer: &[u8]) -> &[u8] {
+    let len = buffer.len();
+    if len >= 355 && &buffer[len - 355..len - 355 + 4] == b"TAG+" {
+      &buffer[0..len - 355]
+    } else if len >= 128 && &buffer[len - 128..len - 128 + 3] == b"TAG" {
+      &buffer[0..len - 128]
+    } else {
+      buffer
+    }
   }
 }
