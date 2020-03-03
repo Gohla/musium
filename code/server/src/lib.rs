@@ -76,7 +76,7 @@ impl Server {
     use schema::scan_directory;
     let directory = directory.borrow().to_string_lossy().to_string();
     time!("add_scan_directory.insert", diesel::insert_into(scan_directory::table)
-      .values(NewScanDirectory { directory: directory.clone() })
+      .values(NewScanDirectory { directory: directory.clone(), enabled: true })
       .execute(&self.connection)?);
     let select_query = scan_directory::table
       .filter(scan_directory::directory.eq(&directory));
@@ -175,8 +175,23 @@ impl Tracks {
 
 impl Server {
   pub fn list_tracks(&self) -> Result<Tracks, DatabaseQueryError> {
-    let tracks = schema::track::table.load::<Track>(&self.connection)?;
-    let scan_directories = schema::scan_directory::table.load::<ScanDirectory>(&self.connection)?;
+    let scan_directories = {
+      use schema::scan_directory::dsl::*;
+      scan_directory
+        .filter(enabled.eq(true))
+        .load::<ScanDirectory>(&self.connection)?
+    };
+    let tracks: Vec<Track> = {
+      use schema::track::dsl::*;
+      use schema::scan_directory;
+      let result = track
+        .filter(enabled.eq(true))
+        // OPTO: inner join includes scan directory for each track, which results in a lot more data being loaded than necessary. Can we select only the track?
+        .inner_join(scan_directory::table)
+        .filter(scan_directory::enabled.eq(true))
+        .load::<(Track, ScanDirectory)>(&self.connection)?;
+      result.into_iter().map(|(t, _)| t).collect()
+    };
     let albums = schema::album::table.load::<Album>(&self.connection)?;
     let artists = schema::artist::table.load::<Artist>(&self.connection)?;
     let track_artists = schema::track_artist::table.load::<TrackArtist>(&self.connection)?;
@@ -362,7 +377,7 @@ impl Server {
           if let Some(db_track) = db_track {
             let mut db_track: Track = db_track;
             event!(Level::TRACE, ?db_track, "Updating track with values from scanned track");
-            let changed = db_track.update_from(&album, &scanned_track);
+            let changed = db_track.update_from(&album, &scanned_track, true);
             if changed {
               event!(Level::DEBUG, ?db_track, "Track has changed, updating the track in the database");
               time!("scan.update_track", db_track.save_changes(&self.connection)?)
@@ -387,6 +402,7 @@ impl Server {
                 title: scanned_track.title,
                 file_path: track_file_path.clone(),
                 hash: scanned_track.hash as i64,
+                enabled: true,
               };
               event!(Level::DEBUG, ?new_track, "Inserting track");
               let insert_query = diesel::insert_into(track)
@@ -395,7 +411,7 @@ impl Server {
               time!("scan.select_inserted_track", select_query.first::<Track>(&self.connection)?)
             } else if tracks_by_hash.len() == 1 {
               let mut db_track: Track = tracks_by_hash.into_iter().take(1).next().unwrap();
-              let changed = db_track.update_from(&album, &scanned_track);
+              let changed = db_track.update_from(&album, &scanned_track, true);
               if changed {
                 event!(Level::DEBUG, ?db_track, "Updating moved track");
                 time!("scan.update_moved_track", db_track.save_changes(&self.connection)?)

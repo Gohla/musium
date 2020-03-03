@@ -65,7 +65,7 @@ pub enum ScanError {
 impl Scanner {
   pub fn scan(&self, scan_directory: ScanDirectory) -> impl Iterator<Item=Result<ScannedTrack, ScanError>> {
     use ScanError::*;
-    let ScanDirectory { id: scan_directory_id, directory } = scan_directory;
+    let ScanDirectory { id: scan_directory_id, directory, .. } = scan_directory;
     WalkDir::new(&directory)
       .into_iter()
       .filter_map(move |entry| {

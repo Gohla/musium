@@ -23,6 +23,7 @@ table! {
     scan_directory (id) {
         id -> Integer,
         directory -> Text,
+        enabled -> Bool,
     }
 }
 
@@ -38,6 +39,7 @@ table! {
         title -> Text,
         file_path -> Text,
         hash -> BigInt,
+        enabled -> Bool,
     }
 }
 

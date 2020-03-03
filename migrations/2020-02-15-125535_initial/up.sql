@@ -1,6 +1,7 @@
 CREATE TABLE scan_directory (
   id INTEGER NOT NULL,
   directory TEXT UNIQUE NOT NULL,
+  enabled BOOLEAN NOT NULL DEFAULT true,
 
   PRIMARY KEY(id)
 );
@@ -25,6 +26,7 @@ CREATE TABLE track (
   file_path TEXT NOT NULL,
   -- Hash as BIGINT, such that diesel maps to a BigInt, which is an i64 in rust, which can contain an u32 hash.
   hash BIGINT NOT NULL,
+  enabled BOOLEAN NOT NULL DEFAULT true,
 
   PRIMARY KEY(id),
   FOREIGN KEY(scan_directory_id) REFERENCES scan_directory(id),

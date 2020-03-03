@@ -24,12 +24,14 @@ macro_rules! update {
 pub struct ScanDirectory {
   pub id: i32,
   pub directory: String,
+  pub enabled: bool,
 }
 
 #[derive(Debug, Insertable)]
 #[table_name = "scan_directory"]
 pub struct NewScanDirectory {
   pub directory: String,
+  pub enabled: bool,
 }
 
 // Album
@@ -66,6 +68,7 @@ pub struct Track {
   pub title: String,
   pub file_path: String,
   pub hash: i64,
+  pub enabled: bool,
 }
 
 #[derive(Debug, Insertable)]
@@ -80,6 +83,7 @@ pub struct NewTrack {
   pub title: String,
   pub file_path: String,
   pub hash: i64,
+  pub enabled: bool,
 }
 
 // Artist
@@ -224,11 +228,26 @@ impl ScanDirectory {
   pub fn track_file_path(&self, track: &Track) -> PathBuf {
     PathBuf::from(&self.directory).join(&track.file_path)
   }
+
+  pub fn update_from(
+    &mut self,
+    enabled: bool
+  ) -> bool {
+    let mut changed = false;
+    update!(self.enabled, enabled, changed);
+    changed
+  }
 }
 
 impl Track {
-  pub fn update_from(&mut self, album: &Album, scanned_track: &ScannedTrack) -> bool {
+  pub fn update_from(
+    &mut self,
+    album: &Album,
+    scanned_track: &ScannedTrack,
+    enabled: bool
+  ) -> bool {
     let mut changed = false;
+    update!(self.scan_directory_id, scanned_track.scan_directory_id, changed);
     update!(self.album_id, album.id, changed);
     update!(self.disc_number, scanned_track.disc_number, changed);
     update!(self.disc_total, scanned_track.disc_total, changed);
@@ -237,6 +256,7 @@ impl Track {
     update!(self.title, scanned_track.title.clone(), changed);
     update!(self.file_path, scanned_track.file_path.clone(), changed);
     update!(self.hash, scanned_track.hash as i64, changed);
+    update!(self.enabled, enabled, changed);
     changed
   }
 }
