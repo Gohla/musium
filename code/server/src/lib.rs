@@ -375,6 +375,18 @@ impl Server {
             .filter(file_path.eq(&track_file_path));
           let db_track = time!("scan.select_track", select_query.first::<Track>(&self.connection).optional()?);
           if let Some(db_track) = db_track {
+            // A track with the same path as the scanned track was found. Either track meta-data has been updated, or
+            // the track has been replaced by a new one.
+
+            // TODO: We check if the track was replaced by checking if the metadata and/or hash is different. When the hash
+            // is different, but the metadata is not, we assume that the track's audio data has (somehow) changed, and
+            // just update the hash. When the hash is the same, but the metadata is not, the metadata of the track was
+            // changed, and just update it. When both the hash and metadata have changed, we assume the file has been
+            // replaced by a new one, and instead set the track in the database as removed, and insert the scanned track
+            // as a new one.
+            // TODO: measure how much the metadata has changed, and still update when the metadata has not changed drastically.
+            // TODO: use AcousticID as a hash, to measure changes in the hash as well.
+
             let mut db_track: Track = db_track;
             event!(Level::TRACE, ?db_track, "Updating track with values from scanned track");
             let changed = db_track.update_from(&album, &scanned_track, true);
@@ -385,13 +397,14 @@ impl Server {
               db_track
             }
           } else {
-            // First attempt to find a track with the same hash, and in the same scan directory, as the scanned track.
+            // Did not find a track with the same path as the scanned track. Either the track is new, or it was moved.
+            // We check if the track was moved by searching for the track by hash instead.
             let select_by_hash_query = track
               .filter(scan_directory_id.eq(scanned_track.scan_directory_id))
               .filter(hash.eq(scanned_track.hash as i64));
             let tracks_by_hash: Vec<Track> = time!("scan.select_track_by_hash", select_by_hash_query.load::<Track>(&self.connection)?);
             if tracks_by_hash.is_empty() {
-              // No track with the same has was found, insert a new track.
+              // No track with the same hash was found: we insert it as a new track.
               let new_track = NewTrack {
                 scan_directory_id: scanned_track.scan_directory_id,
                 album_id: album.id,
@@ -410,7 +423,9 @@ impl Server {
               time!("scan.insert_track", insert_query.execute(&self.connection)?);
               time!("scan.select_inserted_track", select_query.first::<Track>(&self.connection)?)
             } else if tracks_by_hash.len() == 1 {
+              // A track with the same hash was found: we update the track in the database with the scanned track.
               let mut db_track: Track = tracks_by_hash.into_iter().take(1).next().unwrap();
+              event!(Level::TRACE, ?db_track, "Updating moved track with values from scanned track");
               let changed = db_track.update_from(&album, &scanned_track, true);
               if changed {
                 event!(Level::DEBUG, ?db_track, "Updating moved track");
@@ -419,7 +434,7 @@ impl Server {
                 db_track
               }
             } else {
-              // For now, if we find multiple tracks with the same hash, we error out.
+              // Multiple tracks with the same hash were found: for now, we error out.
               return Err(HashCollisionFail(scanned_track.clone(), tracks_by_hash));
             }
           }
