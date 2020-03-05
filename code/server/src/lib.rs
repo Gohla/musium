@@ -185,7 +185,7 @@ impl Server {
       use schema::track::dsl::*;
       use schema::scan_directory;
       let result = track
-        .filter(enabled.eq(true))
+        .filter(file_path.is_not_null())
         // OPTO: inner join includes scan directory for each track, which results in a lot more data being loaded than necessary. Can we select only the track?
         .inner_join(scan_directory::table)
         .filter(scan_directory::enabled.eq(true))
@@ -377,24 +377,53 @@ impl Server {
           if let Some(db_track) = db_track {
             // A track with the same path as the scanned track was found. Either track meta-data has been updated, or
             // the track has been replaced by a new one.
+            let mut db_track: Track = db_track;
 
-            // TODO: We check if the track was replaced by checking if the metadata and/or hash is different. When the hash
-            // is different, but the metadata is not, we assume that the track's audio data has (somehow) changed, and
-            // just update the hash. When the hash is the same, but the metadata is not, the metadata of the track was
-            // changed, and just update it. When both the hash and metadata have changed, we assume the file has been
-            // replaced by a new one, and instead set the track in the database as removed, and insert the scanned track
-            // as a new one.
+            // We check if the track was replaced by checking if the metadata and/or hash is different.
             // TODO: measure how much the metadata has changed, and still update when the metadata has not changed drastically.
             // TODO: use AcousticID as a hash, to measure changes in the hash as well.
+            let hash_changed = db_track.check_hash_changed(&scanned_track);
+            let metadata_changed = db_track.check_metadata_changed(&album, &scanned_track);
 
-            let mut db_track: Track = db_track;
-            event!(Level::TRACE, ?db_track, "Updating track with values from scanned track");
-            let changed = db_track.update_from(&album, &scanned_track, true);
-            if changed {
-              event!(Level::DEBUG, ?db_track, "Track has changed, updating the track in the database");
-              time!("scan.update_track", db_track.save_changes(&self.connection)?)
+            if hash_changed && metadata_changed {
+              // When both the hash and metadata have changed, we assume the file has been replaced by a new one, and
+              // instead set the track in the database as removed (NULL file_path), and insert the scanned track as a
+              // new one.
+              db_track.file_path = None;
+              event!(Level::DEBUG, ?db_track, "Track has been replaced, setting the track as removed in the database");
+              time!("scan.update_replaced_track", db_track.save_changes::<Track>(&self.connection)?);
+              // Insert replaced track as a new one.
+              // TODO: remove duplicate code from other track insertion.
+              // TODO: also do the move check here?
+              let new_track = NewTrack {
+                scan_directory_id: scanned_track.scan_directory_id,
+                album_id: album.id,
+                disc_number: scanned_track.disc_number,
+                disc_total: scanned_track.disc_total,
+                track_number: scanned_track.track_number,
+                track_total: scanned_track.track_total,
+                title: scanned_track.title,
+                file_path: Some(track_file_path.clone()),
+                hash: scanned_track.hash as i64,
+              };
+              event!(Level::DEBUG, ?new_track, "Inserting replaced track");
+              let insert_query = diesel::insert_into(track)
+                .values(new_track);
+              time!("scan.insert_replaced_track", insert_query.execute(&self.connection)?);
+              time!("scan.select_inserted_replaced_track", select_query.first::<Track>(&self.connection)?)
             } else {
-              db_track
+              // When the hash is different, but the metadata is not, we assume that the track's audio data has
+              // (somehow) changed, and just update the hash. When the hash is the same, but the metadata is not, the
+              // metadata of the track was changed, and just update it. If neither was changed, no update will be
+              // performed.
+              event!(Level::TRACE, ?db_track, "Updating track with values from scanned track");
+              let changed = db_track.update_from(&album, &scanned_track);
+              if changed {
+                event!(Level::DEBUG, ?db_track, "Track has changed, updating the track in the database");
+                time!("scan.update_track", db_track.save_changes(&self.connection)?)
+              } else {
+                db_track
+              }
             }
           } else {
             // Did not find a track with the same path as the scanned track. Either the track is new, or it was moved.
@@ -413,9 +442,8 @@ impl Server {
                 track_number: scanned_track.track_number,
                 track_total: scanned_track.track_total,
                 title: scanned_track.title,
-                file_path: track_file_path.clone(),
+                file_path: Some(track_file_path.clone()),
                 hash: scanned_track.hash as i64,
-                enabled: true,
               };
               event!(Level::DEBUG, ?new_track, "Inserting track");
               let insert_query = diesel::insert_into(track)
@@ -426,7 +454,7 @@ impl Server {
               // A track with the same hash was found: we update the track in the database with the scanned track.
               let mut db_track: Track = tracks_by_hash.into_iter().take(1).next().unwrap();
               event!(Level::TRACE, ?db_track, "Updating moved track with values from scanned track");
-              let changed = db_track.update_from(&album, &scanned_track, true);
+              let changed = db_track.update_from(&album, &scanned_track);
               if changed {
                 event!(Level::DEBUG, ?db_track, "Updating moved track");
                 time!("scan.update_moved_track", db_track.save_changes(&self.connection)?)

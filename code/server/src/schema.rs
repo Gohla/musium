@@ -37,9 +37,8 @@ table! {
         track_number -> Nullable<Integer>,
         track_total -> Nullable<Integer>,
         title -> Text,
-        file_path -> Text,
+        file_path -> Nullable<Text>,
         hash -> BigInt,
-        enabled -> Bool,
     }
 }
 

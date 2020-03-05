@@ -66,9 +66,8 @@ pub struct Track {
   pub track_number: Option<i32>,
   pub track_total: Option<i32>,
   pub title: String,
-  pub file_path: String,
+  pub file_path: Option<String>,
   pub hash: i64,
-  pub enabled: bool,
 }
 
 #[derive(Debug, Insertable)]
@@ -81,9 +80,8 @@ pub struct NewTrack {
   pub track_number: Option<i32>,
   pub track_total: Option<i32>,
   pub title: String,
-  pub file_path: String,
+  pub file_path: Option<String>,
   pub hash: i64,
-  pub enabled: bool,
 }
 
 // Artist
@@ -225,13 +223,13 @@ pub struct NewUserArtistRating {
 // Implementations
 
 impl ScanDirectory {
-  pub fn track_file_path(&self, track: &Track) -> PathBuf {
-    PathBuf::from(&self.directory).join(&track.file_path)
+  pub fn track_file_path(&self, track: &Track) -> Option<PathBuf> {
+    track.file_path.as_ref().map(|file_path| PathBuf::from(&self.directory).join(file_path))
   }
 
   pub fn update_from(
     &mut self,
-    enabled: bool
+    enabled: bool,
   ) -> bool {
     let mut changed = false;
     update!(self.enabled, enabled, changed);
@@ -240,11 +238,25 @@ impl ScanDirectory {
 }
 
 impl Track {
+  pub fn check_hash_changed(&mut self, scanned_track: &ScannedTrack) -> bool {
+    self.hash != scanned_track.hash as i64
+  }
+
+  pub fn check_metadata_changed(&mut self, album: &Album, scanned_track: &ScannedTrack) -> bool {
+    if self.scan_directory_id != scanned_track.scan_directory_id { return true; }
+    if self.album_id != album.id { return true; }
+    if self.disc_number != scanned_track.disc_number { return true; }
+    if self.disc_total != scanned_track.disc_total { return true; }
+    if self.track_number != scanned_track.track_number { return true; }
+    if self.track_total != scanned_track.track_total { return true; }
+    if self.title != scanned_track.title { return true; }
+    return false;
+  }
+
   pub fn update_from(
     &mut self,
     album: &Album,
     scanned_track: &ScannedTrack,
-    enabled: bool
   ) -> bool {
     let mut changed = false;
     update!(self.scan_directory_id, scanned_track.scan_directory_id, changed);
@@ -254,9 +266,16 @@ impl Track {
     update!(self.track_number, scanned_track.track_number, changed);
     update!(self.track_total, scanned_track.track_total, changed);
     update!(self.title, scanned_track.title.clone(), changed);
-    update!(self.file_path, scanned_track.file_path.clone(), changed);
+    if let Some(file_path) = &mut self.file_path {
+      if file_path != &scanned_track.file_path {
+        *file_path = scanned_track.file_path.clone();
+        changed = true;
+      }
+    } else {
+      self.file_path = Some(scanned_track.file_path.clone());
+      changed = true;
+    }
     update!(self.hash, scanned_track.hash as i64, changed);
-    update!(self.enabled, enabled, changed);
     changed
   }
 }
@@ -277,7 +296,9 @@ impl Display for Track {
       _ => write!(f, "         ")?,
     }
     write!(f, " {:<50}", self.title)?;
-    write!(f, " - {}", self.file_path)?;
+    if let Some(file_path) = &self.file_path {
+      write!(f, " - {}", file_path)?;
+    }
     Ok(())
   }
 }

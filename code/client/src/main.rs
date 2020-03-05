@@ -175,14 +175,18 @@ fn run(opt: Opt) -> Result<()> {
       if let Some((scan_directory, track)) = server.get_track_by_id(track_id).with_context(|| "Failed to get track")? {
         println!("* {}", scan_directory);
         println!("  - {}", track);
-        let device = rodio::default_output_device()
-          .with_context(|| "No audio device was found")?;
-        let file = File::open(scan_directory.track_file_path(&track))
-          .with_context(|| "Failed to open audio file for playback")?;
-        let sink = rodio::play_once(&device, file)
-          .with_context(|| "Failed to start audio playback")?;
-        sink.set_volume(volume);
-        sink.sleep_until_end();
+        if let Some(file_path) = scan_directory.track_file_path(&track) {
+          let device = rodio::default_output_device()
+            .with_context(|| "No audio device was found")?;
+          let file = File::open(file_path)
+            .with_context(|| "Failed to open audio file for playback")?;
+          let sink = rodio::play_once(&device, file)
+            .with_context(|| "Failed to start audio playback")?;
+          sink.set_volume(volume);
+          sink.sleep_until_end();
+        } else {
+          eprintln!("Could not play track with ID '{}', it does not have a file path, indicating that the track was removed", track_id);
+        }
       } else {
         eprintln!("Could not play track, no track with ID '{}' was found", track_id);
       }
