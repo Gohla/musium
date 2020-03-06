@@ -334,11 +334,13 @@ impl Server {
           }
         })
     });
+    let mut file_paths = HashSet::new();
 
     self.connection.transaction::<_, ScanError, _>(|| {
       // Insert tracks and related entities.
       for scanned_track in scanned_tracks {
         let scanned_track: ScannedTrack = scanned_track;
+        file_paths.insert(scanned_track.file_path.clone());
         event!(Level::TRACE, ?scanned_track, "Processing scanned track");
         // Get and update album, or insert it.
         let album: Album = {
@@ -514,6 +516,30 @@ impl Server {
             time!("scan.insert_album_artist", diesel::insert_into(album_artist)
               .values(new_album_artist)
               .execute(&self.connection)?);
+          }
+        }
+      }
+      // Remove all tracks from the database that have a path that was not scanned.
+      {
+        let track_ids_and_file_paths: Vec<(i32, Option<String>)> = {
+          use schema::track::dsl::*;
+          track
+            .select((id, file_path))
+            .filter(file_path.is_not_null())
+            .load::<(i32, Option<String>)>(&self.connection)?
+        };
+        for (track_id, file_path) in track_ids_and_file_paths {
+          if let Some(file_path) = file_path {
+            if !file_paths.contains(&file_path) {
+              event!(Level::DEBUG, ?track_id, ?file_path, "Track '{}' at '{}' has not been scanned: setting it as removed in the database", track_id, file_path);
+              {
+                use schema::track::dsl::*;
+                time!("scan.update_removed_track", diesel::update(track)
+                .filter(id.eq(track_id))
+                .set(file_path.eq::<Option<String>>(None))
+                .execute(&self.connection)?);
+              }
+            }
           }
         }
       }
