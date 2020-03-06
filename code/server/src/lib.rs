@@ -183,14 +183,9 @@ impl Server {
     };
     let tracks: Vec<Track> = {
       use schema::track::dsl::*;
-      use schema::scan_directory;
-      let result = track
+      Track::belonging_to(&scan_directories)
         .filter(file_path.is_not_null())
-        // OPTO: inner join includes scan directory for each track, which results in a lot more data being loaded than necessary. Can we select only the track?
-        .inner_join(scan_directory::table)
-        .filter(scan_directory::enabled.eq(true))
-        .load::<(Track, ScanDirectory)>(&self.connection)?;
-      result.into_iter().map(|(t, _)| t).collect()
+        .load::<Track>(&self.connection)?
     };
     let albums = schema::album::table.load::<Album>(&self.connection)?;
     let artists = schema::artist::table.load::<Artist>(&self.connection)?;
