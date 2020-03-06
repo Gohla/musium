@@ -21,6 +21,12 @@ struct Opt {
   /// Database file to use. Relative paths are resolved relative to the current directory
   #[structopt(short, long, env = "DATABASE_URL", parse(from_os_str))]
   database_file: PathBuf,
+  /// Minimum level at which tracing events will be printed to stderr
+  #[structopt(short, long, default_value = "TRACE")]
+  tracing_level: Level,
+  /// Whether to print metrics to stderr before the program exits
+  #[structopt(short, long)]
+  metrics: bool,
 }
 
 #[derive(Debug, StructOpt)]
@@ -102,28 +108,35 @@ enum Command {
 }
 
 fn main() -> Result<()> {
+  // Load environment variables from .env file, before parsing command-line arguments, as some options can use
+  // environment variables as defaults.
+  dotenv::dotenv().ok();
+  // Parse command-line arguments.
+  let opt: Opt = Opt::from_args();
+  // Setup tracing
   let subscriber = FmtSubscriber::builder()
     .with_writer(io::stderr)
-    .with_max_level(Level::TRACE)
+    .with_max_level(opt.tracing_level.clone())
     .finish();
   tracing::subscriber::set_global_default(subscriber)
     .with_context(|| "Failed to initialize global tracing subscriber")?;
-
+  // Setup metrics
   let metrics_receiver: Receiver = Receiver::builder().build()
     .with_context(|| "Failed to initialize metrics receiver")?;
   let controller: Controller = metrics_receiver.controller();
   let mut observer: YamlObserver = YamlBuilder::new().build();
   metrics_receiver.install();
-
-  dotenv::dotenv().ok();
-
-  let opt: Opt = Opt::from_args();
+  // Copy over relevant options before passing ownership to run.
+  let metrics = opt.metrics;
+  // Run the application
   let result = run(opt);
-
-  controller.observe(&mut observer);
-  let output = observer.drain();
-  trace!(metrics = %output);
-
+  // Print metrics
+  if metrics {
+    controller.observe(&mut observer);
+    let output = observer.drain();
+    trace!(metrics = %output);
+  }
+  // Exit
   Ok(result?)
 }
 

@@ -72,23 +72,46 @@ impl Server {
     Ok(scan_directory.load::<ScanDirectory>(&self.connection)?)
   }
 
-  pub fn add_scan_directory<P: Borrow<PathBuf>>(&self, directory: P) -> Result<ScanDirectory, DatabaseQueryError> {
-    use schema::scan_directory;
-    let directory = directory.borrow().to_string_lossy().to_string();
-    time!("add_scan_directory.insert", diesel::insert_into(scan_directory::table)
-      .values(NewScanDirectory { directory: directory.clone(), enabled: true })
-      .execute(&self.connection)?);
-    let select_query = scan_directory::table
-      .filter(scan_directory::directory.eq(&directory));
-    Ok(time!("add_scan_directory.select", select_query.first::<ScanDirectory>(&self.connection)?))
+  pub fn add_scan_directory<P: Borrow<PathBuf>>(&self, input_directory: P) -> Result<ScanDirectory, DatabaseQueryError> {
+    let input_directory = input_directory.borrow().to_string_lossy().to_string();
+    let select_query = {
+      use schema::scan_directory::dsl::*;
+      scan_directory
+        .filter(directory.eq(&input_directory))
+    };
+    let scan_directory = time!("add_scan_directory.select", select_query.first::<ScanDirectory>(&self.connection).optional()?);
+    Ok(if let Some(mut scan_directory) = scan_directory {
+      // Enable existing scan directory.
+      scan_directory.enabled = true;
+      time!("add_scan_directory.update", scan_directory.save_changes::<ScanDirectory>(&self.connection)?);
+      scan_directory
+    } else {
+      // Insert new scan directory.
+      let insert_query = {
+        use schema::scan_directory::dsl::*;
+        diesel::insert_into(scan_directory)
+          .values(NewScanDirectory { directory: input_directory.clone(), enabled: true })
+      };
+      time!("add_scan_directory.insert", insert_query.execute(&self.connection)?);
+      time!("add_scan_directory.select_inserted", select_query.first::<ScanDirectory>(&self.connection)?)
+    })
   }
 
-  pub fn remove_scan_directory<P: Borrow<PathBuf>>(&self, directory: P) -> Result<bool, DatabaseQueryError> {
-    use schema::scan_directory;
-    let directory = directory.borrow().to_string_lossy().to_string();
-    let result = time!("remove_scan_directory.delete", diesel::delete(scan_directory::table.filter(scan_directory::directory.like(&directory)))
-      .execute(&self.connection))?;
-    Ok(result == 1)
+  pub fn remove_scan_directory<P: Borrow<PathBuf>>(&self, input_directory: P) -> Result<bool, DatabaseQueryError> {
+    let input_directory = input_directory.borrow().to_string_lossy().to_string();
+    let select_query = {
+      use schema::scan_directory::dsl::*;
+      scan_directory
+        .filter(directory.eq(&input_directory))
+    };
+    let scan_directory = time!("remove_scan_directory.select", select_query.first::<ScanDirectory>(&self.connection).optional()?);
+    if let Some(mut scan_directory) = scan_directory {
+      scan_directory.enabled = true;
+      time!("remove_scan_directory.update", scan_directory.save_changes::<ScanDirectory>(&self.connection)?);
+      Ok(true)
+    } else {
+      Ok(false)
+    }
   }
 }
 
@@ -308,7 +331,7 @@ pub enum ScanError {
   ListScanDirectoriesFail(#[from] DatabaseQueryError, Backtrace),
   #[error("Failed to query database")]
   DatabaseFail(#[from] diesel::result::Error, Backtrace),
-  #[error("Attempted to update possibly moved track {0:?}, but found multiple tracks in the database with the same scan directory and hash: {1:?}")]
+  #[error("Attempted to update possibly moved track {0:#?}, but found multiple tracks in the database with the same scan directory and hash: {1:#?}")]
   HashCollisionFail(ScannedTrack, Vec<Track>),
   #[error("One or more errors occurred during scanning, but successfully scanned tracks have been added")]
   ScanFail(Vec<scanner::ScanError>),
@@ -334,13 +357,15 @@ impl Server {
           }
         })
     });
-    let mut file_paths = HashSet::new();
+    let mut scanned_file_paths = HashMap::<i32, HashSet<String>>::new();
 
     self.connection.transaction::<_, ScanError, _>(|| {
       // Insert tracks and related entities.
       for scanned_track in scanned_tracks {
         let scanned_track: ScannedTrack = scanned_track;
-        file_paths.insert(scanned_track.file_path.clone());
+        scanned_file_paths.entry(scanned_track.scan_directory_id)
+          .or_default()
+          .insert(scanned_track.file_path.clone());
         event!(Level::TRACE, ?scanned_track, "Processing scanned track");
         // Get and update album, or insert it.
         let album: Album = {
@@ -521,23 +546,23 @@ impl Server {
       }
       // Remove all tracks from the database that have a path that was not scanned.
       {
-        let track_ids_and_file_paths: Vec<(i32, Option<String>)> = {
+        let db_track_data: Vec<(i32, i32, Option<String>)> = {
           use schema::track::dsl::*;
           track
-            .select((id, file_path))
+            .select((id, scan_directory_id, file_path))
             .filter(file_path.is_not_null())
-            .load::<(i32, Option<String>)>(&self.connection)?
+            .load::<(i32, i32, Option<String>)>(&self.connection)?
         };
-        for (track_id, file_path) in track_ids_and_file_paths {
-          if let Some(file_path) = file_path {
-            if !file_paths.contains(&file_path) {
-              event!(Level::DEBUG, ?track_id, ?file_path, "Track '{}' at '{}' has not been scanned: setting it as removed in the database", track_id, file_path);
+        for (db_track_id, db_scan_directory_id, db_file_path) in db_track_data {
+          if let (Some(db_file_path), Some(scanned_file_paths)) = (db_file_path, scanned_file_paths.get(&db_scan_directory_id)) {
+            if !scanned_file_paths.contains(&db_file_path) {
+              event!(Level::DEBUG, ?db_track_id, ?db_file_path, "Track '{}' at '{}' has not been scanned: setting it as removed in the database", db_track_id, db_file_path);
               {
                 use schema::track::dsl::*;
                 time!("scan.update_removed_track", diesel::update(track)
-                .filter(id.eq(track_id))
-                .set(file_path.eq::<Option<String>>(None))
-                .execute(&self.connection)?);
+                  .filter(id.eq(db_track_id))
+                  .set(file_path.eq::<Option<String>>(None))
+                  .execute(&self.connection)?);
               }
             }
           }
