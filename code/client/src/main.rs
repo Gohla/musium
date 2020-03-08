@@ -11,10 +11,10 @@ use structopt::StructOpt;
 use tracing::{Level, trace};
 use tracing_subscriber::FmtSubscriber;
 
-use server::Server;
+use backend::Backend;
 
 #[derive(Debug, StructOpt)]
-#[structopt(name = "music_composer", about = "Music Composer")]
+#[structopt(name = "client", about = "Music Composer client")]
 struct Opt {
   #[structopt(subcommand)]
   command: Command,
@@ -71,6 +71,8 @@ enum Command {
   AddUser {
     /// Name of the user to add
     name: String,
+    /// Password of the user to add
+    password: String
   },
   /// Removes a user from the database
   RemoveUser {
@@ -141,20 +143,22 @@ fn main() -> Result<()> {
 }
 
 fn run(opt: Opt) -> Result<()> {
-  let server: Server = Server::new(opt.database_file.to_string_lossy())
-    .with_context(|| "Failed to initialize server")?;
+  let backend: Backend = Backend::new(opt.database_file.to_string_lossy(), vec![])
+    .with_context(|| "Failed to initialize backend")?;
+  let backend_connected= backend.connect_to_database()
+    .with_context(|| "Failed to connect to backend database")?;
   match opt.command {
     Command::ListScanDirectories => {
-      for scan_directory in server.list_scan_directories().with_context(|| "Failed to list scan directories")? {
+      for scan_directory in backend_connected.list_scan_directories().with_context(|| "Failed to list scan directories")? {
         println!("{}", scan_directory);
       }
     }
     Command::AddScanDirectory { directory } => {
-      server.add_scan_directory(&directory).with_context(|| "Failed to add scan directory")?;
+      backend_connected.add_scan_directory(&directory).with_context(|| "Failed to add scan directory")?;
       eprintln!("Added scan directory '{}'", directory.display());
     }
     Command::RemoveScanDirectory { directory } => {
-      let removed = server.remove_scan_directory(&directory).with_context(|| "Failed to remove scan directory")?;
+      let removed = backend_connected.remove_scan_directory(&directory).with_context(|| "Failed to remove scan directory")?;
       if removed {
         eprintln!("Removed scan directory '{}'", directory.display());
       } else {
@@ -163,7 +167,7 @@ fn run(opt: Opt) -> Result<()> {
     }
 
     Command::ListAlbums => {
-      for (album, album_artists) in server.list_albums().with_context(|| "Failed to list albums")?.iter() {
+      for (album, album_artists) in backend_connected.list_albums().with_context(|| "Failed to list albums")?.iter() {
         println!("{:?}", album);
         for artist in album_artists {
           println!("  {:?}", artist);
@@ -172,7 +176,7 @@ fn run(opt: Opt) -> Result<()> {
     }
 
     Command::ListTracks => {
-      for (scan_directory, track, track_artists, album, album_artists) in server.list_tracks().with_context(|| "Failed to list tracks")?.iter() {
+      for (scan_directory, track, track_artists, album, album_artists) in backend_connected.list_tracks().with_context(|| "Failed to list tracks")?.iter() {
         println!("{:?}", scan_directory);
         println!("  {:?}", track);
         for artist in track_artists {
@@ -185,7 +189,7 @@ fn run(opt: Opt) -> Result<()> {
       }
     }
     Command::PlayTrack { track_id, volume } => {
-      if let Some((scan_directory, track)) = server.get_track_by_id(track_id).with_context(|| "Failed to get track")? {
+      if let Some((scan_directory, track)) = backend_connected.get_track_by_id(track_id).with_context(|| "Failed to get track")? {
         println!("* {}", scan_directory);
         println!("  - {}", track);
         if let Some(file_path) = scan_directory.track_file_path(&track) {
@@ -206,28 +210,28 @@ fn run(opt: Opt) -> Result<()> {
     }
 
     Command::ListArtists => {
-      for artist in server.list_artists().with_context(|| "Failed to list artists")?.iter() {
+      for artist in backend_connected.list_artists().with_context(|| "Failed to list artists")?.iter() {
         println!("{:?}", artist);
       }
     }
 
     Command::Scan => {
-      server.scan()
+      backend_connected.scan()
         .with_context(|| "Failed to scan music files")?;
     }
     Command::ListUsers => {
-      for user in server.list_users()
+      for user in backend_connected.list_users()
         .with_context(|| "Failed to list users")? {
         println!("{:?}", user);
       }
     }
-    Command::AddUser { name } => {
-      let user = server.add_user(name)
+    Command::AddUser { name, password } => {
+      let user = backend_connected.add_user(name, password)
         .with_context(|| "Failed to add user")?;
       eprintln!("Added {:?}", user);
     }
     Command::RemoveUser { name } => {
-      let removed = server.remove_user(&name)
+      let removed = backend_connected.remove_user(&name)
         .with_context(|| "Failed to remove user")?;
       if removed {
         eprintln!("Removed user with name '{}'", name);
@@ -236,17 +240,17 @@ fn run(opt: Opt) -> Result<()> {
       }
     }
     Command::SetUserAlbumRating { user_id, album_id, rating } => {
-      let user_album_rating = server.set_user_album_rating(user_id, album_id, rating)
+      let user_album_rating = backend_connected.set_user_album_rating(user_id, album_id, rating)
         .with_context(|| "Failed to set user album rating")?;
       eprintln!("Set {:?}", user_album_rating);
     }
     Command::SetUserTrackRating { user_id, track_id, rating } => {
-      let user_track_rating = server.set_user_track_rating(user_id, track_id, rating)
+      let user_track_rating = backend_connected.set_user_track_rating(user_id, track_id, rating)
         .with_context(|| "Failed to set user track rating")?;
       eprintln!("Set {:?}", user_track_rating);
     }
     Command::SetUserArtistRating { user_id, artist_id, rating } => {
-      let user_artist_rating = server.set_user_artist_rating(user_id, artist_id, rating)
+      let user_artist_rating = backend_connected.set_user_artist_rating(user_id, artist_id, rating)
         .with_context(|| "Failed to set user artist rating")?;
       eprintln!("Set {:?}", user_artist_rating);
     }

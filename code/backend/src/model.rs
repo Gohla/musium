@@ -146,12 +146,16 @@ pub struct NewAlbumArtist {
 pub struct User {
   pub id: i32,
   pub name: String,
+  pub hash: Vec<u8>,
+  pub salt: Vec<u8>,
 }
 
 #[derive(Debug, Insertable)]
 #[table_name = "user"]
 pub struct NewUser {
   pub name: String,
+  pub hash: Vec<u8>,
+  pub salt: Vec<u8>,
 }
 
 // User-album rating

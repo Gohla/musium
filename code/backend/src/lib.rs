@@ -11,6 +11,7 @@ use std::path::PathBuf;
 use std::time::Instant;
 
 use diesel::prelude::*;
+use diesel::r2d2::{self, ConnectionManager, Pool, PooledConnection};
 use itertools::{Either, Itertools};
 use metrics::timing;
 use thiserror::Error;
@@ -19,11 +20,13 @@ use tracing::{event, instrument, Level};
 use model::{ScanDirectory, Track};
 
 use crate::model::*;
+use crate::password::PasswordHasher;
 use crate::scanner::{ScannedTrack, Scanner};
 
 pub mod schema;
 pub mod model;
 pub mod scanner;
+pub mod password;
 
 macro_rules! time {
   ($s:expr, $e:expr) => {{
@@ -35,26 +38,52 @@ macro_rules! time {
 }
 
 
-pub struct Server {
-  connection: SqliteConnection,
+#[derive(Clone)]
+pub struct Backend {
+  connection_pool: Pool<ConnectionManager<SqliteConnection>>,
   scanner: Scanner,
+  password_hasher: PasswordHasher,
 }
 
 // Creation
 
 #[derive(Debug, Error)]
-pub enum ServerCreateError {
-  #[error("Failed to create database connection")]
-  ConnectionCreateFail(#[from] ConnectionError, Backtrace),
+pub enum BackendCreateError {
+  #[error("Failed to create database connection pool")]
+  ConnectionPoolCreateFail(#[from] r2d2::PoolError, Backtrace),
 }
 
-impl Server {
-  pub fn new<S: AsRef<str>>(database_url: S) -> Result<Server, ServerCreateError> {
-    let connection = SqliteConnection::establish(database_url.as_ref())?;
+impl Backend {
+  pub fn new<D: AsRef<str>, S: Into<Vec<u8>>>(database_url: D, password_hasher_secret_key: S) -> Result<Backend, BackendCreateError> {
+    let connection_pool = Pool::builder()
+      .max_size(16)
+      .build(ConnectionManager::<SqliteConnection>::new(database_url.as_ref()))?;
     let scanner = Scanner::new();
-    Ok(Server { connection, scanner })
+    let password_hasher = PasswordHasher::new(password_hasher_secret_key);
+    Ok(Backend { connection_pool, scanner, password_hasher })
   }
 }
+
+// Connecting to the database
+
+pub struct BackendConnected<'a> {
+  backend: &'a Backend,
+  connection: PooledConnection<ConnectionManager<SqliteConnection>>,
+}
+
+#[derive(Debug, Error)]
+pub enum BackendConnectError {
+  #[error("Failed to get database connection from database connection pool")]
+  ConnectionGetFail(#[from] r2d2::PoolError, Backtrace),
+}
+
+impl Backend {
+  pub fn connect_to_database(&self) -> Result<BackendConnected, BackendConnectError> {
+    let connection = self.connection_pool.get()?;
+    Ok(BackendConnected { backend: self, connection })
+  }
+}
+
 
 // Database queries
 
@@ -66,7 +95,7 @@ pub enum DatabaseQueryError {
 
 // Scan directory database queries
 
-impl Server {
+impl BackendConnected<'_> {
   pub fn list_scan_directories(&self) -> Result<Vec<ScanDirectory>, DatabaseQueryError> {
     use schema::scan_directory::dsl::*;
     Ok(scan_directory.load::<ScanDirectory>(&self.connection)?)
@@ -83,7 +112,7 @@ impl Server {
     Ok(if let Some(mut scan_directory) = scan_directory {
       // Enable existing scan directory.
       scan_directory.enabled = true;
-      time!("add_scan_directory.update", scan_directory.save_changes::<ScanDirectory>(&self.connection)?);
+      time!("add_scan_directory.update", scan_directory.save_changes::<ScanDirectory>(&*self.connection)?);
       scan_directory
     } else {
       // Insert new scan directory.
@@ -107,7 +136,7 @@ impl Server {
     let scan_directory = time!("remove_scan_directory.select", select_query.first::<ScanDirectory>(&self.connection).optional()?);
     if let Some(mut scan_directory) = scan_directory {
       scan_directory.enabled = true;
-      time!("remove_scan_directory.update", scan_directory.save_changes::<ScanDirectory>(&self.connection)?);
+      time!("remove_scan_directory.update", scan_directory.save_changes::<ScanDirectory>(&*self.connection)?);
       Ok(true)
     } else {
       Ok(false)
@@ -144,7 +173,7 @@ impl Albums {
   }
 }
 
-impl Server {
+impl BackendConnected<'_> {
   pub fn list_albums(&self) -> Result<Albums, DatabaseQueryError> {
     let albums = schema::album::table.load::<Album>(&self.connection)?;
     let artists = schema::artist::table.load::<Artist>(&self.connection)?;
@@ -196,7 +225,7 @@ impl Tracks {
   }
 }
 
-impl Server {
+impl BackendConnected<'_> {
   pub fn list_tracks(&self) -> Result<Tracks, DatabaseQueryError> {
     let scan_directories = {
       use schema::scan_directory::dsl::*;
@@ -230,7 +259,7 @@ impl Server {
 
 // Artist database queries
 
-impl Server {
+impl BackendConnected<'_> {
   pub fn list_artists(&self) -> Result<Vec<Artist>, DatabaseQueryError> {
     use schema::artist::dsl::*;
     Ok(artist.load::<Artist>(&self.connection)?)
@@ -239,17 +268,43 @@ impl Server {
 
 // User database queries
 
-impl Server {
+#[derive(Debug, Error)]
+pub enum UserAddVerifyError {
+  #[error("Failed to execute a database query")]
+  DatabaseQueryFail(#[from] diesel::result::Error, Backtrace),
+  #[error("Failed to hash password")]
+  PasswordHashFail(#[from] argon2::Error, Backtrace),
+}
+
+impl BackendConnected<'_> {
   pub fn list_users(&self) -> Result<Vec<User>, DatabaseQueryError> {
     use schema::user::dsl::*;
     Ok(user.load::<User>(&self.connection)?)
   }
 
-  pub fn add_user<S: Into<String>>(&self, name: S) -> Result<User, DatabaseQueryError> {
+  pub fn verify_user<S: Into<String>, P: AsRef<[u8]>>(&self, input_name: S, password: P) -> Result<bool, UserAddVerifyError> {
+    let input_name = input_name.into();
+    let user: User = {
+      use schema::user::dsl::*;
+      user
+        .filter(name.eq(input_name))
+        .first::<User>(&self.connection)?
+    };
+    Ok(self.backend.password_hasher.verify(password, user.salt, user.hash)?)
+  }
+
+  pub fn add_user<S: Into<String>, P: AsRef<[u8]>>(&self, name: S, password: P) -> Result<User, UserAddVerifyError> {
     use schema::user;
     let name = name.into();
+    let salt = self.backend.password_hasher.generate_salt();
+    let hash = self.backend.password_hasher.hash(password, &salt)?;
+    let new_user = NewUser {
+      name: name.clone(),
+      hash,
+      salt,
+    };
     time!("add_user.insert", diesel::insert_into(user::table)
-      .values(NewUser { name: name.clone() })
+      .values(new_user)
       .execute(&self.connection)?);
     let select_query = user::table
       .filter(user::name.eq(&name));
@@ -267,7 +322,7 @@ impl Server {
 
 // User data database queries
 
-impl Server {
+impl BackendConnected<'_> {
   pub fn set_user_album_rating(&self, user_id: i32, album_id: i32, rating: i32) -> Result<UserAlbumRating, DatabaseQueryError> {
     use schema::user_album_rating;
     let select_query = user_album_rating::table
@@ -277,7 +332,7 @@ impl Server {
     if let Some(db_user_album_rating) = db_user_album_rating {
       let mut db_user_album_rating: UserAlbumRating = db_user_album_rating;
       db_user_album_rating.rating = rating;
-      Ok(time!("set_user_album_rating.update", db_user_album_rating.save_changes(&self.connection)?))
+      Ok(time!("set_user_album_rating.update", db_user_album_rating.save_changes(&*self.connection)?))
     } else {
       time!("set_user_album_rating.insert", diesel::insert_into(user_album_rating::table)
         .values(NewUserAlbumRating { user_id, album_id, rating })
@@ -295,7 +350,7 @@ impl Server {
     if let Some(db_user_track_rating) = db_user_track_rating {
       let mut db_user_track_rating: UserTrackRating = db_user_track_rating;
       db_user_track_rating.rating = rating;
-      Ok(time!("set_user_track_rating.update", db_user_track_rating.save_changes(&self.connection)?))
+      Ok(time!("set_user_track_rating.update", db_user_track_rating.save_changes(&*self.connection)?))
     } else {
       time!("set_user_track_rating.insert", diesel::insert_into(user_track_rating::table)
         .values(NewUserTrackRating { user_id, track_id, rating })
@@ -313,7 +368,7 @@ impl Server {
     if let Some(db_user_artist_rating) = db_user_artist_rating {
       let mut db_user_artist_rating: UserArtistRating = db_user_artist_rating;
       db_user_artist_rating.rating = rating;
-      Ok(time!("set_user_artist_rating.update", db_user_artist_rating.save_changes(&self.connection)?))
+      Ok(time!("set_user_artist_rating.update", db_user_artist_rating.save_changes(&*self.connection)?))
     } else {
       time!("set_user_artist_rating.insert", diesel::insert_into(user_artist_rating::table)
         .values(NewUserArtistRating { user_id, artist_id, rating })
@@ -337,7 +392,7 @@ pub enum ScanError {
   ScanFail(Vec<scanner::ScanError>),
 }
 
-impl Server {
+impl BackendConnected<'_> {
   #[instrument]
   /// Scans all scan directories for music files, drops all tracks, albums, and artists from the database, and adds all
   /// found tracks, albums, and artists to the database. When a ScanFail error is returned, tracks that were sucessfully
@@ -349,7 +404,7 @@ impl Server {
     let (scanned_tracks, scan_errors): (Vec<ScannedTrack>, Vec<scanner::ScanError>) = time!("scan.file_scan", {
       scan_directories
         .into_iter()
-        .flat_map(|scan_directory| self.scanner.scan(scan_directory))
+        .flat_map(|scan_directory| self.backend.scanner.scan(scan_directory))
         .partition_map(|r| {
           match r {
             Ok(v) => Either::Left(v),
@@ -413,7 +468,7 @@ impl Server {
               // new one.
               db_track.file_path = None;
               event!(Level::DEBUG, ?db_track, "Track has been replaced, setting the track as removed in the database");
-              time!("scan.update_replaced_track", db_track.save_changes::<Track>(&self.connection)?);
+              time!("scan.update_replaced_track", db_track.save_changes::<Track>(&*self.connection)?);
               // Insert replaced track as a new one.
               // TODO: remove duplicate code from other track insertion.
               // TODO: also do the move check here?
@@ -442,7 +497,7 @@ impl Server {
               let changed = db_track.update_from(&album, &scanned_track);
               if changed {
                 event!(Level::DEBUG, ?db_track, "Track has changed, updating the track in the database");
-                time!("scan.update_track", db_track.save_changes(&self.connection)?)
+                time!("scan.update_track", db_track.save_changes(&*self.connection)?)
               } else {
                 db_track
               }
@@ -479,7 +534,7 @@ impl Server {
               let changed = db_track.update_from(&album, &scanned_track);
               if changed {
                 event!(Level::DEBUG, ?db_track, "Updating moved track");
-                time!("scan.update_moved_track", db_track.save_changes(&self.connection)?)
+                time!("scan.update_moved_track", db_track.save_changes(&*self.connection)?)
               } else {
                 db_track
               }
@@ -601,8 +656,14 @@ impl Server {
 
 // Implementations
 
-impl Debug for Server {
+impl Debug for Backend {
   fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-    Ok(write!(f, "Server")?)
+    Ok(write!(f, "Backend")?)
+  }
+}
+
+impl Debug for BackendConnected<'_> {
+  fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+    Ok(write!(f, "BackendConnected")?)
   }
 }

@@ -6,7 +6,7 @@ use walkdir::WalkDir;
 
 use crate::model::ScanDirectory;
 
-#[derive(Default, Debug)]
+#[derive(Default, Clone, Debug)]
 pub struct Scanner {}
 
 // Creation

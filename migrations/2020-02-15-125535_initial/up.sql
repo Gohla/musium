@@ -61,6 +61,8 @@ CREATE TABLE album_artist (
 CREATE TABLE user (
   id INTEGER NOT NULL,
   name TEXT NOT NULL,
+  hash BLOB NOT NULL,
+  salt BLOB NOT NULL,
 
   PRIMARY KEY(id),
   UNIQUE(name)

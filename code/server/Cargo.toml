@@ -7,12 +7,16 @@ publish = false
 
 [dependencies]
 core = {path = "../core"}
-diesel = { version = "1.4", features = ["sqlite"] }
-libsqlite3-sys = { version = ">=0.8.0, <0.18.0", features = ["bundled"] } # Make diesel use bundled sqlite.
-id3 = "0.5"
-crc32fast = "1.2"
-walkdir = "2.3"
-itertools = "0.8"
-thiserror = "1.0"
-metrics = "0.12"
+backend = {path = "../backend"}
+actix-web = "2.0"
+actix-rt = "1.0"
+actix-identity = "0.2"
+serde = { version = "1.0", features = ["derive"] }
+structopt = "0.3"
+dotenv = "0.15"
+anyhow = "1.0"
+metrics-core = "0.5"
+metrics-runtime = {version = "0.13", default-features = false}
+metrics-observer-yaml = "0.1"
 tracing = "0.1"
+tracing-subscriber = "0.2"
