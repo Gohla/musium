@@ -10,7 +10,7 @@ use structopt::StructOpt;
 use tracing::{Level, trace};
 use tracing_subscriber::FmtSubscriber;
 
-use backend::Backend;
+use backend::{Backend, BackendConnected};
 
 pub mod auth;
 
@@ -72,8 +72,9 @@ async fn serve(backend: Backend) -> std::io::Result<()> {
   let backend_data = web::Data::new(backend);
   HttpServer::new(move || {
     App::new()
-      .data(backend_data.clone())
+      .app_data(backend_data.clone())
       .route("/", web::get().to(index))
+      .route("/tracks", web::get().to(tracks))
   })
     .bind("127.0.0.1:8088")?
     .run()
@@ -82,4 +83,10 @@ async fn serve(backend: Backend) -> std::io::Result<()> {
 
 async fn index() -> impl Responder {
   HttpResponse::Ok().body("Hello world!")
+}
+
+async fn tracks(backend: web::Data<Backend>) -> actix_web::Result<impl Responder> {
+  let backend_connected: BackendConnected = backend.connect_to_database().map_err(|e| actix_web::error::ErrorInternalServerError(e))?;
+  let tracks = backend_connected.list_tracks().map_err(|e| actix_web::error::ErrorInternalServerError(e))?;
+  Ok(HttpResponse::Ok().body(format!("{:#?}", tracks)))
 }
