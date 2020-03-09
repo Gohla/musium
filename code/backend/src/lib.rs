@@ -14,6 +14,7 @@ use diesel::prelude::*;
 use diesel::r2d2::{self, ConnectionManager, Pool, PooledConnection};
 use itertools::{Either, Itertools};
 use metrics::timing;
+use serde::{Deserialize, Serialize};
 use thiserror::Error;
 use tracing::{event, instrument, Level};
 
@@ -146,6 +147,7 @@ impl BackendConnected<'_> {
 
 // Album database queries
 
+#[derive(Default, Clone, Debug, Serialize, Deserialize)]
 pub struct Albums {
   pub albums: Vec<Album>,
   pub artists: HashMap<i32, Artist>,
@@ -184,7 +186,7 @@ impl BackendConnected<'_> {
 
 // Track database queries
 
-#[derive(Default, Clone, Debug)]
+#[derive(Default, Clone, Debug, Serialize, Deserialize)]
 pub struct Tracks {
   pub tracks: Vec<Track>,
   pub scan_directories: HashMap<i32, ScanDirectory>,
@@ -279,16 +281,16 @@ pub enum UserAddVerifyError {
 impl BackendConnected<'_> {
   pub fn list_users(&self) -> Result<Vec<User>, DatabaseQueryError> {
     use schema::user::dsl::*;
-    Ok(user.load::<User>(&self.connection)?)
+    Ok(user.select((id, name)).load::<User>(&self.connection)?)
   }
 
   pub fn verify_user<S: Into<String>, P: AsRef<[u8]>>(&self, input_name: S, password: P) -> Result<bool, UserAddVerifyError> {
     let input_name = input_name.into();
-    let user: User = {
+    let user: InternalUser = {
       use schema::user::dsl::*;
       user
         .filter(name.eq(input_name))
-        .first::<User>(&self.connection)?
+        .first::<InternalUser>(&self.connection)?
     };
     Ok(self.backend.password_hasher.verify(password, user.salt, user.hash)?)
   }
@@ -307,6 +309,7 @@ impl BackendConnected<'_> {
       .values(new_user)
       .execute(&self.connection)?);
     let select_query = user::table
+      .select((user::id, user::name))
       .filter(user::name.eq(&name));
     Ok(time!("add_user.select", select_query.first::<User>(&self.connection)?))
   }

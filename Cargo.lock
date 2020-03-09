@@ -400,6 +400,7 @@ dependencies = [
  "metrics",
  "rand",
  "rust-argon2",
+ "serde",
  "thiserror",
  "tracing",
  "walkdir",

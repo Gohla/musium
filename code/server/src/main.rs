@@ -86,7 +86,17 @@ async fn index() -> impl Responder {
 }
 
 async fn tracks(backend: web::Data<Backend>) -> actix_web::Result<impl Responder> {
-  let backend_connected: BackendConnected = backend.connect_to_database().map_err(|e| actix_web::error::ErrorInternalServerError(e))?;
-  let tracks = backend_connected.list_tracks().map_err(|e| actix_web::error::ErrorInternalServerError(e))?;
-  Ok(HttpResponse::Ok().body(format!("{:#?}", tracks)))
+  let backend_connected: BackendConnected = backend.connect_to_database().map_internal_err()?;
+  let tracks = backend_connected.list_tracks().map_internal_err()?;
+  Ok(HttpResponse::Ok().json(tracks))
+}
+
+trait ResultExt<T> {
+  fn map_internal_err(self) -> actix_web::Result<T>;
+}
+
+impl<T, E: std::error::Error + 'static> ResultExt<T> for Result<T, E> {
+  fn map_internal_err(self) -> actix_web::Result<T> {
+    self.map_err(|e| actix_web::error::ErrorInternalServerError(e))
+  }
 }
