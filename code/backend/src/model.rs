@@ -293,6 +293,15 @@ impl Track {
   }
 }
 
+impl From<InternalUser> for User {
+  fn from(internal_user: InternalUser) -> Self {
+    User {
+      id: internal_user.id,
+      name: internal_user.name,
+    }
+  }
+}
+
 // Display implementations
 
 impl Display for Track {

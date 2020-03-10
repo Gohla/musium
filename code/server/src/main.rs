@@ -1,5 +1,6 @@
 use std::path::PathBuf;
 
+use actix_identity::{CookieIdentityPolicy, IdentityService};
 use actix_web::{App, HttpResponse, HttpServer, Responder, web};
 use anyhow::{Context, Result};
 use dotenv;
@@ -12,7 +13,11 @@ use tracing_subscriber::FmtSubscriber;
 
 use backend::{Backend, BackendConnected};
 
+use crate::auth::{login, logout, me};
+use crate::util::ResultExt;
+
 pub mod auth;
+pub mod util;
 
 #[derive(Debug, StructOpt)]
 #[structopt(name = "client", about = "Music Composer client")]
@@ -72,9 +77,17 @@ async fn serve(backend: Backend) -> std::io::Result<()> {
   let backend_data = web::Data::new(backend);
   HttpServer::new(move || {
     App::new()
+      .wrap(IdentityService::new(
+        CookieIdentityPolicy::new(&[0; 32]) // TODO: implement secret key.
+          .name("auth-cookie")
+          .secure(false)
+      ))
       .app_data(backend_data.clone())
       .route("/", web::get().to(index))
       .route("/tracks", web::get().to(tracks))
+      .route("/login", web::get().to(login))
+      .route("/logout", web::get().to(logout))
+      .route("/me", web::get().to(me))
   })
     .bind("127.0.0.1:8088")?
     .run()
@@ -89,14 +102,4 @@ async fn tracks(backend: web::Data<Backend>) -> actix_web::Result<impl Responder
   let backend_connected: BackendConnected = backend.connect_to_database().map_internal_err()?;
   let tracks = backend_connected.list_tracks().map_internal_err()?;
   Ok(HttpResponse::Ok().json(tracks))
-}
-
-trait ResultExt<T> {
-  fn map_internal_err(self) -> actix_web::Result<T>;
-}
-
-impl<T, E: std::error::Error + 'static> ResultExt<T> for Result<T, E> {
-  fn map_internal_err(self) -> actix_web::Result<T> {
-    self.map_err(|e| actix_web::error::ErrorInternalServerError(e))
-  }
 }

@@ -1999,6 +1999,7 @@ dependencies = [
  "metrics-observer-yaml",
  "metrics-runtime",
  "serde",
+ "serde_json",
  "structopt",
  "tracing",
  "tracing-subscriber",

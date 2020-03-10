@@ -284,15 +284,19 @@ impl BackendConnected<'_> {
     Ok(user.select((id, name)).load::<User>(&self.connection)?)
   }
 
-  pub fn verify_user<S: Into<String>, P: AsRef<[u8]>>(&self, input_name: S, password: P) -> Result<bool, UserAddVerifyError> {
-    let input_name = input_name.into();
+  pub fn verify_user<S: AsRef<str>, P: AsRef<[u8]>>(&self, input_name: S, password: P) -> Result<Option<User>, UserAddVerifyError> {
+    let input_name = input_name.as_ref();
     let user: InternalUser = {
       use schema::user::dsl::*;
       user
         .filter(name.eq(input_name))
         .first::<InternalUser>(&self.connection)?
     };
-    Ok(self.backend.password_hasher.verify(password, user.salt, user.hash)?)
+    if self.backend.password_hasher.verify(password, &user.salt, &user.hash)? {
+      Ok(Some(user.into()))
+    } else {
+      Ok(None)
+    }
   }
 
   pub fn add_user<S: Into<String>, P: AsRef<[u8]>>(&self, name: S, password: P) -> Result<User, UserAddVerifyError> {
