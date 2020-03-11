@@ -275,7 +275,7 @@ pub enum UserAddVerifyError {
   #[error("Failed to execute a database query")]
   DatabaseQueryFail(#[from] diesel::result::Error, Backtrace),
   #[error("Failed to hash password")]
-  PasswordHashFail(#[from] argon2::Error, Backtrace),
+  PasswordHashFail(#[from] password::HashError, Backtrace),
 }
 
 impl BackendConnected<'_> {

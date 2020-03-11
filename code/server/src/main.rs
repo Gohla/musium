@@ -1,7 +1,7 @@
 use std::path::PathBuf;
 
 use actix_identity::{CookieIdentityPolicy, IdentityService};
-use actix_web::{App, HttpResponse, HttpServer, Responder, web};
+use actix_web::{App, HttpResponse, HttpServer, middleware, Responder, web};
 use anyhow::{Context, Result};
 use dotenv;
 use metrics_core::{Builder, Drain, Observe};
@@ -15,6 +15,7 @@ use backend::{Backend, BackendConnected};
 
 use crate::auth::{login, logout, me};
 use crate::util::ResultExt;
+use tracing_log::LogTracer;
 
 pub mod auth;
 pub mod util;
@@ -25,7 +26,7 @@ struct Opt {
   /// Database file to use. Relative paths are resolved relative to the current directory
   #[structopt(short, long, env = "DATABASE_URL", parse(from_os_str))]
   database_file: PathBuf,
-  /// Password hasher secret key to use.
+  /// Password hasher secret key to use
   #[structopt(short, long, env = "PASSWORD_HASHER_SECRET_KEY")]
   password_hasher_secret_key: String,
   /// Minimum level at which tracing events will be printed to stderr
@@ -49,6 +50,9 @@ fn main() -> Result<()> {
     .finish();
   tracing::subscriber::set_global_default(subscriber)
     .with_context(|| "Failed to initialize global tracing subscriber")?;
+  // Setup log to forward to tracing.
+  LogTracer::init()
+    .with_context(|| "Failed to initialize log to tracing forwarder")?;
   // Setup metrics
   let metrics_receiver: Receiver = Receiver::builder().build()
     .with_context(|| "Failed to initialize metrics receiver")?;
@@ -77,6 +81,7 @@ async fn serve(backend: Backend) -> std::io::Result<()> {
   let backend_data = web::Data::new(backend);
   HttpServer::new(move || {
     App::new()
+      .wrap(middleware::Logger::default())
       .wrap(IdentityService::new(
         CookieIdentityPolicy::new(&[0; 32]) // TODO: implement secret key.
           .name("auth-cookie")
@@ -85,8 +90,8 @@ async fn serve(backend: Backend) -> std::io::Result<()> {
       .app_data(backend_data.clone())
       .route("/", web::get().to(index))
       .route("/tracks", web::get().to(tracks))
-      .route("/login", web::get().to(login))
-      .route("/logout", web::get().to(logout))
+      .route("/login", web::post().to(login))
+      .route("/logout", web::delete().to(logout))
       .route("/me", web::get().to(me))
   })
     .bind("127.0.0.1:8088")?

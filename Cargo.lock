@@ -1995,6 +1995,7 @@ dependencies = [
  "backend",
  "core",
  "dotenv",
+ "log",
  "metrics-core",
  "metrics-observer-yaml",
  "metrics-runtime",
@@ -2002,6 +2003,7 @@ dependencies = [
  "serde_json",
  "structopt",
  "tracing",
+ "tracing-log",
  "tracing-subscriber",
 ]
 
