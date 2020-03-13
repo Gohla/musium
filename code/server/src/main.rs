@@ -29,11 +29,15 @@ struct Opt {
   /// Password hasher secret key to use
   #[structopt(short, long, env = "PASSWORD_HASHER_SECRET_KEY")]
   password_hasher_secret_key: String,
+  /// Cookie identity secret key to use
+  #[structopt(short, long, env = "COOKIE_IDENTITY_SECRET_KEY")]
+  cookie_identity_secret_key: String,
   /// Minimum level at which tracing events will be printed to stderr
   #[structopt(short, long, default_value = "TRACE")]
   tracing_level: Level,
   /// Whether to print metrics to stderr before the program exits
   #[structopt(short, long)]
+
   metrics: bool,
 }
 
@@ -59,6 +63,7 @@ fn main() -> Result<()> {
   let controller: Controller = metrics_receiver.controller();
   let mut observer: YamlObserver = YamlBuilder::new().build();
   metrics_receiver.install();
+  let print_metrics = opt.metrics; // Copy value
   // Create backend
   let backend = Backend::new(
     opt.database_file.to_string_lossy(),
@@ -66,10 +71,10 @@ fn main() -> Result<()> {
     .with_context(|| "Failed to create backend")?;
   // Run HTTP server
   actix_rt::System::new("server")
-    .block_on(async move { serve(backend).await })
+    .block_on(async move { serve(opt, backend).await })
     .with_context(|| "HTTP server failed")?;
   // Print metrics
-  if opt.metrics {
+  if print_metrics {
     controller.observe(&mut observer);
     let output = observer.drain();
     trace!(metrics = %output);
@@ -77,14 +82,15 @@ fn main() -> Result<()> {
   Ok(())
 }
 
-async fn serve(backend: Backend) -> std::io::Result<()> {
+async fn serve(opt: Opt, backend: Backend) -> std::io::Result<()> {
   let backend_data = web::Data::new(backend);
+  let cookie_identity_secret_key = opt.cookie_identity_secret_key;
   HttpServer::new(move || {
     App::new()
       .wrap(middleware::Logger::default())
       .wrap(IdentityService::new(
-        CookieIdentityPolicy::new(&[0; 32]) // TODO: implement secret key.
-          .name("auth-cookie")
+        CookieIdentityPolicy::new(cookie_identity_secret_key.as_bytes())
+          .name("auth")
           .secure(false)
       ))
       .app_data(backend_data.clone())
@@ -108,3 +114,4 @@ async fn tracks(backend: web::Data<Backend>) -> actix_web::Result<impl Responder
   let tracks = backend_connected.list_tracks().map_internal_err()?;
   Ok(HttpResponse::Ok().json(tracks))
 }
+

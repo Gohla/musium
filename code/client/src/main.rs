@@ -21,6 +21,9 @@ struct Opt {
   /// Database file to use. Relative paths are resolved relative to the current directory
   #[structopt(short, long, env = "DATABASE_URL", parse(from_os_str))]
   database_file: PathBuf,
+  /// Password hasher secret key to use
+  #[structopt(short, long, env = "PASSWORD_HASHER_SECRET_KEY")]
+  password_hasher_secret_key: String,
   /// Minimum level at which tracing events will be printed to stderr
   #[structopt(short, long, default_value = "TRACE")]
   tracing_level: Level,
@@ -143,7 +146,7 @@ fn main() -> Result<()> {
 }
 
 fn run(opt: Opt) -> Result<()> {
-  let backend: Backend = Backend::new(opt.database_file.to_string_lossy(), vec![])
+  let backend: Backend = Backend::new(opt.database_file.to_string_lossy(), opt.password_hasher_secret_key.as_bytes())
     .with_context(|| "Failed to initialize backend")?;
   let backend_connected= backend.connect_to_database()
     .with_context(|| "Failed to connect to backend database")?;

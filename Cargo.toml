@@ -8,26 +8,32 @@ members = [
   "code/client"
 ]
 
-# Development (builtin & default) profile: debug assertions + fastest code generation.
+# Development/debugging profile:
 [profile.dev]
-opt-level = 2
+opt-level = 0
 overflow-checks = true
 debug-assertions = true
 panic = "abort"
-debug = false
+debug = true
 codegen-units = 8
 lto = false
 incremental = true
+
+# Fast development profile: no debug information, more optimisations.
+[profile.fastdev]
+inherits = 'dev'
+opt-level = 2
+debug = false
 # Fully optimize all dependencies, but not our own crates.
-[profile.dev.package."*"]
+[profile.fastdev.package."*"]
 opt-level = 3
-[profile.dev.package."core"]
+[profile.fastdev.package."core"]
 opt-level = 2
-[profile.dev.package."backend"]
+[profile.fastdev.package."backend"]
 opt-level = 2
-[profile.dev.package."server"]
+[profile.fastdev.package."server"]
 opt-level = 2
-[profile.dev.package."client"]
+[profile.fastdev.package."client"]
 opt-level = 2
 
 # Release (builtin) profile: fastest runtime.
@@ -37,8 +43,3 @@ overflow-checks = false
 debug-assertions = false
 lto = true
 debug = false
-
-# Debugging (custom) profile (cannot be called debug): dev + debugging symbols.
-[profile.dbg]
-inherits = 'dev'
-debug = true
