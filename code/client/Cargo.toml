@@ -11,7 +11,7 @@ backend = {path = "../backend"}
 rodio = "0.10"
 structopt = "0.3"
 dotenv = "0.15"
-anyhow = "1.0"
+anyhow = "1"
 metrics-core = "0.5"
 metrics-runtime = {version = "0.13", default-features = false}
 metrics-observer-yaml = "0.1"

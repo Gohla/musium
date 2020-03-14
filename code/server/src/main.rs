@@ -33,7 +33,7 @@ struct Opt {
   #[structopt(short, long, env = "COOKIE_IDENTITY_SECRET_KEY")]
   cookie_identity_secret_key: String,
   /// Minimum level at which tracing events will be printed to stderr
-  #[structopt(short, long, default_value = "TRACE")]
+  #[structopt(short, long, default_value = "DEBUG")]
   tracing_level: Level,
   /// Whether to print metrics to stderr before the program exits
   #[structopt(short, long)]

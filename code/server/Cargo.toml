@@ -8,14 +8,14 @@ publish = false
 [dependencies]
 core = {path = "../core"}
 backend = {path = "../backend"}
-actix-web = "2.0"
-actix-rt = "1.0"
+actix-web = "2"
+actix-rt = "1"
 actix-identity = "0.2"
-serde = { version = "1.0", features = ["derive"] }
-serde_json = "1.0"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
 structopt = "0.3"
 dotenv = "0.15"
-anyhow = "1.0"
+anyhow = "1"
 metrics-core = "0.5"
 metrics-runtime = {version = "0.13", default-features = false}
 metrics-observer-yaml = "0.1"

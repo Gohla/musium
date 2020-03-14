@@ -14,17 +14,16 @@ use diesel::prelude::*;
 use diesel::r2d2::{self, ConnectionManager, Pool, PooledConnection};
 use itertools::{Either, Itertools};
 use metrics::timing;
-use serde::{Deserialize, Serialize};
 use thiserror::Error;
 use tracing::{event, instrument, Level};
 
-use model::{ScanDirectory, Track};
+use core::model::*;
+use core::schema;
 
 use crate::model::*;
 use crate::password::PasswordHasher;
 use crate::scanner::{ScannedTrack, Scanner};
 
-pub mod schema;
 pub mod model;
 pub mod scanner;
 pub mod password;
@@ -147,34 +146,6 @@ impl BackendConnected<'_> {
 
 // Album database queries
 
-#[derive(Default, Clone, Debug, Serialize, Deserialize)]
-pub struct Albums {
-  pub albums: Vec<Album>,
-  pub artists: HashMap<i32, Artist>,
-  pub album_artists: HashMap<i32, Vec<i32>>,
-}
-
-impl Albums {
-  pub fn from(
-    albums: Vec<Album>,
-    artists: Vec<Artist>,
-    album_artists: Vec<AlbumArtist>,
-  ) -> Self {
-    let artists = artists.into_iter().map(|a| (a.id, a)).collect();
-    let album_artists = album_artists.into_iter().map(|aa| (aa.album_id, aa.artist_id)).into_group_map();
-    Self { albums, artists, album_artists }
-  }
-
-  pub fn iter(&self) -> impl Iterator<Item=(&Album, impl Iterator<Item=&Artist>)> + '_ {
-    let Albums { albums, artists, album_artists } = &self;
-    albums.into_iter().filter_map(move |album| {
-      let album_artists: &Vec<i32> = album_artists.get(&album.id)?;
-      let album_artists: Vec<&Artist> = album_artists.into_iter().filter_map(|aa| artists.get(aa)).collect();
-      return Some((album, album_artists.into_iter()));
-    })
-  }
-}
-
 impl BackendConnected<'_> {
   pub fn list_albums(&self) -> Result<Albums, DatabaseQueryError> {
     let albums = schema::album::table.load::<Album>(&self.connection)?;
@@ -185,47 +156,6 @@ impl BackendConnected<'_> {
 }
 
 // Track database queries
-
-#[derive(Default, Clone, Debug, Serialize, Deserialize)]
-pub struct Tracks {
-  pub tracks: Vec<Track>,
-  pub scan_directories: HashMap<i32, ScanDirectory>,
-  pub albums: HashMap<i32, Album>,
-  pub artists: HashMap<i32, Artist>,
-  pub track_artists: HashMap<i32, Vec<i32>>,
-  pub album_artists: HashMap<i32, Vec<i32>>,
-}
-
-impl Tracks {
-  pub fn from(
-    tracks: Vec<Track>,
-    scan_directories: Vec<ScanDirectory>,
-    albums: Vec<Album>,
-    artists: Vec<Artist>,
-    track_artists: Vec<TrackArtist>,
-    album_artists: Vec<AlbumArtist>,
-  ) -> Self {
-    let scan_directories = scan_directories.into_iter().map(|sd| (sd.id, sd)).collect();
-    let albums = albums.into_iter().map(|a| (a.id, a)).collect();
-    let artists = artists.into_iter().map(|a| (a.id, a)).collect();
-    let track_artists = track_artists.into_iter().map(|ta| (ta.track_id, ta.artist_id)).into_group_map();
-    let album_artists = album_artists.into_iter().map(|aa| (aa.album_id, aa.artist_id)).into_group_map();
-    Self { tracks, scan_directories, albums, artists, track_artists, album_artists }
-  }
-
-  pub fn iter(&self) -> impl Iterator<Item=(&ScanDirectory, &Track, impl Iterator<Item=&Artist>, &Album, impl Iterator<Item=&Artist>)> + '_ {
-    let Tracks { tracks, scan_directories, albums, artists, track_artists, album_artists } = &self;
-    tracks.into_iter().filter_map(move |track| {
-      let scan_directory = scan_directories.get(&track.scan_directory_id)?;
-      let track_artists: &Vec<i32> = track_artists.get(&track.id)?;
-      let track_artists: Vec<&Artist> = track_artists.into_iter().filter_map(|ta| artists.get(ta)).collect();
-      let album = albums.get(&track.album_id)?;
-      let album_artists: &Vec<i32> = album_artists.get(&album.id)?;
-      let album_artists: Vec<&Artist> = album_artists.into_iter().filter_map(|aa| artists.get(aa)).collect();
-      return Some((scan_directory, track, track_artists.into_iter(), album, album_artists.into_iter()));
-    })
-  }
-}
 
 impl BackendConnected<'_> {
   pub fn list_tracks(&self) -> Result<Tracks, DatabaseQueryError> {

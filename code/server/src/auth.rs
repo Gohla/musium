@@ -8,22 +8,13 @@ use actix_web::error::BlockingError;
 use serde::{Deserialize, Serialize};
 
 use backend::{Backend, BackendConnected};
-use backend::model::User;
+use core::model::{User, UserLogin};
 
 use crate::util::ResultExt;
 
-#[derive(Debug, Deserialize)]
-pub struct LoginData {
-  pub name: String,
-  pub password: String,
-}
+// Handlers
 
-#[derive(Debug, Serialize, Deserialize)]
-pub struct LoggedInUser {
-  pub user: User,
-}
-
-pub async fn login(login_data: web::Json<LoginData>, identity: Identity, backend: web::Data<Backend>) -> actix_web::Result<HttpResponse> {
+pub async fn login(login_data: web::Json<UserLogin>, identity: Identity, backend: web::Data<Backend>) -> actix_web::Result<HttpResponse> {
   let user: Result<Option<User>, BlockingError<anyhow::Error>> = web::block(move || {
     let backend_connected: BackendConnected = backend.connect_to_database()?;
     Ok(backend_connected.verify_user(&login_data.name, &login_data.password)?)
@@ -46,6 +37,13 @@ pub async fn logout(identity: Identity) -> HttpResponse {
 
 pub async fn me(logged_in_user: LoggedInUser) -> HttpResponse {
   HttpResponse::Ok().json(logged_in_user)
+}
+
+// Logged-in user wrapper, required for FromRequest implementation.
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct LoggedInUser {
+  pub user: User,
 }
 
 impl FromRequest for LoggedInUser {

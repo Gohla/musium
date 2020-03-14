@@ -8,7 +8,7 @@ members = [
   "code/client"
 ]
 
-# Development/debugging profile:
+# Development profile: full debug information, no optimisations.
 [profile.dev]
 opt-level = 0
 overflow-checks = true
@@ -24,7 +24,7 @@ incremental = true
 inherits = 'dev'
 opt-level = 2
 debug = false
-# Fully optimize all dependencies, but not our own crates.
+# Fully optimize all dependencies, but not our own crates, to speed up compilation.
 [profile.fastdev.package."*"]
 opt-level = 3
 [profile.fastdev.package."core"]
@@ -36,7 +36,7 @@ opt-level = 2
 [profile.fastdev.package."client"]
 opt-level = 2
 
-# Release (builtin) profile: fastest runtime.
+# Release profile: full optimisations, including link-time optimisations.
 [profile.release]
 opt-level = 3
 overflow-checks = false

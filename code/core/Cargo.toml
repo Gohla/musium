@@ -6,3 +6,6 @@ edition = "2018"
 publish = false
 
 [dependencies]
+diesel = { version = "1" }
+serde = { version = "1", features = ["derive"] }
+itertools = "0.8"
