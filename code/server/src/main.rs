@@ -1,44 +1,47 @@
 use std::path::PathBuf;
 
-use actix_identity::{CookieIdentityPolicy, IdentityService};
-use actix_web::{App, HttpResponse, HttpServer, middleware, Responder, web};
 use anyhow::{Context, Result};
 use dotenv;
 use metrics_core::{Builder, Drain, Observe};
 use metrics_observer_yaml::{YamlBuilder, YamlObserver};
 use metrics_runtime::{Controller, Receiver};
 use structopt::StructOpt;
-use tracing::{Level, trace};
+use tracing::info;
+use tracing_log::LogTracer;
 use tracing_subscriber::FmtSubscriber;
 
-use backend::{Backend, BackendConnected};
+use backend::Backend;
 
-use crate::auth::{login, logout, me};
-use crate::util::ResultExt;
-use tracing_log::LogTracer;
+use crate::serve::serve;
 
+pub mod serve;
 pub mod auth;
+pub mod api;
 pub mod util;
 
 #[derive(Debug, StructOpt)]
-#[structopt(name = "client", about = "Music Composer client")]
+#[structopt(name = "server", about = "Music Composer server")]
 struct Opt {
   /// Database file to use. Relative paths are resolved relative to the current directory
-  #[structopt(short, long, env = "DATABASE_URL", parse(from_os_str))]
+  #[structopt(long, env = "DATABASE_URL", parse(from_os_str))]
   database_file: PathBuf,
+
+  /// Address (IP:port) to bind the HTTP server to
+  #[structopt(long, env = "BIND_ADDRESS", default_value = "127.0.0.1:8088")]
+  bind_address: String,
   /// Password hasher secret key to use
-  #[structopt(short, long, env = "PASSWORD_HASHER_SECRET_KEY")]
+  #[structopt(long, env = "PASSWORD_HASHER_SECRET_KEY")]
   password_hasher_secret_key: String,
   /// Cookie identity secret key to use
-  #[structopt(short, long, env = "COOKIE_IDENTITY_SECRET_KEY")]
+  #[structopt(long, env = "COOKIE_IDENTITY_SECRET_KEY")]
   cookie_identity_secret_key: String,
-  /// Minimum level at which tracing events will be printed to stderr
-  #[structopt(short, long, default_value = "DEBUG")]
-  tracing_level: Level,
-  /// Whether to print metrics to stderr before the program exits
-  #[structopt(short, long)]
 
-  metrics: bool,
+  /// Minimum level at which tracing events will be printed to stderr
+  #[structopt(long, env = "TRACING_LEVEL", default_value = "WARN")]
+  tracing_level: tracing::Level,
+  /// Whether to print metrics to stderr before the program exits
+  #[structopt(long, env = "PRINT_METRICS")]
+  print_metrics: bool,
 }
 
 fn main() -> Result<()> {
@@ -63,55 +66,22 @@ fn main() -> Result<()> {
   let controller: Controller = metrics_receiver.controller();
   let mut observer: YamlObserver = YamlBuilder::new().build();
   metrics_receiver.install();
-  let print_metrics = opt.metrics; // Copy value
   // Create backend
   let backend = Backend::new(
     opt.database_file.to_string_lossy(),
     opt.password_hasher_secret_key.as_bytes())
     .with_context(|| "Failed to create backend")?;
   // Run HTTP server
+  let bind_address = opt.bind_address.clone();
+  let cookie_identity_secret_key = opt.cookie_identity_secret_key.clone();
   actix_rt::System::new("server")
-    .block_on(async move { serve(opt, backend).await })
+    .block_on(async move { serve(backend, bind_address, cookie_identity_secret_key).await })
     .with_context(|| "HTTP server failed")?;
   // Print metrics
-  if print_metrics {
+  if opt.print_metrics {
     controller.observe(&mut observer);
     let output = observer.drain();
-    trace!(metrics = %output);
+    info!(metrics = %output);
   }
   Ok(())
 }
-
-async fn serve(opt: Opt, backend: Backend) -> std::io::Result<()> {
-  let backend_data = web::Data::new(backend);
-  let cookie_identity_secret_key = opt.cookie_identity_secret_key;
-  HttpServer::new(move || {
-    App::new()
-      .wrap(middleware::Logger::default())
-      .wrap(IdentityService::new(
-        CookieIdentityPolicy::new(cookie_identity_secret_key.as_bytes())
-          .name("auth")
-          .secure(false)
-      ))
-      .app_data(backend_data.clone())
-      .route("/", web::get().to(index))
-      .route("/tracks", web::get().to(tracks))
-      .route("/login", web::post().to(login))
-      .route("/logout", web::delete().to(logout))
-      .route("/me", web::get().to(me))
-  })
-    .bind("127.0.0.1:8088")?
-    .run()
-    .await
-}
-
-async fn index() -> impl Responder {
-  HttpResponse::Ok().body("Hello world!")
-}
-
-async fn tracks(backend: web::Data<Backend>) -> actix_web::Result<impl Responder> {
-  let backend_connected: BackendConnected = backend.connect_to_database().map_internal_err()?;
-  let tracks = backend_connected.list_tracks().map_internal_err()?;
-  Ok(HttpResponse::Ok().json(tracks))
-}
-

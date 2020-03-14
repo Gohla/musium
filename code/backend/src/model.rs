@@ -103,3 +103,11 @@ impl Into<User> for InternalUser {
     }
   }
 }
+
+#[derive(Debug, Insertable)]
+#[table_name = "user"]
+pub struct InternalNewUser {
+  pub name: String,
+  pub hash: Vec<u8>,
+  pub salt: Vec<u8>,
+}

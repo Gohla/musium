@@ -1993,6 +1993,7 @@ dependencies = [
  "serde",
  "serde_json",
  "structopt",
+ "thiserror",
  "tracing",
  "tracing-log",
  "tracing-subscriber",

@@ -35,10 +35,6 @@ pub async fn logout(identity: Identity) -> HttpResponse {
   HttpResponse::Ok().finish()
 }
 
-pub async fn me(logged_in_user: LoggedInUser) -> HttpResponse {
-  HttpResponse::Ok().json(logged_in_user)
-}
-
 // Logged-in user wrapper, required for FromRequest implementation.
 
 #[derive(Debug, Serialize, Deserialize)]

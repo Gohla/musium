@@ -24,7 +24,7 @@ impl ScanDirectory {
   }
 }
 
-#[derive(Debug, Insertable)]
+#[derive(Clone, Debug, Insertable, Serialize, Deserialize)]
 #[table_name = "scan_directory"]
 pub struct NewScanDirectory {
   pub directory: String,
@@ -144,14 +144,6 @@ pub struct User {
   pub name: String,
 }
 
-#[derive(Debug, Insertable)]
-#[table_name = "user"]
-pub struct NewUser {
-  pub name: String,
-  pub hash: Vec<u8>,
-  pub salt: Vec<u8>,
-}
-
 #[derive(Clone, PartialOrd, Ord, PartialEq, Eq, Hash, Debug, Serialize, Deserialize)]
 pub struct UserLogin {
   pub name: String,
@@ -172,7 +164,7 @@ pub struct UserAlbumRating {
   pub rating: i32,
 }
 
-#[derive(Debug, Insertable)]
+#[derive(Debug, Insertable, Serialize, Deserialize)]
 #[table_name = "user_album_rating"]
 pub struct NewUserAlbumRating {
   pub user_id: i32,
@@ -194,7 +186,7 @@ pub struct UserTrackRating {
   pub rating: i32,
 }
 
-#[derive(Debug, Insertable)]
+#[derive(Debug, Insertable, Serialize, Deserialize)]
 #[table_name = "user_track_rating"]
 pub struct NewUserTrackRating {
   pub user_id: i32,
@@ -216,7 +208,7 @@ pub struct UserArtistRating {
   pub rating: i32,
 }
 
-#[derive(Debug, Insertable)]
+#[derive(Debug, Insertable, Serialize, Deserialize)]
 #[table_name = "user_artist_rating"]
 pub struct NewUserArtistRating {
   pub user_id: i32,

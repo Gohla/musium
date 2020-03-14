@@ -4,10 +4,8 @@
 extern crate diesel;
 
 use std::backtrace::Backtrace;
-use std::borrow::Borrow;
 use std::collections::{HashMap, HashSet};
 use std::fmt::{Debug, Formatter};
-use std::path::PathBuf;
 use std::time::Instant;
 
 use diesel::prelude::*;
@@ -101,17 +99,21 @@ impl BackendConnected<'_> {
     Ok(scan_directory.load::<ScanDirectory>(&self.connection)?)
   }
 
-  pub fn add_scan_directory<P: Borrow<PathBuf>>(&self, input_directory: P) -> Result<ScanDirectory, DatabaseQueryError> {
-    let input_directory = input_directory.borrow().to_string_lossy().to_string();
+  pub fn get_scan_directory(&self, input_id: i32) -> Result<Option<ScanDirectory>, DatabaseQueryError> {
+    use schema::scan_directory::dsl::*;
+    Ok(scan_directory.find(input_id).first::<ScanDirectory>(&self.connection).optional()?)
+  }
+
+  pub fn create_scan_directory(&self, new_scan_directory: NewScanDirectory) -> Result<ScanDirectory, DatabaseQueryError> {
     let select_query = {
       use schema::scan_directory::dsl::*;
       scan_directory
-        .filter(directory.eq(&input_directory))
+        .filter(directory.eq(&new_scan_directory.directory))
     };
     let scan_directory = time!("add_scan_directory.select", select_query.first::<ScanDirectory>(&self.connection).optional()?);
     Ok(if let Some(mut scan_directory) = scan_directory {
       // Enable existing scan directory.
-      scan_directory.enabled = true;
+      scan_directory.enabled = new_scan_directory.enabled;
       time!("add_scan_directory.update", scan_directory.save_changes::<ScanDirectory>(&*self.connection)?);
       scan_directory
     } else {
@@ -119,23 +121,38 @@ impl BackendConnected<'_> {
       let insert_query = {
         use schema::scan_directory::dsl::*;
         diesel::insert_into(scan_directory)
-          .values(NewScanDirectory { directory: input_directory.clone(), enabled: true })
+          .values(&new_scan_directory)
       };
       time!("add_scan_directory.insert", insert_query.execute(&self.connection)?);
       time!("add_scan_directory.select_inserted", select_query.first::<ScanDirectory>(&self.connection)?)
     })
   }
 
-  pub fn remove_scan_directory<P: Borrow<PathBuf>>(&self, input_directory: P) -> Result<bool, DatabaseQueryError> {
-    let input_directory = input_directory.borrow().to_string_lossy().to_string();
+  pub fn delete_scan_directory_by_directory<P: AsRef<str>>(&self, input_directory: P) -> Result<bool, DatabaseQueryError> {
+    let input_directory = input_directory.as_ref();
     let select_query = {
       use schema::scan_directory::dsl::*;
       scan_directory
-        .filter(directory.eq(&input_directory))
+        .filter(directory.eq(input_directory))
     };
     let scan_directory = time!("remove_scan_directory.select", select_query.first::<ScanDirectory>(&self.connection).optional()?);
     if let Some(mut scan_directory) = scan_directory {
-      scan_directory.enabled = true;
+      scan_directory.enabled = false;
+      time!("remove_scan_directory.update", scan_directory.save_changes::<ScanDirectory>(&*self.connection)?);
+      Ok(true)
+    } else {
+      Ok(false)
+    }
+  }
+
+  pub fn delete_scan_directory_by_id(&self, input_id: i32) -> Result<bool, DatabaseQueryError> {
+    let select_query = {
+      use schema::scan_directory::dsl::*;
+      scan_directory.find(input_id)
+    };
+    let scan_directory = time!("remove_scan_directory.select", select_query.first::<ScanDirectory>(&self.connection).optional()?);
+    if let Some(mut scan_directory) = scan_directory {
+      scan_directory.enabled = false;
       time!("remove_scan_directory.update", scan_directory.save_changes::<ScanDirectory>(&*self.connection)?);
       Ok(true)
     } else {
@@ -234,7 +251,7 @@ impl BackendConnected<'_> {
     let name = name.into();
     let salt = self.backend.password_hasher.generate_salt();
     let hash = self.backend.password_hasher.hash(password, &salt)?;
-    let new_user = NewUser {
+    let new_user = InternalNewUser {
       name: name.clone(),
       hash,
       salt,
