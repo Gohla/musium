@@ -150,6 +150,12 @@ pub struct UserLogin {
   pub password: String,
 }
 
+#[derive(Clone, PartialOrd, Ord, PartialEq, Eq, Hash, Debug, Serialize, Deserialize)]
+pub struct NewUser {
+  pub name: String,
+  pub password: String,
+}
+
 // User-album rating
 
 #[derive(Clone, PartialOrd, Ord, PartialEq, Eq, Hash, Debug, Identifiable, Queryable, Associations, AsChangeset, Serialize, Deserialize)]

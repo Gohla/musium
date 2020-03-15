@@ -26,14 +26,21 @@ pub enum LoginError {
   SerializeIdentityFail(#[from] serde_json::Error),
 }
 
-impl ResponseError for LoginError {}
+impl ResponseError for LoginError {
+  fn status_code(&self) -> StatusCode {
+    match self {
+      LoginError::UserVerifyFail(_) => StatusCode::UNAUTHORIZED,
+      _ => StatusCode::INTERNAL_SERVER_ERROR
+    }
+  }
+}
 
-pub async fn login(login_data: web::Json<UserLogin>, identity: Identity, backend: web::Data<Backend>) -> Result<HttpResponse, LoginError> {
+pub async fn login(user_login: web::Json<UserLogin>, identity: Identity, backend: web::Data<Backend>) -> Result<HttpResponse, LoginError> {
   use LoginError::*;
 
   let user: Result<Option<User>, BlockingError<LoginError>> = web::block(move || {
     let backend_connected: BackendConnected = backend.connect_to_database()?;
-    Ok(backend_connected.verify_user(&login_data.name, &login_data.password)?)
+    Ok(backend_connected.verify_user(&*user_login)?)
   }).await;
 
   match user {

@@ -99,7 +99,7 @@ impl BackendConnected<'_> {
     Ok(scan_directory.load::<ScanDirectory>(&self.connection)?)
   }
 
-  pub fn get_scan_directory(&self, input_id: i32) -> Result<Option<ScanDirectory>, DatabaseQueryError> {
+  pub fn get_scan_directory_by_id(&self, input_id: i32) -> Result<Option<ScanDirectory>, DatabaseQueryError> {
     use schema::scan_directory::dsl::*;
     Ok(scan_directory.find(input_id).first::<ScanDirectory>(&self.connection).optional()?)
   }
@@ -170,6 +170,11 @@ impl BackendConnected<'_> {
     let album_artists = schema::album_artist::table.load::<AlbumArtist>(&self.connection)?;
     Ok(Albums::from(albums, artists, album_artists))
   }
+
+  pub fn get_album_by_id(&self, input_id: i32) -> Result<Option<Album>, DatabaseQueryError> {
+    use schema::album::dsl::*;
+    Ok(album.find(input_id).first::<Album>(&self.connection).optional()?)
+  }
 }
 
 // Track database queries
@@ -195,14 +200,9 @@ impl BackendConnected<'_> {
     Ok(Tracks::from(tracks, scan_directories, albums, artists, track_artists, album_artists))
   }
 
-  pub fn get_track_by_id(&self, id: i32) -> Result<Option<(ScanDirectory, Track)>, DatabaseQueryError> {
-    use schema::{track, scan_directory};
-    if let Some(track) = track::dsl::track.find(id).first::<Track>(&self.connection).optional()? {
-      let scan_directory = scan_directory::dsl::scan_directory.filter(scan_directory::dsl::id.eq(track.scan_directory_id)).first::<ScanDirectory>(&self.connection)?;
-      Ok(Some((scan_directory, track)))
-    } else {
-      Ok(None)
-    }
+  pub fn get_track_by_id(&self, input_id: i32) -> Result<Option<Track>, DatabaseQueryError> {
+    use schema::track::dsl::*;
+    Ok(track.find(input_id).first::<Track>(&self.connection).optional()?)
   }
 }
 
@@ -212,6 +212,11 @@ impl BackendConnected<'_> {
   pub fn list_artists(&self) -> Result<Vec<Artist>, DatabaseQueryError> {
     use schema::artist::dsl::*;
     Ok(artist.load::<Artist>(&self.connection)?)
+  }
+
+  pub fn get_artist_by_id(&self, input_id: i32) -> Result<Option<Artist>, DatabaseQueryError> {
+    use schema::artist::dsl::*;
+    Ok(artist.find(input_id).first::<Artist>(&self.connection).optional()?)
   }
 }
 
@@ -231,44 +236,59 @@ impl BackendConnected<'_> {
     Ok(user.select((id, name)).load::<User>(&self.connection)?)
   }
 
-  pub fn verify_user<S: AsRef<str>, P: AsRef<[u8]>>(&self, input_name: S, password: P) -> Result<Option<User>, UserAddVerifyError> {
-    let input_name = input_name.as_ref();
-    let user: InternalUser = {
+  pub fn get_user_by_id(&self, input_id: i32) -> Result<Option<User>, DatabaseQueryError> {
+    use schema::user::dsl::*;
+    Ok(user.select((id, name)).find(input_id).first::<User>(&self.connection).optional()?)
+  }
+
+  pub fn verify_user(&self, user_login: &UserLogin) -> Result<Option<User>, UserAddVerifyError> {
+    let user: Option<InternalUser> = {
       use schema::user::dsl::*;
       user
-        .filter(name.eq(input_name))
-        .first::<InternalUser>(&self.connection)?
+        .filter(name.eq(&user_login.name))
+        .first::<InternalUser>(&self.connection)
+        .optional()?
     };
-    if self.backend.password_hasher.verify(password, &user.salt, &user.hash)? {
-      Ok(Some(user.into()))
+    if let Some(user) = user {
+      if self.backend.password_hasher.verify(&user_login.password, &user.salt, &user.hash)? {
+        Ok(Some(user.into()))
+      } else {
+        Ok(None)
+      }
     } else {
       Ok(None)
     }
   }
 
-  pub fn add_user<S: Into<String>, P: AsRef<[u8]>>(&self, name: S, password: P) -> Result<User, UserAddVerifyError> {
+  pub fn create_user(&self, new_user: NewUser) -> Result<User, UserAddVerifyError> {
     use schema::user;
-    let name = name.into();
     let salt = self.backend.password_hasher.generate_salt();
-    let hash = self.backend.password_hasher.hash(password, &salt)?;
-    let new_user = InternalNewUser {
-      name: name.clone(),
+    let hash = self.backend.password_hasher.hash(new_user.password, &salt)?;
+    let internal_new_user = InternalNewUser {
+      name: new_user.name.clone(),
       hash,
       salt,
     };
-    time!("add_user.insert", diesel::insert_into(user::table)
-      .values(new_user)
+    time!("create_user.insert", diesel::insert_into(user::table)
+      .values(internal_new_user)
       .execute(&self.connection)?);
     let select_query = user::table
       .select((user::id, user::name))
-      .filter(user::name.eq(&name));
-    Ok(time!("add_user.select", select_query.first::<User>(&self.connection)?))
+      .filter(user::name.eq(&new_user.name));
+    Ok(time!("create_user.select", select_query.first::<User>(&self.connection)?))
   }
 
-  pub fn remove_user<S: AsRef<str>>(&self, name: S) -> Result<bool, DatabaseQueryError> {
+  pub fn delete_user_by_name<S: AsRef<str>>(&self, name: S) -> Result<bool, DatabaseQueryError> {
     use schema::user;
     let name = name.as_ref();
-    let result = time!("remove_user.delete", diesel::delete(user::table.filter(user::name.like(name)))
+    let result = time!("delete_user_by_name.delete", diesel::delete(user::table.filter(user::name.eq(name)))
+      .execute(&self.connection)?);
+    Ok(result == 1)
+  }
+
+  pub fn delete_user_by_id(&self, input_id: i32) -> Result<bool, DatabaseQueryError> {
+    use schema::user;
+    let result = time!("delete_user_by_id.delete", diesel::delete(user::table.filter(user::id.eq(input_id)))
       .execute(&self.connection)?);
     Ok(result == 1)
   }

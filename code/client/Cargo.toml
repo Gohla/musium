@@ -7,7 +7,7 @@ publish = false
 
 [dependencies]
 core = {path = "../core"}
-backend = {path = "../backend"}
+reqwest = { version = "0.10", features = ["blocking", "cookies", "json", "gzip"] }
 rodio = "0.10"
 structopt = "0.3"
 dotenv = "0.15"
