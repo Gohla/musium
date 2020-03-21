@@ -1,7 +1,8 @@
 use actix_web::{HttpResponse, ResponseError, web};
+use actix_web::error::BlockingError;
 use thiserror::Error;
 
-use backend::{Backend, BackendConnectError, DatabaseQueryError, UserAddVerifyError};
+use backend::{Backend, BackendConnectError, DatabaseQueryError, ScanError, UserAddVerifyError};
 use core::model::{NewScanDirectory, NewUser};
 
 use crate::auth::LoggedInUser;
@@ -143,6 +144,12 @@ pub async fn show_user_by_id(
   })
 }
 
+pub async fn show_my_user(
+  logged_in_user: LoggedInUser,
+) -> HttpResponse {
+  HttpResponse::Ok().json(logged_in_user)
+}
+
 pub async fn create_user(
   new_user: web::Json<NewUser>,
   backend: web::Data<Backend>,
@@ -177,6 +184,59 @@ pub async fn delete_user_by_id(
   })
 }
 
+// User data
+
+pub async fn set_user_album_rating(
+  logged_in_user: LoggedInUser,
+  id: web::Path<i32>,
+  rating: web::Path<i32>,
+  backend: web::Data<Backend>,
+) -> Result<HttpResponse, ApiError> {
+  let rating = backend.connect_to_database()?.set_user_album_rating(logged_in_user.user.id, *id, *rating)?;
+  Ok(HttpResponse::Ok().json(rating))
+}
+
+pub async fn set_user_track_rating(
+  logged_in_user: LoggedInUser,
+  id: web::Path<i32>,
+  rating: web::Path<i32>,
+  backend: web::Data<Backend>,
+) -> Result<HttpResponse, ApiError> {
+  let rating = backend.connect_to_database()?.set_user_track_rating(logged_in_user.user.id, *id, *rating)?;
+  Ok(HttpResponse::Ok().json(rating))
+}
+
+pub async fn set_user_artist_rating(
+  logged_in_user: LoggedInUser,
+  id: web::Path<i32>,
+  rating: web::Path<i32>,
+  backend: web::Data<Backend>,
+) -> Result<HttpResponse, ApiError> {
+  let rating = backend.connect_to_database()?.set_user_artist_rating(logged_in_user.user.id, *id, *rating)?;
+  Ok(HttpResponse::Ok().json(rating))
+}
+
+// Scanning
+
+pub async fn scan(
+  backend: web::Data<Backend>,
+  _logged_in_user: LoggedInUser,
+) -> Result<HttpResponse, ApiError> {
+  use ApiError::*;
+  let result = web::block::<_, _, ApiError>(move || {
+    Ok(backend.connect_to_database()?.scan()?)
+  }).await;
+  match result {
+    Err(BlockingError::Error(e)) => {
+      Err(e)
+    }
+    Err(BlockingError::Canceled) => {
+      Err(ThreadPoolGoneFail)
+    }
+    _ => Ok(HttpResponse::Accepted().finish())
+  }
+}
+
 // Error type
 
 #[derive(Debug, Error)]
@@ -187,6 +247,10 @@ pub enum ApiError {
   DatabaseQueryFail(#[from] DatabaseQueryError),
   #[error(transparent)]
   UserAddFail(#[from] UserAddVerifyError),
+  #[error(transparent)]
+  ScanFail(#[from] ScanError),
+  #[error("Thread pool is gone")]
+  ThreadPoolGoneFail,
 }
 
 impl ResponseError for ApiError {}

@@ -1,19 +1,20 @@
-use std::fs::File;
 use std::io;
-use std::path::PathBuf;
 
 use anyhow::{Context, Result};
 use dotenv;
 use metrics_core::{Builder, Drain, Observe};
 use metrics_observer_yaml::{YamlBuilder, YamlObserver};
 use metrics_runtime::{Controller, Receiver};
-use reqwest::blocking::{Client, Response};
 use reqwest::Url;
 use structopt::StructOpt;
 use tracing::{Level, trace};
 use tracing_subscriber::FmtSubscriber;
 
-use core::model::{ScanDirectory, Tracks, UserLogin};
+use core::model::{*};
+
+use crate::client::Client;
+
+pub mod client;
 
 #[derive(Debug, StructOpt)]
 #[structopt(name = "client", about = "Music Composer client")]
@@ -41,59 +42,86 @@ struct Opt {
 
 #[derive(Debug, StructOpt)]
 enum Command {
-  /// Lists all scan directories in the database
+  /// Lists all scan directories
   ListScanDirectories,
-  /// Add a scan directory to the database
-  AddScanDirectory {
-    /// Scan directory to add
-    #[structopt(parse(from_os_str))]
-    directory: PathBuf,
+  /// Shows a scan directory, found by id
+  ShowScanDirectoryById {
+    /// Id of the scan directory to show
+    id: i32,
   },
-  /// Removes a scan directory from the database
-  RemoveScanDirectory {
-    /// Scan directory to remove
-    #[structopt(parse(from_os_str))]
-    directory: PathBuf,
+  /// Creates a (or re-enables a removed) scan directory
+  CreateScanDirectory {
+    /// Directory of the scan directory to create
+    directory: String,
+  },
+  /// Deletes a scan directory, found by directory
+  DeleteScanDirectoryByDirectory {
+    /// Directory of scan directory to remove
+    directory: String,
+  },
+  /// Deletes a scan directory, found by id
+  DeleteScanDirectoryById {
+    /// Id of the scan directory to remove
+    id: i32,
   },
 
-  /// Lists all albums in the database
+  /// Lists all albums
   ListAlbums,
+  /// Shows an album, found by id
+  ShowAlbumById {
+    id: i32,
+  },
 
-  /// Lists all tracks in the database
+  /// Lists all tracks
   ListTracks,
+  /// Shows a track, found by id
+  ShowTrackById {
+    id: i32,
+  },
   /// Plays a track
   PlayTrack {
     /// ID of the track to play
-    track_id: i32,
+    id: i32,
+    /// Volume to play the track at, with 1.0 being full volume, and 0.0 being no volume
     #[structopt(short, long, default_value = "0.2")]
     volume: f32,
   },
 
-  /// Lists all artists in the database
+  /// Lists all artists
   ListArtists,
+  /// Shows an artist, found by id
+  ShowArtistById {
+    id: i32,
+  },
 
-  /// Scan for music files in all scan directories, and add their tracks to the database
-  Scan,
-
-  /// Lists all users in the database
+  /// Lists all users
   ListUsers,
-  /// Add a user to the database
-  AddUser {
+  /// Shows your (logged-in) user
+  ShowMyUser,
+  /// Shows a user, found by id
+  ShowUserById {
+    id: i32,
+  },
+  /// Creates a new user
+  CreateUser {
     /// Name of the user to add
     name: String,
     /// Password of the user to add
     password: String,
   },
-  /// Removes a user from the database
-  RemoveUser {
-    /// Name of the user to remove
+  /// Deletes a user, found by name
+  DeleteUserByName {
+    /// Name of the user to delete
     name: String,
+  },
+  /// Deletes a user, found by id
+  DeleteUserById {
+    /// Id of the user to delete
+    id: i32,
   },
 
   /// Sets the user-rating for an album
   SetUserAlbumRating {
-    /// ID of the user to set the rating for
-    user_id: i32,
     /// ID of the album to set the rating for
     album_id: i32,
     /// The rating to set
@@ -101,8 +129,6 @@ enum Command {
   },
   /// Sets the user-rating for an track
   SetUserTrackRating {
-    /// ID of the user to set the rating for
-    user_id: i32,
     /// ID of the track to set the rating for
     track_id: i32,
     /// The rating to set
@@ -110,13 +136,14 @@ enum Command {
   },
   /// Sets the user-rating for an artist
   SetUserArtistRating {
-    /// ID of the user to set the rating for
-    user_id: i32,
     /// ID of the artist to set the rating for
     artist_id: i32,
     /// The rating to set
     rating: i32,
   },
+
+  /// Initiate a scan in all scan directories to add/remove/update tracks
+  Scan,
 }
 
 fn main() -> Result<()> {
@@ -138,8 +165,13 @@ fn main() -> Result<()> {
   let controller: Controller = metrics_receiver.controller();
   let mut observer: YamlObserver = YamlBuilder::new().build();
   metrics_receiver.install();
+  // Create client
+  let client: Client = Client::new(opt.url_base)
+    .with_context(|| "Failed to create client")?;
+  client.login(&UserLogin { name: opt.name, password: opt.password })
+    .with_context(|| "Failed to login to server")?;
   // Run the application
-  let result = run(opt.command, &opt.url_base, &opt.name, &opt.password);
+  let result = run(opt.command, &client);
   // Print metrics
   if opt.print_metrics {
     controller.observe(&mut observer);
@@ -150,81 +182,61 @@ fn main() -> Result<()> {
   Ok(result?)
 }
 
-fn run(command: Command, base_url: &Url, name: &str, password: &str) -> Result<()> {
-  let client: Client = Client::builder()
-    .cookie_store(true)
-    .build()
-    .with_context(|| "Failed to create HTTP client")?;
-
-  {
-    let url = base_url
-      .join("login")
-      .with_context(|| "Failed to join login URL")?;
-    client.post(url)
-      .json(&UserLogin { name: name.to_string(), password: password.to_string() })
-      .send()
-      .with_context(|| "Failed to request login")?
-      .error_for_status()
-      .with_context(|| "Failed to login")?;
-  }
+fn run(command: Command, client: &Client) -> Result<()> {
   match command {
     Command::ListScanDirectories => {
-      let url = base_url
-        .join("scan_directory")
-        .with_context(|| "Failed to join scan directory URL")?;
-      let scan_directories = client.get(url)
-        .send()
-        .with_context(|| "Failed to request list of scan directories")?
-        .json::<Vec<ScanDirectory>>()
-        .with_context(|| "Failed to deserialize scan directories")?;
-      for scan_directory in scan_directories {
+      for scan_directory in client.list_scan_directories()? {
         println!("{:?}", scan_directory);
       }
     }
-    Command::AddScanDirectory { directory } => {
-      // backend_connected.add_scan_directory(&directory).with_context(|| "Failed to add scan directory")?;
-      // eprintln!("Added scan directory '{}'", directory.display());
+    Command::ShowScanDirectoryById { id } => {
+      let scan_directory = client.get_scan_directory_by_id(id)?;
+      println!("{:?}", scan_directory);
     }
-    Command::RemoveScanDirectory { directory } => {
-      // let removed = backend_connected.remove_scan_directory(&directory).with_context(|| "Failed to remove scan directory")?;
-      // if removed {
-      //   eprintln!("Removed scan directory '{}'", directory.display());
-      // } else {
-      //   eprintln!("Could not remove scan directory '{}', it was not found", directory.display());
-      // }
+    Command::CreateScanDirectory { directory } => {
+      let scan_directory = client.create_scan_directory(&NewScanDirectory { directory, enabled: true })?;
+      println!("{:?}", scan_directory);
+    }
+    Command::DeleteScanDirectoryByDirectory { directory } => {
+      client.delete_scan_directory_by_directory(&directory)?;
+    }
+    Command::DeleteScanDirectoryById { id } => {
+      client.delete_scan_directory_by_id(id)?;
     }
 
     Command::ListAlbums => {
-      // for (album, album_artists) in backend_connected.list_albums().with_context(|| "Failed to list albums")?.iter() {
-      //   println!("{:?}", album);
-      //   for artist in album_artists {
-      //     println!("  {:?}", artist);
-      //   }
-      // }
-    }
-
-    Command::ListTracks => {
-      let url = base_url
-        .join("track")
-        .with_context(|| "Failed to join track URL")?;
-      let tracks = client.get(url)
-        .send()
-        .with_context(|| "Failed to request list of tracks")?
-        .json::<Tracks>()
-        .with_context(|| "Failed to deserialize stracks")?;
-      for (scan_directory, track, track_artists, album, album_artists) in tracks.iter() {
-        println!("{:?}", scan_directory);
-        println!("  {:?}", track);
-        for artist in track_artists {
-          println!("    {:?}", artist);
-        }
-        println!("    {:?}", album);
+      for (album, album_artists) in client.list_albums()?.iter() {
+        println!("{:?}", album);
         for artist in album_artists {
-          println!("      {:?}", artist);
+          println!("- {:?}", artist);
         }
       }
     }
-    Command::PlayTrack { track_id, volume } => {
+    Command::ShowAlbumById { id } => {
+      let album = client.get_album_by_id(id)?;
+      println!("{:?}", album);
+    }
+
+    Command::ListTracks => {
+      let tracks = client.list_tracks()?;
+      for (scan_directory, track, track_artists, album, album_artists) in tracks.iter() {
+        println!("{:?}", scan_directory);
+        println!("- {:?}", track);
+        for artist in track_artists {
+          println!("  * {:?}", artist);
+        }
+        println!("  * {:?}", album);
+        for artist in album_artists {
+          println!("    - {:?}", artist);
+        }
+      }
+    }
+    Command::ShowTrackById { id } => {
+      let track = client.get_track_by_id(id)?;
+      println!("{:?}", track);
+    }
+    Command::PlayTrack { id: _track_id, volume: _volume } => {
+      // TODO: stream track
       // if let Some((scan_directory, track)) = backend_connected.get_track_by_id(track_id).with_context(|| "Failed to get track")? {
       //   println!("* {}", scan_directory);
       //   println!("  - {}", track);
@@ -246,49 +258,59 @@ fn run(command: Command, base_url: &Url, name: &str, password: &str) -> Result<(
     }
 
     Command::ListArtists => {
-      // for artist in backend_connected.list_artists().with_context(|| "Failed to list artists")?.iter() {
-      //   println!("{:?}", artist);
-      // }
+      for artist in client.list_artists()? {
+        println!("{:?}", artist);
+      }
+    }
+    Command::ShowArtistById { id } => {
+      let artist = client.get_artist_by_id(id)?;
+      println!("{:?}", artist);
+    }
+
+    Command::ListUsers => {
+      for user in client.list_users()? {
+        println!("{:?}", user);
+      }
+    }
+    Command::ShowMyUser => {
+      let user = client.get_my_user()?;
+      println!("{:?}", user);
+    }
+    Command::ShowUserById { id } => {
+      let user = client.get_user_by_id(id)?;
+      println!("{:?}", user);
+    }
+    Command::CreateUser { name, password } => {
+      let user = client.create_user(&NewUser { name, password })?;
+      println!("{:?}", user);
+    }
+    Command::DeleteUserByName { name } => {
+      client.delete_user_by_name(&name)?;
+    }
+    Command::DeleteUserById { id } => {
+      client.delete_user_by_id(id)?;
+    }
+
+    Command::SetUserAlbumRating { album_id, rating } => {
+      let rating = client.set_user_album_rating(album_id, rating)?;
+      println!("{:?}", rating);
+    }
+    Command::SetUserTrackRating { track_id, rating } => {
+      let rating = client.set_user_track_rating(track_id, rating)?;
+      println!("{:?}", rating);
+    }
+    Command::SetUserArtistRating { artist_id, rating } => {
+      let rating = client.set_user_artist_rating(artist_id, rating)?;
+      println!("{:?}", rating);
     }
 
     Command::Scan => {
-      // backend_connected.scan()
-      //   .with_context(|| "Failed to scan music files")?;
-    }
-    Command::ListUsers => {
-      // for user in backend_connected.list_users()
-      //   .with_context(|| "Failed to list users")? {
-      //   println!("{:?}", user);
-      // }
-    }
-    Command::AddUser { name, password } => {
-      // let user = backend_connected.add_user(name, password)
-      //   .with_context(|| "Failed to add user")?;
-      // eprintln!("Added {:?}", user);
-    }
-    Command::RemoveUser { name } => {
-      // let removed = backend_connected.remove_user(&name)
-      //   .with_context(|| "Failed to remove user")?;
-      // if removed {
-      //   eprintln!("Removed user with name '{}'", name);
-      // } else {
-      //   eprintln!("Could not remove user with name '{}', it was not found", name);
-      // }
-    }
-    Command::SetUserAlbumRating { user_id, album_id, rating } => {
-      // let user_album_rating = backend_connected.set_user_album_rating(user_id, album_id, rating)
-      //   .with_context(|| "Failed to set user album rating")?;
-      // eprintln!("Set {:?}", user_album_rating);
-    }
-    Command::SetUserTrackRating { user_id, track_id, rating } => {
-      // let user_track_rating = backend_connected.set_user_track_rating(user_id, track_id, rating)
-      //   .with_context(|| "Failed to set user track rating")?;
-      // eprintln!("Set {:?}", user_track_rating);
-    }
-    Command::SetUserArtistRating { user_id, artist_id, rating } => {
-      // let user_artist_rating = backend_connected.set_user_artist_rating(user_id, artist_id, rating)
-      //   .with_context(|| "Failed to set user artist rating")?;
-      // eprintln!("Set {:?}", user_artist_rating);
+      let started_scan = client.scan()?;
+      if started_scan {
+        println!("Started scanning");
+      } else {
+        println!("Already scanning");
+      }
     }
   }
   Ok(())

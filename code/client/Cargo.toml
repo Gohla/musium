@@ -8,10 +8,12 @@ publish = false
 [dependencies]
 core = {path = "../core"}
 reqwest = { version = "0.10", features = ["blocking", "cookies", "json", "gzip"] }
+url = "2"
 rodio = "0.10"
 structopt = "0.3"
 dotenv = "0.15"
 anyhow = "1"
+thiserror = "1"
 metrics-core = "0.5"
 metrics-runtime = {version = "0.13", default-features = false}
 metrics-observer-yaml = "0.1"

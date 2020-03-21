@@ -51,10 +51,8 @@ pub async fn login(user_login: web::Json<UserLogin>, identity: Identity, backend
       Err(ThreadPoolGoneFail)
     }
     Ok(Some(user)) => {
-      let logged_in_user = LoggedInUser { user };
-      let serialized_identity = serde_json::to_string(&logged_in_user)?;
-      identity.remember(serialized_identity);
-      Ok(HttpResponse::Ok().finish())
+      identity.remember(serde_json::to_string(&LoggedInUser { user: user.clone() })?);
+      Ok(HttpResponse::Ok().json(&user))
     }
     Ok(None) => {
       Ok(HttpResponse::Unauthorized().finish())

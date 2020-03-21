@@ -608,8 +608,10 @@ dependencies = [
  "reqwest",
  "rodio",
  "structopt",
+ "thiserror",
  "tracing",
  "tracing-subscriber",
+ "url 2.1.1",
 ]
 
 [[package]]
@@ -2287,6 +2289,7 @@ dependencies = [
  "metrics-core",
  "metrics-observer-yaml",
  "metrics-runtime",
+ "scopeguard",
  "serde",
  "serde_json",
  "structopt",
