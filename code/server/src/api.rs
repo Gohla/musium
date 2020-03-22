@@ -1,5 +1,7 @@
+use actix_files::NamedFile;
 use actix_web::{HttpResponse, ResponseError, web};
 use actix_web::error::BlockingError;
+use actix_web::http::StatusCode;
 use thiserror::Error;
 
 use backend::{Backend, BackendConnectError, DatabaseQueryError, ScanError, UserAddVerifyError};
@@ -21,11 +23,9 @@ pub async fn show_scan_directory_by_id(
   backend: web::Data<Backend>,
   _logged_in_user: LoggedInUser,
 ) -> Result<HttpResponse, ApiError> {
-  Ok(if let Some(scan_directory) = backend.connect_to_database()?.get_scan_directory_by_id(*id)? {
-    HttpResponse::Ok().json(scan_directory)
-  } else {
-    HttpResponse::NotFound().finish()
-  })
+  use ApiError::*;
+  let scan_directory = backend.connect_to_database()?.get_scan_directory_by_id(*id)?.ok_or(NotFoundFail)?;
+  Ok(HttpResponse::Ok().json(scan_directory))
 }
 
 pub async fn create_scan_directory(
@@ -41,11 +41,12 @@ pub async fn delete_scan_directory_by_directory(
   backend: web::Data<Backend>,
   _logged_in_user: LoggedInUser,
 ) -> Result<HttpResponse, ApiError> {
-  Ok(if backend.connect_to_database()?.delete_scan_directory_by_directory(&*directory)? {
-    HttpResponse::Ok().finish()
+  use ApiError::*;
+  if backend.connect_to_database()?.delete_scan_directory_by_directory(&*directory)? {
+    Ok(HttpResponse::Ok().finish())
   } else {
-    HttpResponse::NotFound().finish()
-  })
+    Err(NotFoundFail)
+  }
 }
 
 pub async fn delete_scan_directory_by_id(
@@ -53,11 +54,12 @@ pub async fn delete_scan_directory_by_id(
   backend: web::Data<Backend>,
   _logged_in_user: LoggedInUser,
 ) -> Result<HttpResponse, ApiError> {
-  Ok(if backend.connect_to_database()?.delete_scan_directory_by_id(*id)? {
-    HttpResponse::Ok().finish()
+  use ApiError::*;
+  if backend.connect_to_database()?.delete_scan_directory_by_id(*id)? {
+    Ok(HttpResponse::Ok().finish())
   } else {
-    HttpResponse::NotFound().finish()
-  })
+    Err(NotFoundFail)
+  }
 }
 
 // Albums
@@ -74,11 +76,9 @@ pub async fn show_album_by_id(
   backend: web::Data<Backend>,
   _logged_in_user: LoggedInUser,
 ) -> Result<HttpResponse, ApiError> {
-  Ok(if let Some(album) = backend.connect_to_database()?.get_album_by_id(*id)? {
-    HttpResponse::Ok().json(album)
-  } else {
-    HttpResponse::NotFound().finish()
-  })
+  use ApiError::*;
+  let album = backend.connect_to_database()?.get_album_by_id(*id)?.ok_or(NotFoundFail)?;
+  Ok(HttpResponse::Ok().json(album))
 }
 
 // Track
@@ -95,11 +95,19 @@ pub async fn show_track_by_id(
   backend: web::Data<Backend>,
   _logged_in_user: LoggedInUser,
 ) -> Result<HttpResponse, ApiError> {
-  Ok(if let Some(track) = backend.connect_to_database()?.get_track_by_id(*id)? {
-    HttpResponse::Ok().json(track)
-  } else {
-    HttpResponse::NotFound().finish()
-  })
+  use ApiError::*;
+  let track = backend.connect_to_database()?.get_track_by_id(*id)?.ok_or(NotFoundFail)?;
+  Ok(HttpResponse::Ok().json(track))
+}
+
+pub async fn download_track_by_id(
+  id: web::Path<i32>,
+  backend: web::Data<Backend>,
+  _logged_in_user: LoggedInUser,
+) -> Result<NamedFile, ApiError> {
+  use ApiError::*;
+  let path = backend.connect_to_database()?.get_track_path_by_id(*id)?.ok_or(NotFoundFail)?;
+  Ok(NamedFile::open(path)?)
 }
 
 // Artist
@@ -116,11 +124,9 @@ pub async fn show_artist_by_id(
   backend: web::Data<Backend>,
   _logged_in_user: LoggedInUser,
 ) -> Result<HttpResponse, ApiError> {
-  Ok(if let Some(artist) = backend.connect_to_database()?.get_artist_by_id(*id)? {
-    HttpResponse::Ok().json(artist)
-  } else {
-    HttpResponse::NotFound().finish()
-  })
+  use ApiError::*;
+  let artist = backend.connect_to_database()?.get_artist_by_id(*id)?.ok_or(NotFoundFail)?;
+  Ok(HttpResponse::Ok().json(artist))
 }
 
 // Users
@@ -137,11 +143,9 @@ pub async fn show_user_by_id(
   backend: web::Data<Backend>,
   _logged_in_user: LoggedInUser,
 ) -> Result<HttpResponse, ApiError> {
-  Ok(if let Some(user) = backend.connect_to_database()?.get_user_by_id(*id)? {
-    HttpResponse::Ok().json(user)
-  } else {
-    HttpResponse::NotFound().finish()
-  })
+  use ApiError::*;
+  let user = backend.connect_to_database()?.get_user_by_id(*id)?.ok_or(NotFoundFail)?;
+  Ok(HttpResponse::Ok().json(user))
 }
 
 pub async fn show_my_user(
@@ -161,27 +165,33 @@ pub async fn create_user(
 pub async fn delete_user_by_name(
   name: web::Json<String>,
   backend: web::Data<Backend>,
-  _logged_in_user: LoggedInUser,
+  logged_in_user: LoggedInUser,
 ) -> Result<HttpResponse, ApiError> {
-  // TODO: disallow logged in user to delete their self.
-  Ok(if backend.connect_to_database()?.delete_user_by_name(&*name)? {
-    HttpResponse::Ok().finish()
+  use ApiError::*;
+  if *name == logged_in_user.user.name {
+    return Err(CannotDeleteLoggedInUserFail);
+  }
+  if backend.connect_to_database()?.delete_user_by_name(&*name)? {
+    Ok(HttpResponse::Ok().finish())
   } else {
-    HttpResponse::NotFound().finish()
-  })
+    Err(NotFoundFail)
+  }
 }
 
 pub async fn delete_user_by_id(
   id: web::Path<i32>,
   backend: web::Data<Backend>,
-  _logged_in_user: LoggedInUser,
+  logged_in_user: LoggedInUser,
 ) -> Result<HttpResponse, ApiError> {
-  // TODO: disallow logged in user to delete their self.
-  Ok(if backend.connect_to_database()?.delete_user_by_id(*id)? {
-    HttpResponse::Ok().finish()
+  use ApiError::*;
+  if *id == logged_in_user.user.id {
+    return Err(CannotDeleteLoggedInUserFail);
+  }
+  if backend.connect_to_database()?.delete_user_by_id(*id)? {
+    Ok(HttpResponse::Ok().finish())
   } else {
-    HttpResponse::NotFound().finish()
-  })
+    Err(NotFoundFail)
+  }
 }
 
 // User data
@@ -245,12 +255,26 @@ pub enum ApiError {
   BackendConnectFail(#[from] BackendConnectError),
   #[error(transparent)]
   DatabaseQueryFail(#[from] DatabaseQueryError),
+  #[error("Resource was not found")]
+  NotFoundFail,
+  #[error("Cannot delete logged-in user")]
+  CannotDeleteLoggedInUserFail,
   #[error(transparent)]
   UserAddFail(#[from] UserAddVerifyError),
+  #[error(transparent)]
+  IoFail(#[from] std::io::Error),
   #[error(transparent)]
   ScanFail(#[from] ScanError),
   #[error("Thread pool is gone")]
   ThreadPoolGoneFail,
 }
 
-impl ResponseError for ApiError {}
+impl ResponseError for ApiError {
+  fn status_code(&self) -> StatusCode {
+    use ApiError::*;
+    match self {
+      NotFoundFail => StatusCode::NOT_FOUND,
+      _ => StatusCode::INTERNAL_SERVER_ERROR,
+    }
+  }
+}

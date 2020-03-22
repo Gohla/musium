@@ -6,6 +6,7 @@ extern crate diesel;
 use std::backtrace::Backtrace;
 use std::collections::{HashMap, HashSet};
 use std::fmt::{Debug, Formatter};
+use std::path::PathBuf;
 use std::time::Instant;
 
 use diesel::prelude::*;
@@ -203,6 +204,18 @@ impl BackendConnected<'_> {
   pub fn get_track_by_id(&self, input_id: i32) -> Result<Option<Track>, DatabaseQueryError> {
     use schema::track::dsl::*;
     Ok(track.find(input_id).first::<Track>(&self.connection).optional()?)
+  }
+
+  pub fn get_track_path_by_id(&self, input_id: i32) -> Result<Option<PathBuf>, DatabaseQueryError> {
+    let track_and_scan_directory: Option<(Track, ScanDirectory)> = {
+      use schema::track::dsl::*;
+      track
+        .find(input_id)
+        .inner_join(schema::scan_directory::table)
+        .first::<(Track, ScanDirectory)>(&self.connection)
+        .optional()?
+    };
+    Ok(track_and_scan_directory.and_then(|(track, scan_directory)| scan_directory.track_file_path(&track)))
   }
 }
 

@@ -3,6 +3,7 @@ use reqwest::blocking::{Client as HttpClient, Response};
 use thiserror::Error;
 
 use core::model::*;
+use std::io::Read;
 
 pub struct Client {
   client: HttpClient,
@@ -129,6 +130,15 @@ impl Client {
       .send()?;
     match response.status() {
       StatusCode::OK => Ok(Some(response.json()?)),
+      _ => Ok(None)
+    }
+  }
+
+  pub fn download_track_by_id(&self, id: i32) -> Result<Option<impl Read>, ClientError> {
+    let response = self.client.get(self.url.join(&format!("track/download/{}", id))?)
+      .send()?;
+    match response.status() {
+      StatusCode::OK => Ok(Some(response)),
       _ => Ok(None)
     }
   }

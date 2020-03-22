@@ -1,4 +1,5 @@
 use std::io;
+use std::io::{Cursor, Read};
 
 use anyhow::{Context, Result};
 use dotenv;
@@ -83,7 +84,7 @@ enum Command {
     /// ID of the track to play
     id: i32,
     /// Volume to play the track at, with 1.0 being full volume, and 0.0 being no volume
-    #[structopt(short, long, default_value = "0.2")]
+    #[structopt(short, long, default_value = "0.1")]
     volume: f32,
   },
 
@@ -235,26 +236,24 @@ fn run(command: Command, client: &Client) -> Result<()> {
       let track = client.get_track_by_id(id)?;
       println!("{:?}", track);
     }
-    Command::PlayTrack { id: _track_id, volume: _volume } => {
-      // TODO: stream track
-      // if let Some((scan_directory, track)) = backend_connected.get_track_by_id(track_id).with_context(|| "Failed to get track")? {
-      //   println!("* {}", scan_directory);
-      //   println!("  - {}", track);
-      //   if let Some(file_path) = scan_directory.track_file_path(&track) {
-      //     let device = rodio::default_output_device()
-      //       .with_context(|| "No audio device was found")?;
-      //     let file = File::open(file_path)
-      //       .with_context(|| "Failed to open audio file for playback")?;
-      //     let sink = rodio::play_once(&device, file)
-      //       .with_context(|| "Failed to start audio playback")?;
-      //     sink.set_volume(volume);
-      //     sink.sleep_until_end();
-      //   } else {
-      //     eprintln!("Could not play track with ID '{}', it does not have a file path, indicating that the track was removed", track_id);
-      //   }
-      // } else {
-      //   eprintln!("Could not play track, no track with ID '{}' was found", track_id);
-      // }
+    Command::PlayTrack { id, volume } => {
+      let track_reader = client.download_track_by_id(id)?;
+      if let Some(mut track_reader) = track_reader {
+        let track_cursor = {
+          // Copy track to in-memory buffer and return a cursor, as Rodio requires a Seek implementation.
+          let mut track_buffer = Vec::new();
+          track_reader.read_to_end(&mut track_buffer)?;
+          Cursor::new(track_buffer)
+        };
+        let device = rodio::default_output_device()
+          .with_context(|| "No audio device was found")?;
+        let sink = rodio::play_once(&device, track_cursor)
+          .with_context(|| "Failed to start audio playback")?;
+        sink.set_volume(volume);
+        sink.sleep_until_end();
+      } else {
+        eprintln!("Could not play track, no track with ID '{}' was found", id);
+      }
     }
 
     Command::ListArtists => {
