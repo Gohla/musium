@@ -7,9 +7,11 @@ use backend::Backend;
 
 use crate::api::*;
 use crate::auth::*;
+use crate::scanner::Scanner;
 
 pub async fn serve<A: net::ToSocketAddrs, C: Into<Vec<u8>>>(backend: Backend, bind_address: A, cookie_identity_secret_key: C) -> std::io::Result<()> {
   let backend_data = web::Data::new(backend);
+  let scanner_data = web::Data::new(Scanner::new());
   let cookie_identity_secret_key = cookie_identity_secret_key.into();
   HttpServer::new(move || {
     App::new()
@@ -20,6 +22,7 @@ pub async fn serve<A: net::ToSocketAddrs, C: Into<Vec<u8>>>(backend: Backend, bi
           .secure(false)
       ))
       .app_data(backend_data.clone())
+      .app_data(scanner_data.clone())
       .route("/", web::get().to(index))
       // Auth
       .route("/login", web::post().to(login))

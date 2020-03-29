@@ -17,6 +17,7 @@ use crate::serve::serve;
 pub mod serve;
 pub mod auth;
 pub mod api;
+pub mod scanner;
 pub mod util;
 
 #[derive(Debug, StructOpt)]

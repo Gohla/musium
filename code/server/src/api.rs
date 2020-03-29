@@ -1,6 +1,5 @@
 use actix_files::NamedFile;
 use actix_web::{HttpResponse, ResponseError, web};
-use actix_web::error::BlockingError;
 use actix_web::http::StatusCode;
 use thiserror::Error;
 
@@ -8,6 +7,7 @@ use backend::{Backend, BackendConnectError, DatabaseQueryError, ScanError, UserA
 use core::model::{NewScanDirectory, NewUser};
 
 use crate::auth::LoggedInUser;
+use crate::scanner::Scanner;
 
 // Scan directory
 
@@ -230,21 +230,15 @@ pub async fn set_user_artist_rating(
 
 pub async fn scan(
   backend: web::Data<Backend>,
+  scanner: web::Data<Scanner>,
   _logged_in_user: LoggedInUser,
 ) -> Result<HttpResponse, ApiError> {
-  use ApiError::*;
-  let result = web::block::<_, _, ApiError>(move || {
-    Ok(backend.connect_to_database()?.scan()?)
-  }).await;
-  match result {
-    Err(BlockingError::Error(e)) => {
-      Err(e)
-    }
-    Err(BlockingError::Canceled) => {
-      Err(ThreadPoolGoneFail)
-    }
-    _ => Ok(HttpResponse::Accepted().finish())
-  }
+  let started_scan = scanner.scan(backend.into_inner());
+  Ok(if started_scan {
+    HttpResponse::Accepted().finish()
+  } else {
+    HttpResponse::Ok().finish()
+  })
 }
 
 // Error type

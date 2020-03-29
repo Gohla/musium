@@ -248,7 +248,7 @@ impl Client {
       .send()?;
     match response.status() {
       StatusCode::ACCEPTED => Ok(true),
-      StatusCode::NOT_ACCEPTABLE => Ok(false),
+      StatusCode::OK => Ok(false),
       c => Err(InvalidResponse(c))
     }
   }
