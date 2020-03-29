@@ -1,21 +1,16 @@
 use std::io;
-use std::io::{Cursor, Read};
 
 use anyhow::{Context, Result};
 use dotenv;
 use metrics_core::{Builder, Drain, Observe};
 use metrics_observer_yaml::{YamlBuilder, YamlObserver};
 use metrics_runtime::{Controller, Receiver};
-use reqwest::Url;
 use structopt::StructOpt;
 use tracing::{Level, trace};
 use tracing_subscriber::FmtSubscriber;
 
-use musium_core::model::{*};
-
-use crate::client::Client;
-
-pub mod client;
+use musium_client::{Client, Url};
+use musium_core::model::*;
 
 #[derive(Debug, StructOpt)]
 #[structopt(name = "cli", about = "Musium CLI")]
@@ -238,19 +233,9 @@ fn run(command: Command, client: &Client) -> Result<()> {
     }
     Command::PlayTrack { id, volume } => {
       let track_reader = client.download_track_by_id(id)?;
-      if let Some(mut track_reader) = track_reader {
-        let track_cursor = {
-          // Copy track to in-memory buffer and return a cursor, as Rodio requires a Seek implementation.
-          let mut track_buffer = Vec::new();
-          track_reader.read_to_end(&mut track_buffer)?;
-          Cursor::new(track_buffer)
-        };
-        let device = rodio::default_output_device()
-          .with_context(|| "No audio device was found")?;
-        let sink = rodio::play_once(&device, track_cursor)
-          .with_context(|| "Failed to start audio playback")?;
-        sink.set_volume(volume);
-        sink.sleep_until_end();
+      if let Some(track_reader) = track_reader {
+        musium_audio::play(track_reader, volume)
+          .with_context(|| "Failed to play audio track")?;
       } else {
         eprintln!("Could not play track, no track with ID '{}' was found", id);
       }

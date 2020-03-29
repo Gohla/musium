@@ -5,7 +5,9 @@ members = [
   "musium_core",
   "musium_backend",
   "musium_server",
-  "musium_client"
+  "musium_client",
+  "musium_audio",
+  "musium_cli"
 ]
 
 # Development profile: full debug information, no optimisations.
@@ -34,6 +36,10 @@ opt-level = 2
 [profile.fastdev.package."musium_server"]
 opt-level = 2
 [profile.fastdev.package."musium_client"]
+opt-level = 2
+[profile.fastdev.package."musium_audio"]
+opt-level = 2
+[profile.fastdev.package."musium_cli"]
 opt-level = 2
 
 # Release profile: full optimisations, including link-time optimisations.
