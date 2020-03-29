@@ -421,25 +421,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "backend"
-version = "0.1.0"
-dependencies = [
- "core",
- "crc32fast",
- "diesel",
- "id3",
- "itertools",
- "libsqlite3-sys",
- "metrics",
- "rand",
- "rust-argon2",
- "serde",
- "thiserror",
- "tracing",
- "walkdir",
-]
-
-[[package]]
 name = "backtrace"
 version = "0.3.45"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -616,25 +597,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f86c952727a495bda7abaf09bafdee1a939194dd793d9a8e26281df55ac43b00"
 
 [[package]]
-name = "client"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "core",
- "dotenv",
- "metrics-core",
- "metrics-observer-yaml",
- "metrics-runtime",
- "reqwest",
- "rodio",
- "structopt",
- "thiserror",
- "tracing",
- "tracing-subscriber",
- "url 2.1.1",
-]
-
-[[package]]
 name = "cloudabi"
 version = "0.0.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -680,15 +642,6 @@ name = "copyless"
 version = "0.1.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "6ff9c56c9fb2a49c05ef0e431485a22400af20d33226dc0764d891d09e724127"
-
-[[package]]
-name = "core"
-version = "0.1.0"
-dependencies = [
- "diesel",
- "itertools",
- "serde",
-]
 
 [[package]]
 name = "core-foundation"
@@ -1645,6 +1598,79 @@ dependencies = [
 ]
 
 [[package]]
+name = "musium_backend"
+version = "0.1.0"
+dependencies = [
+ "crc32fast",
+ "diesel",
+ "id3",
+ "itertools",
+ "libsqlite3-sys",
+ "metrics",
+ "musium_core",
+ "rand",
+ "rust-argon2",
+ "serde",
+ "thiserror",
+ "tracing",
+ "walkdir",
+]
+
+[[package]]
+name = "musium_client"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "dotenv",
+ "metrics-core",
+ "metrics-observer-yaml",
+ "metrics-runtime",
+ "musium_core",
+ "reqwest",
+ "rodio",
+ "structopt",
+ "thiserror",
+ "tracing",
+ "tracing-subscriber",
+ "url 2.1.1",
+]
+
+[[package]]
+name = "musium_core"
+version = "0.1.0"
+dependencies = [
+ "diesel",
+ "itertools",
+ "serde",
+]
+
+[[package]]
+name = "musium_server"
+version = "0.1.0"
+dependencies = [
+ "actix-files",
+ "actix-identity",
+ "actix-rt",
+ "actix-web",
+ "anyhow",
+ "dotenv",
+ "log",
+ "metrics-core",
+ "metrics-observer-yaml",
+ "metrics-runtime",
+ "musium_backend",
+ "musium_core",
+ "scopeguard",
+ "serde",
+ "serde_json",
+ "structopt",
+ "thiserror",
+ "tracing",
+ "tracing-log",
+ "tracing-subscriber",
+]
+
+[[package]]
 name = "native-tls"
 version = "0.2.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2302,32 +2328,6 @@ dependencies = [
  "linked-hash-map",
  "serde",
  "yaml-rust",
-]
-
-[[package]]
-name = "server"
-version = "0.1.0"
-dependencies = [
- "actix-files",
- "actix-identity",
- "actix-rt",
- "actix-web",
- "anyhow",
- "backend",
- "core",
- "dotenv",
- "log",
- "metrics-core",
- "metrics-observer-yaml",
- "metrics-runtime",
- "scopeguard",
- "serde",
- "serde_json",
- "structopt",
- "thiserror",
- "tracing",
- "tracing-log",
- "tracing-subscriber",
 ]
 
 [[package]]

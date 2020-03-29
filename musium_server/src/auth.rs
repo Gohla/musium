@@ -9,8 +9,8 @@ use actix_web::http::StatusCode;
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
-use backend::{Backend, BackendConnected, BackendConnectError, UserAddVerifyError};
-use core::model::{User, UserLogin};
+use musium_backend::{Backend, BackendConnected, BackendConnectError, UserAddVerifyError};
+use musium_core::model::{User, UserLogin};
 
 // Handlers
 

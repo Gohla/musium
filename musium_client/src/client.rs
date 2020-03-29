@@ -2,7 +2,7 @@ use reqwest::{StatusCode, Url};
 use reqwest::blocking::{Client as HttpClient, Response};
 use thiserror::Error;
 
-use core::model::*;
+use musium_core::model::*;
 use std::io::Read;
 
 pub struct Client {

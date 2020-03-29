@@ -16,8 +16,8 @@ use metrics::timing;
 use thiserror::Error;
 use tracing::{event, instrument, Level};
 
-use core::model::*;
-use core::schema;
+use musium_core::model::*;
+use musium_core::schema;
 
 use crate::model::*;
 use crate::password::PasswordHasher;

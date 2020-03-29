@@ -1,12 +1,12 @@
 [package]
-name = "backend"
+name = "musium_backend"
 version = "0.1.0"
 authors = ["Gabriel Konat <gabrielkonat@gmail.com>"]
 edition = "2018"
 publish = false
 
 [dependencies]
-core = {path = "../core"}
+musium_core = {path = "../musium_core"}
 diesel = { version = "1", features = ["sqlite", "r2d2"] }
 libsqlite3-sys = { version = ">=0.8.0, <0.18.0", features = ["bundled"] } # Make diesel use bundled sqlite.
 id3 = "0.5"

@@ -11,33 +11,33 @@ use structopt::StructOpt;
 use tracing::{Level, trace};
 use tracing_subscriber::FmtSubscriber;
 
-use core::model::{*};
+use musium_core::model::{*};
 
 use crate::client::Client;
 
 pub mod client;
 
 #[derive(Debug, StructOpt)]
-#[structopt(name = "client", about = "Music Composer client")]
+#[structopt(name = "cli", about = "Musium CLI")]
 struct Opt {
   #[structopt(subcommand)]
   command: Command,
 
   /// Base URL to use for sending HTTP requests to the server
-  #[structopt(long, env = "URL_BASE")]
+  #[structopt(long, env = "MUSIUM_URL_BASE")]
   url_base: Url,
   /// Username for logging into the server
-  #[structopt(long, env = "NAME")]
+  #[structopt(long, env = "MUSIUM_LOGIN_NAME")]
   name: String,
   /// Password for logging into the server
-  #[structopt(long, env = "PASSWORD")]
+  #[structopt(long, env = "MUSIUM_LOGIN_PASSWORD")]
   password: String,
 
   /// Minimum level at which tracing events will be printed to stderr
-  #[structopt(long, default_value = "TRACE")]
+  #[structopt(long, env = "MUSIUM_TRACING_LEVEL", default_value = "WARN")]
   tracing_level: Level,
   /// Whether to print metrics to stderr before the program exits
-  #[structopt(long)]
+  #[structopt(long, env = "MUSIUM_PRINT_METRICS")]
   print_metrics: bool,
 }
 

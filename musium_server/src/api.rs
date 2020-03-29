@@ -3,8 +3,8 @@ use actix_web::{HttpResponse, ResponseError, web};
 use actix_web::http::StatusCode;
 use thiserror::Error;
 
-use backend::{Backend, BackendConnectError, DatabaseQueryError, ScanError, UserAddVerifyError};
-use core::model::{NewScanDirectory, NewUser};
+use musium_backend::{Backend, BackendConnectError, DatabaseQueryError, ScanError, UserAddVerifyError};
+use musium_core::model::{NewScanDirectory, NewUser};
 
 use crate::auth::LoggedInUser;
 use crate::scanner::Scanner;

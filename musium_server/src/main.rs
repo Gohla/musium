@@ -10,7 +10,7 @@ use tracing::info;
 use tracing_log::LogTracer;
 use tracing_subscriber::FmtSubscriber;
 
-use backend::Backend;
+use musium_backend::Backend;
 
 use crate::serve::serve;
 
@@ -21,27 +21,27 @@ pub mod scanner;
 pub mod util;
 
 #[derive(Debug, StructOpt)]
-#[structopt(name = "server", about = "Music Composer server")]
+#[structopt(name = "server", about = "Musium server")]
 struct Opt {
   /// Database file to use. Relative paths are resolved relative to the current directory
-  #[structopt(long, env = "DATABASE_URL", parse(from_os_str))]
+  #[structopt(long, env = "MUSIUM_DATABASE_URL", parse(from_os_str))]
   database_file: PathBuf,
 
   /// Address (IP:port) to bind the HTTP server to
-  #[structopt(long, env = "BIND_ADDRESS", default_value = "127.0.0.1:8088")]
+  #[structopt(long, env = "MUSIUM_BIND_ADDRESS", default_value = "127.0.0.1:8088")]
   bind_address: String,
   /// Password hasher secret key to use
-  #[structopt(long, env = "PASSWORD_HASHER_SECRET_KEY")]
+  #[structopt(long, env = "MUSIUM_PASSWORD_HASHER_SECRET_KEY")]
   password_hasher_secret_key: String,
   /// Cookie identity secret key to use
-  #[structopt(long, env = "COOKIE_IDENTITY_SECRET_KEY")]
+  #[structopt(long, env = "MUSIUM_COOKIE_IDENTITY_SECRET_KEY")]
   cookie_identity_secret_key: String,
 
   /// Minimum level at which tracing events will be printed to stderr
-  #[structopt(long, env = "TRACING_LEVEL", default_value = "WARN")]
+  #[structopt(long, env = "MUSIUM_TRACING_LEVEL", default_value = "WARN")]
   tracing_level: tracing::Level,
   /// Whether to print metrics to stderr before the program exits
-  #[structopt(long, env = "PRINT_METRICS")]
+  #[structopt(long, env = "MUSIUM_PRINT_METRICS")]
   print_metrics: bool,
 }
 

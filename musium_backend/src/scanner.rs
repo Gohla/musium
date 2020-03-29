@@ -4,7 +4,7 @@ use std::io::{BufReader, Read, Seek};
 use thiserror::Error;
 use walkdir::WalkDir;
 
-use core::model::ScanDirectory;
+use musium_core::model::ScanDirectory;
 
 #[derive(Default, Clone, Debug)]
 pub struct Scanner {}

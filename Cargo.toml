@@ -2,10 +2,10 @@ cargo-features = ["named-profiles", "profile-overrides"]
 
 [workspace]
 members = [
-  "code/core",
-  "code/backend",
-  "code/server",
-  "code/client"
+  "musium_core",
+  "musium_backend",
+  "musium_server",
+  "musium_client"
 ]
 
 # Development profile: full debug information, no optimisations.
@@ -27,13 +27,13 @@ debug = false
 # Fully optimize all dependencies, but not our own crates, to speed up compilation.
 [profile.fastdev.package."*"]
 opt-level = 3
-[profile.fastdev.package."core"]
+[profile.fastdev.package."musium_core"]
 opt-level = 2
-[profile.fastdev.package."backend"]
+[profile.fastdev.package."musium_backend"]
 opt-level = 2
-[profile.fastdev.package."server"]
+[profile.fastdev.package."musium_server"]
 opt-level = 2
-[profile.fastdev.package."client"]
+[profile.fastdev.package."musium_client"]
 opt-level = 2
 
 # Release profile: full optimisations, including link-time optimisations.

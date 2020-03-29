@@ -3,7 +3,7 @@ use std::net;
 use actix_identity::{CookieIdentityPolicy, IdentityService};
 use actix_web::{App, HttpResponse, HttpServer, middleware, web};
 
-use backend::Backend;
+use musium_backend::Backend;
 
 use crate::api::*;
 use crate::auth::*;

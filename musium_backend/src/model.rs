@@ -1,6 +1,6 @@
 use std::path::PathBuf;
 
-use core::model::*;
+use musium_core::model::*;
 
 use crate::scanner::ScannedTrack;
 use crate::schema::*;

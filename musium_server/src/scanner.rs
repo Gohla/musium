@@ -5,7 +5,7 @@ use std::thread::{JoinHandle, spawn};
 use scopeguard::defer;
 use thiserror::Error;
 
-use backend::{Backend, BackendConnectError};
+use musium_backend::{Backend, BackendConnectError};
 
 pub struct Scanner {
   thread_handle: Mutex<Option<JoinHandle<Result<(), ScanError>>>>,
@@ -17,7 +17,7 @@ pub enum ScanError {
   #[error(transparent)]
   BackendConnectFail(#[from] BackendConnectError),
   #[error(transparent)]
-  ScanFail(#[from] backend::ScanError),
+  ScanFail(#[from] musium_backend::ScanError),
 }
 
 impl Scanner {
