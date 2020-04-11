@@ -5,7 +5,7 @@ use std::thread::{JoinHandle, spawn};
 use scopeguard::defer;
 use thiserror::Error;
 
-use musium_backend::{Backend, BackendConnectError};
+use musium_backend::{Db, DbConnectError};
 
 pub struct Scanner {
   thread_handle: Mutex<Option<JoinHandle<Result<(), ScanError>>>>,
@@ -15,7 +15,7 @@ pub struct Scanner {
 #[derive(Debug, Error)]
 pub enum ScanError {
   #[error(transparent)]
-  BackendConnectFail(#[from] BackendConnectError),
+  BackendConnectFail(#[from] DbConnectError),
   #[error(transparent)]
   ScanFail(#[from] musium_backend::ScanError),
 }
@@ -30,7 +30,7 @@ impl Scanner {
 }
 
 impl Scanner {
-  pub fn scan(&self, backend: Arc<Backend>) -> bool {
+  pub fn scan(&self, backend: Arc<Db>) -> bool {
     let is_working = self.is_working.swap(true, Ordering::Relaxed);
     if is_working {
       false
@@ -40,7 +40,7 @@ impl Scanner {
       *thread_handle_guard = Some(spawn(move || {
         // Set is_working to false when this scope ends (normally, erroneously, or when panicking)
         defer!(is_working_clone.store(false, Ordering::Relaxed));
-        backend.connect_to_database()?.scan()?;
+        backend.connect()?.scan()?;
         Ok(())
       }));
       true

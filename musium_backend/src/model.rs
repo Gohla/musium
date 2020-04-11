@@ -1,9 +1,9 @@
 use std::path::PathBuf;
 
 use musium_core::model::*;
+use musium_core::schema::*;
 
 use crate::scanner::ScannedTrack;
-use crate::schema::*;
 
 // Helper macros
 
@@ -20,12 +20,12 @@ macro_rules! update {
 // Scan directory
 
 pub trait ScanDirectoryEx {
-  fn track_file_path(&self, track: &Track) -> Option<PathBuf>;
+  fn track_file_path(&self, track: &LocalTrack) -> Option<PathBuf>;
   fn update_from(&mut self, enabled: bool) -> bool;
 }
 
-impl ScanDirectoryEx for ScanDirectory {
-  fn track_file_path(&self, track: &Track) -> Option<PathBuf> {
+impl ScanDirectoryEx for Source {
+  fn track_file_path(&self, track: &LocalTrack) -> Option<PathBuf> {
     track.file_path.as_ref().map(|file_path| PathBuf::from(&self.directory).join(file_path))
   }
 
@@ -40,17 +40,17 @@ impl ScanDirectoryEx for ScanDirectory {
 
 pub trait TrackEx {
   fn check_hash_changed(&mut self, scanned_track: &ScannedTrack) -> bool;
-  fn check_metadata_changed(&mut self, album: &Album, scanned_track: &ScannedTrack) -> bool;
-  fn update_from(&mut self, album: &Album, scanned_track: &ScannedTrack) -> bool;
+  fn check_metadata_changed(&mut self, album: &LocalAlbum, scanned_track: &ScannedTrack) -> bool;
+  fn update_from(&mut self, album: &LocalAlbum, scanned_track: &ScannedTrack) -> bool;
 }
 
-impl TrackEx for Track {
+impl TrackEx for LocalTrack {
   fn check_hash_changed(&mut self, scanned_track: &ScannedTrack) -> bool {
     self.hash != scanned_track.hash as i64
   }
 
-  fn check_metadata_changed(&mut self, album: &Album, scanned_track: &ScannedTrack) -> bool {
-    if self.scan_directory_id != scanned_track.scan_directory_id { return true; }
+  fn check_metadata_changed(&mut self, album: &LocalAlbum, scanned_track: &ScannedTrack) -> bool {
+    if self.source_id != scanned_track.scan_directory_id { return true; }
     if self.album_id != album.id { return true; }
     if self.disc_number != scanned_track.disc_number { return true; }
     if self.disc_total != scanned_track.disc_total { return true; }
@@ -60,9 +60,9 @@ impl TrackEx for Track {
     return false;
   }
 
-  fn update_from(&mut self, album: &Album, scanned_track: &ScannedTrack) -> bool {
+  fn update_from(&mut self, album: &LocalAlbum, scanned_track: &ScannedTrack) -> bool {
     let mut changed = false;
-    update!(self.scan_directory_id, scanned_track.scan_directory_id, changed);
+    update!(self.source_id, scanned_track.scan_directory_id, changed);
     update!(self.album_id, album.id, changed);
     update!(self.disc_number, scanned_track.disc_number, changed);
     update!(self.disc_total, scanned_track.disc_total, changed);

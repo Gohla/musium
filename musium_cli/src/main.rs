@@ -190,7 +190,7 @@ fn run(command: Command, client: &Client) -> Result<()> {
       println!("{:?}", scan_directory);
     }
     Command::CreateScanDirectory { directory } => {
-      let scan_directory = client.create_scan_directory(&NewScanDirectory { directory, enabled: true })?;
+      let scan_directory = client.create_scan_directory(&NewSource { directory, enabled: true })?;
       println!("{:?}", scan_directory);
     }
     Command::DeleteScanDirectoryByDirectory { directory } => {

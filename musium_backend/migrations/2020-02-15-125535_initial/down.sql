@@ -1,10 +1,19 @@
-DROP TABLE user_album_rating;
-DROP TABLE user_artist_rating;
-DROP TABLE user_track_rating;
-DROP TABLE user;
-DROP TABLE album_artist;
-DROP TABLE track_artist;
-DROP TABLE artist;
-DROP TABLE track;
-DROP TABLE album;
-DROP TABLE scan_directory;
+DROP TABLE IF EXISTS user_album_rating;
+DROP TABLE IF EXISTS user_artist_rating;
+DROP TABLE IF EXISTS user_track_rating;
+
+DROP TABLE IF EXISTS user;
+
+DROP TABLE IF EXISTS spotify_artist;
+DROP TABLE IF EXISTS spotify_track;
+DROP TABLE IF EXISTS spotify_album;
+
+DROP TABLE IF EXISTS local_track;
+
+DROP TABLE IF EXISTS album_artist;
+DROP TABLE IF EXISTS track_artist;
+DROP TABLE IF EXISTS artist;
+DROP TABLE IF EXISTS track;
+DROP TABLE IF EXISTS album;
+
+DROP TABLE IF EXISTS source;

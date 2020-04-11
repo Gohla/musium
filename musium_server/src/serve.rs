@@ -3,13 +3,13 @@ use std::net;
 use actix_identity::{CookieIdentityPolicy, IdentityService};
 use actix_web::{App, HttpResponse, HttpServer, middleware, web};
 
-use musium_backend::Backend;
+use musium_backend::Db;
 
 use crate::api::*;
 use crate::auth::*;
 use crate::scanner::Scanner;
 
-pub async fn serve<A: net::ToSocketAddrs, C: Into<Vec<u8>>>(backend: Backend, bind_address: A, cookie_identity_secret_key: C) -> std::io::Result<()> {
+pub async fn serve<A: net::ToSocketAddrs, C: Into<Vec<u8>>>(backend: Db, bind_address: A, cookie_identity_secret_key: C) -> std::io::Result<()> {
   let backend_data = web::Data::new(backend);
   let scanner_data = web::Data::new(Scanner::new());
   let cookie_identity_secret_key = cookie_identity_secret_key.into();

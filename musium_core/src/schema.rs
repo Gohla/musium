@@ -20,25 +20,66 @@ table! {
 }
 
 table! {
-    scan_directory (id) {
+    local_album (album_id, source_id) {
+        album_id -> Integer,
+        source_id -> Integer,
+    }
+}
+
+table! {
+    local_artist (artist_id, source_id) {
+        artist_id -> Integer,
+        source_id -> Integer,
+    }
+}
+
+table! {
+    local_track (track_id, source_id) {
+        track_id -> Integer,
+        source_id -> Integer,
+        file_path -> Nullable<Text>,
+        hash -> BigInt,
+    }
+}
+
+table! {
+    source (id) {
         id -> Integer,
-        directory -> Text,
         enabled -> Bool,
+        data -> Text,
+    }
+}
+
+table! {
+    spotify_album (album_id, spotify_id) {
+        album_id -> Integer,
+        spotify_id -> Text,
+    }
+}
+
+table! {
+    spotify_artist (artist_id, spotify_id) {
+        artist_id -> Integer,
+        spotify_id -> Text,
+    }
+}
+
+table! {
+    spotify_track (track_id, spotify_id) {
+        track_id -> Integer,
+        spotify_id -> Text,
     }
 }
 
 table! {
     track (id) {
         id -> Integer,
-        scan_directory_id -> Integer,
         album_id -> Integer,
         disc_number -> Nullable<Integer>,
         disc_total -> Nullable<Integer>,
         track_number -> Nullable<Integer>,
         track_total -> Nullable<Integer>,
         title -> Text,
-        file_path -> Nullable<Text>,
-        hash -> BigInt,
     }
 }
 
@@ -84,8 +125,16 @@ table! {
 
 joinable!(album_artist -> album (album_id));
 joinable!(album_artist -> artist (artist_id));
+joinable!(local_album -> album (album_id));
+joinable!(local_album -> source (source_id));
+joinable!(local_artist -> artist (artist_id));
+joinable!(local_artist -> source (source_id));
+joinable!(local_track -> source (source_id));
+joinable!(local_track -> track (track_id));
+joinable!(spotify_album -> album (album_id));
+joinable!(spotify_artist -> artist (artist_id));
+joinable!(spotify_track -> track (track_id));
 joinable!(track -> album (album_id));
-joinable!(track -> scan_directory (scan_directory_id));
 joinable!(track_artist -> artist (artist_id));
 joinable!(track_artist -> track (track_id));
 joinable!(user_album_rating -> album (album_id));
@@ -99,7 +148,13 @@ allow_tables_to_appear_in_same_query!(
     album,
     album_artist,
     artist,
-    scan_directory,
+    local_album,
+    local_artist,
+    local_track,
+    source,
+    spotify_album,
+    spotify_artist,
+    spotify_track,
     track,
     track_artist,
     user,

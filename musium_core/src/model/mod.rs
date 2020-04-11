@@ -1,35 +1,46 @@
-use std::collections::HashMap;
 use std::fmt::{Display, Error, Formatter};
-use std::path::PathBuf;
 
-use itertools::Itertools;
 use serde::{Deserialize, Serialize};
 
 use crate::schema::*;
 
-// Scan directory
+pub mod collection;
+
+//
+// Sources
+//
 
 #[derive(Clone, PartialOrd, PartialEq, Debug, Identifiable, Queryable, AsChangeset, Serialize, Deserialize)]
-#[table_name = "scan_directory"]
+#[table_name = "source"]
 #[changeset_options(treat_none_as_null = "true")]
-pub struct ScanDirectory {
+pub struct Source {
   pub id: i32,
-  pub directory: String,
   pub enabled: bool,
+  pub data: String, // TODO: use Sources enum
 }
 
-impl ScanDirectory {
-  pub fn track_file_path(&self, track: &Track) -> Option<PathBuf> {
-    track.file_path.as_ref().map(|file_path| PathBuf::from(&self.directory).join(file_path))
-  }
+#[derive(Clone, PartialOrd, PartialEq, Debug, Serialize, Deserialize)]
+pub enum Sources {
+  Local { directory: String }
 }
+
+// impl Source {
+//   pub fn track_file_path(&self, track: &Track) -> Option<PathBuf> {
+//     track.file_path.as_ref().map(|file_path| PathBuf::from(&self.directory).join(file_path))
+//   }
+// }
 
 #[derive(Clone, Debug, Insertable, Serialize, Deserialize)]
-#[table_name = "scan_directory"]
-pub struct NewScanDirectory {
-  pub directory: String,
+#[table_name = "source"]
+pub struct NewSource {
   pub enabled: bool,
+  pub data: String, // TODO: use Sources enum
 }
+
+
+//
+// Album/Track/Artist data, and relations between them.
+//
 
 // Album
 
@@ -50,35 +61,28 @@ pub struct NewAlbum {
 // Track
 
 #[derive(Clone, PartialOrd, PartialEq, Debug, Identifiable, Queryable, Associations, AsChangeset, Serialize, Deserialize)]
-#[belongs_to(ScanDirectory)]
 #[belongs_to(Album)]
 #[table_name = "track"]
 #[changeset_options(treat_none_as_null = "true")]
 pub struct Track {
   pub id: i32,
-  pub scan_directory_id: i32,
   pub album_id: i32,
   pub disc_number: Option<i32>,
   pub disc_total: Option<i32>,
   pub track_number: Option<i32>,
   pub track_total: Option<i32>,
   pub title: String,
-  pub file_path: Option<String>,
-  pub hash: i64,
 }
 
 #[derive(Debug, Insertable)]
 #[table_name = "track"]
 pub struct NewTrack {
-  pub scan_directory_id: i32,
   pub album_id: i32,
   pub disc_number: Option<i32>,
   pub disc_total: Option<i32>,
   pub track_number: Option<i32>,
   pub track_total: Option<i32>,
   pub title: String,
-  pub file_path: Option<String>,
-  pub hash: i64,
 }
 
 // Artist
@@ -135,6 +139,144 @@ pub struct NewAlbumArtist {
   pub artist_id: i32,
 }
 
+//
+// Local data
+//
+
+#[derive(Clone, PartialOrd, PartialEq, Debug, Identifiable, Queryable, Associations, Serialize, Deserialize)]
+#[primary_key(album_id, source_id)]
+#[table_name = "local_album"]
+#[belongs_to(Album)]
+#[belongs_to(Source)]
+pub struct LocalAlbum {
+  pub album_id: i32,
+  pub source_id: i32,
+}
+
+#[derive(Debug, Insertable)]
+#[table_name = "local_album"]
+pub struct NewLocalAlbum {
+  pub album_id: i32,
+  pub source_id: i32,
+}
+
+#[derive(Clone, PartialOrd, PartialEq, Debug, Identifiable, Queryable, Associations, AsChangeset, Serialize, Deserialize)]
+#[primary_key(track_id, source_id)]
+#[table_name = "local_track"]
+#[belongs_to(Track)]
+#[belongs_to(Source)]
+#[changeset_options(treat_none_as_null = "true")]
+pub struct LocalTrack {
+  pub track_id: i32,
+  pub source_id: i32,
+  pub file_path: Option<String>,
+  pub hash: i64,
+}
+
+#[derive(Debug, Insertable)]
+#[table_name = "local_track"]
+pub struct NewLocalTrack {
+  pub track_id: i32,
+  pub source_id: i32,
+  pub file_path: Option<String>,
+  pub hash: i64,
+}
+
+#[derive(Clone, PartialOrd, PartialEq, Debug, Identifiable, Queryable, Associations, Serialize, Deserialize)]
+#[primary_key(artist_id, source_id)]
+#[table_name = "local_artist"]
+#[belongs_to(Artist)]
+#[belongs_to(Source)]
+pub struct LocalArtist {
+  pub artist_id: i32,
+  pub source_id: i32,
+}
+
+#[derive(Debug, Insertable)]
+#[table_name = "local_artist"]
+pub struct NewLocalArtist {
+  pub artist_id: i32,
+  pub source_id: i32,
+}
+
+//
+// Spotify data
+//
+
+#[derive(Clone, PartialOrd, PartialEq, Debug, Identifiable, Queryable, Associations, Serialize, Deserialize)]
+#[primary_key(album_id, spotify_id)]
+#[table_name = "spotify_album"]
+#[belongs_to(Album)]
+pub struct SpotifyAlbum {
+  pub album_id: i32,
+  pub spotify_id: String,
+}
+
+#[derive(Debug, Insertable)]
+#[table_name = "spotify_album"]
+pub struct NewSpotifyAlbum {
+  pub album_id: i32,
+  pub spotify_id: String,
+}
+
+#[derive(Clone, PartialOrd, PartialEq, Debug, Identifiable, Queryable, Associations, Serialize, Deserialize)]
+#[primary_key(track_id, spotify_id)]
+#[table_name = "spotify_track"]
+#[belongs_to(Track)]
+pub struct SpotifyTrack {
+  pub track_id: i32,
+  pub spotify_id: String,
+}
+
+#[derive(Debug, Insertable)]
+#[table_name = "spotify_track"]
+pub struct NewSpotifyTrack {
+  pub track_id: i32,
+  pub spotify_id: String,
+}
+
+#[derive(Clone, PartialOrd, PartialEq, Debug, Identifiable, Queryable, Associations, Serialize, Deserialize)]
+#[primary_key(artist_id, spotify_id)]
+#[table_name = "spotify_artist"]
+#[belongs_to(Artist)]
+pub struct SpotifyArtist {
+  pub artist_id: i32,
+  pub spotify_id: String,
+}
+
+#[derive(Debug, Insertable)]
+#[table_name = "spotify_artist"]
+pub struct NewSpotifyArtist {
+  pub artist_id: i32,
+  pub spotify_id: String,
+}
+
+//
+// Generic data
+//
+
+#[derive(Clone, PartialOrd, PartialEq, Debug, Serialize, Deserialize)]
+pub enum AlbumSource {
+  Local(LocalAlbum),
+  Spotify(SpotifyAlbum),
+}
+
+#[derive(Clone, PartialOrd, PartialEq, Debug, Serialize, Deserialize)]
+pub enum TrackSource {
+  Local(LocalTrack),
+  Spotify(SpotifyTrack),
+}
+
+#[derive(Clone, PartialOrd, PartialEq, Debug, Serialize, Deserialize)]
+pub enum ArtistSource {
+  Local(LocalArtist),
+  Spotify(SpotifyArtist),
+}
+
+//
+// User and user data
+//
+
 // User
 
 #[derive(Clone, PartialOrd, Ord, PartialEq, Eq, Hash, Debug, Identifiable, Queryable, Serialize, Deserialize)]
@@ -161,7 +303,7 @@ pub struct NewUser {
 #[derive(Clone, PartialOrd, Ord, PartialEq, Eq, Hash, Debug, Identifiable, Queryable, Associations, AsChangeset, Serialize, Deserialize)]
 #[primary_key(user_id, album_id)]
 #[table_name = "user_album_rating"]
-#[belongs_to(User, foreign_key = "user_id")]
+#[belongs_to(User)]
 #[belongs_to(Album)]
 #[changeset_options(treat_none_as_null = "true")]
 pub struct UserAlbumRating {
@@ -183,7 +325,7 @@ pub struct NewUserAlbumRating {
 #[derive(Clone, PartialOrd, Ord, PartialEq, Eq, Hash, Debug, Identifiable, Queryable, Associations, AsChangeset, Serialize, Deserialize)]
 #[primary_key(user_id, track_id)]
 #[table_name = "user_track_rating"]
-#[belongs_to(User, foreign_key = "user_id")]
+#[belongs_to(User)] /*, foreign_key = "user_id"*/
 #[belongs_to(Track)]
 #[changeset_options(treat_none_as_null = "true")]
 pub struct UserTrackRating {
@@ -205,7 +347,7 @@ pub struct NewUserTrackRating {
 #[derive(Clone, PartialOrd, Ord, PartialEq, Eq, Hash, Debug, Identifiable, Queryable, Associations, AsChangeset, Serialize, Deserialize)]
 #[primary_key(user_id, artist_id)]
 #[table_name = "user_artist_rating"]
-#[belongs_to(User, foreign_key = "user_id")]
+#[belongs_to(User)]
 #[belongs_to(Artist)]
 #[changeset_options(treat_none_as_null = "true")]
 pub struct UserArtistRating {
@@ -222,80 +364,9 @@ pub struct NewUserArtistRating {
   pub rating: i32,
 }
 
-// Albums, including related data.
-
-#[derive(Default, Clone, Debug, Serialize, Deserialize)]
-pub struct Albums {
-  pub albums: Vec<Album>,
-  pub artists: HashMap<i32, Artist>,
-  pub album_artists: HashMap<i32, Vec<i32>>,
-}
-
-impl Albums {
-  pub fn from(
-    albums: Vec<Album>,
-    artists: Vec<Artist>,
-    album_artists: Vec<AlbumArtist>,
-  ) -> Self {
-    let artists = artists.into_iter().map(|a| (a.id, a)).collect();
-    let album_artists = album_artists.into_iter().map(|aa| (aa.album_id, aa.artist_id)).into_group_map();
-    Self { albums, artists, album_artists }
-  }
-
-  pub fn iter(&self) -> impl Iterator<Item=(&Album, impl Iterator<Item=&Artist>)> + '_ {
-    let Albums { albums, artists, album_artists } = &self;
-    albums.into_iter().filter_map(move |album| {
-      let album_artists: &Vec<i32> = album_artists.get(&album.id)?;
-      let album_artists: Vec<&Artist> = album_artists.into_iter().filter_map(|aa| artists.get(aa)).collect();
-      return Some((album, album_artists.into_iter()));
-    })
-  }
-}
-
-// Tracks, including related data.
-
-#[derive(Default, Clone, Debug, Serialize, Deserialize)]
-pub struct Tracks {
-  pub tracks: Vec<Track>,
-  pub scan_directories: HashMap<i32, ScanDirectory>,
-  pub albums: HashMap<i32, Album>,
-  pub artists: HashMap<i32, Artist>,
-  pub track_artists: HashMap<i32, Vec<i32>>,
-  pub album_artists: HashMap<i32, Vec<i32>>,
-}
-
-impl Tracks {
-  pub fn from(
-    tracks: Vec<Track>,
-    scan_directories: Vec<ScanDirectory>,
-    albums: Vec<Album>,
-    artists: Vec<Artist>,
-    track_artists: Vec<TrackArtist>,
-    album_artists: Vec<AlbumArtist>,
-  ) -> Self {
-    let scan_directories = scan_directories.into_iter().map(|sd| (sd.id, sd)).collect();
-    let albums = albums.into_iter().map(|a| (a.id, a)).collect();
-    let artists = artists.into_iter().map(|a| (a.id, a)).collect();
-    let track_artists = track_artists.into_iter().map(|ta| (ta.track_id, ta.artist_id)).into_group_map();
-    let album_artists = album_artists.into_iter().map(|aa| (aa.album_id, aa.artist_id)).into_group_map();
-    Self { tracks, scan_directories, albums, artists, track_artists, album_artists }
-  }
-
-  pub fn iter(&self) -> impl Iterator<Item=(&ScanDirectory, &Track, impl Iterator<Item=&Artist>, &Album, impl Iterator<Item=&Artist>)> + '_ {
-    let Tracks { tracks, scan_directories, albums, artists, track_artists, album_artists } = &self;
-    tracks.into_iter().filter_map(move |track| {
-      let scan_directory = scan_directories.get(&track.scan_directory_id)?;
-      let track_artists: &Vec<i32> = track_artists.get(&track.id)?;
-      let track_artists: Vec<&Artist> = track_artists.into_iter().filter_map(|ta| artists.get(ta)).collect();
-      let album = albums.get(&track.album_id)?;
-      let album_artists: &Vec<i32> = album_artists.get(&album.id)?;
-      let album_artists: Vec<&Artist> = album_artists.into_iter().filter_map(|aa| artists.get(aa)).collect();
-      return Some((scan_directory, track, track_artists.into_iter(), album, album_artists.into_iter()));
-    })
-  }
-}
-
+//
 // Display implementations
+//
 
 impl Display for Track {
   fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), Error> {
@@ -311,15 +382,15 @@ impl Display for Track {
       _ => write!(f, "         ")?,
     }
     write!(f, " {:<50}", self.title)?;
-    if let Some(file_path) = &self.file_path {
-      write!(f, " - {}", file_path)?;
-    }
+    // if let Some(file_path) = &self.file_path {
+    //   write!(f, " - {}", file_path)?;
+    // }
     Ok(())
   }
 }
 
-impl Display for ScanDirectory {
-  fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), Error> {
-    f.write_str(&self.directory)
-  }
-}
+// impl Display for Source {
+//   fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), Error> {
+//     f.write_str(&self.directory)
+//   }
+// }

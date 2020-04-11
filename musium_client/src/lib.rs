@@ -6,6 +6,7 @@ pub use reqwest::Url;
 use thiserror::Error;
 
 use musium_core::model::*;
+use musium_core::model::collection::{Albums, AlbumsRaw, Tracks, TracksRaw};
 
 pub struct Client {
   client: HttpClient,
@@ -57,14 +58,14 @@ impl Client {
 // Scan directory
 
 impl Client {
-  pub fn list_scan_directories(&self) -> Result<Vec<ScanDirectory>, ClientError> {
+  pub fn list_scan_directories(&self) -> Result<Vec<Source>, ClientError> {
     let scan_directories = self.client.get(self.url.join("scan_directory")?)
       .send()?
       .json()?;
     Ok(scan_directories)
   }
 
-  pub fn get_scan_directory_by_id(&self, id: i32) -> Result<Option<ScanDirectory>, ClientError> {
+  pub fn get_scan_directory_by_id(&self, id: i32) -> Result<Option<Source>, ClientError> {
     let response = self.client.get(self.url.join(&format!("scan_directory/{}", id))?)
       .send()?;
     match response.status() {
@@ -73,7 +74,7 @@ impl Client {
     }
   }
 
-  pub fn create_scan_directory(&self, new_scan_directory: &NewScanDirectory) -> Result<ScanDirectory, ClientError> {
+  pub fn create_scan_directory(&self, new_scan_directory: &NewSource) -> Result<Source, ClientError> {
     let scan_directory = self.client.post(self.url.join("scan_directory")?)
       .json(new_scan_directory)
       .send()?
@@ -101,13 +102,13 @@ impl Client {
 
 impl Client {
   pub fn list_albums(&self) -> Result<Albums, ClientError> {
-    let scan_directories = self.client.get(self.url.join("album")?)
+    let albums_raw: AlbumsRaw = self.client.get(self.url.join("album")?)
       .send()?
       .json()?;
-    Ok(scan_directories)
+    Ok(albums_raw.into())
   }
 
-  pub fn get_album_by_id(&self, id: i32) -> Result<Option<Album>, ClientError> {
+  pub fn get_album_by_id(&self, id: i32) -> Result<Option<LocalAlbum>, ClientError> {
     let response = self.client.get(self.url.join(&format!("album/{}", id))?)
       .send()?;
     match response.status() {
@@ -121,13 +122,13 @@ impl Client {
 
 impl Client {
   pub fn list_tracks(&self) -> Result<Tracks, ClientError> {
-    let scan_directories = self.client.get(self.url.join("track")?)
+    let tracks_raw: TracksRaw = self.client.get(self.url.join("track")?)
       .send()?
       .json()?;
-    Ok(scan_directories)
+    Ok(tracks_raw.into())
   }
 
-  pub fn get_track_by_id(&self, id: i32) -> Result<Option<Track>, ClientError> {
+  pub fn get_track_by_id(&self, id: i32) -> Result<Option<LocalTrack>, ClientError> {
     let response = self.client.get(self.url.join(&format!("track/{}", id))?)
       .send()?;
     match response.status() {
@@ -149,14 +150,14 @@ impl Client {
 // Artist
 
 impl Client {
-  pub fn list_artists(&self) -> Result<Vec<Artist>, ClientError> {
+  pub fn list_artists(&self) -> Result<Vec<LocalArtist>, ClientError> {
     let scan_directories = self.client.get(self.url.join("artist")?)
       .send()?
       .json()?;
     Ok(scan_directories)
   }
 
-  pub fn get_artist_by_id(&self, id: i32) -> Result<Option<Artist>, ClientError> {
+  pub fn get_artist_by_id(&self, id: i32) -> Result<Option<LocalArtist>, ClientError> {
     let response = self.client.get(self.url.join(&format!("artist/{}", id))?)
       .send()?;
     match response.status() {

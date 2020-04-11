@@ -10,7 +10,7 @@ use tracing::info;
 use tracing_log::LogTracer;
 use tracing_subscriber::FmtSubscriber;
 
-use musium_backend::Backend;
+use musium_backend::Db;
 
 use crate::serve::serve;
 
@@ -68,7 +68,7 @@ fn main() -> Result<()> {
   let mut observer: YamlObserver = YamlBuilder::new().build();
   metrics_receiver.install();
   // Create backend
-  let backend = Backend::new(
+  let backend = Db::new(
     opt.database_file.to_string_lossy(),
     opt.password_hasher_secret_key.as_bytes())
     .with_context(|| "Failed to create backend")?;

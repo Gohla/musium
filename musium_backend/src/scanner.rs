@@ -4,7 +4,7 @@ use std::io::{BufReader, Read, Seek};
 use thiserror::Error;
 use walkdir::WalkDir;
 
-use musium_core::model::ScanDirectory;
+use musium_core::model::Source;
 
 #[derive(Default, Clone, Debug)]
 pub struct Scanner {}
@@ -63,9 +63,9 @@ pub enum ScanError {
 }
 
 impl Scanner {
-  pub fn scan(&self, scan_directory: ScanDirectory) -> impl Iterator<Item=Result<ScannedTrack, ScanError>> {
+  pub fn scan(&self, scan_directory: Source) -> impl Iterator<Item=Result<ScannedTrack, ScanError>> {
     use ScanError::*;
-    let ScanDirectory { id: scan_directory_id, directory, .. } = scan_directory;
+    let Source { id: scan_directory_id, directory, .. } = scan_directory;
     WalkDir::new(&directory)
       .into_iter()
       .filter_map(move |entry| {
