@@ -3,7 +3,7 @@ use std::backtrace::Backtrace;
 use diesel::prelude::*;
 use thiserror::Error;
 
-use musium_core::model::{NewUser, User, UserAlbumRating, UserArtistRating, UserLogin, UserTrackRating};
+use musium_core::model::{NewUser, NewUserAlbumRating, NewUserArtistRating, NewUserTrackRating, User, UserAlbumRating, UserArtistRating, UserLogin, UserTrackRating};
 use musium_core::schema;
 
 use crate::model::{InternalNewUser, InternalUser};

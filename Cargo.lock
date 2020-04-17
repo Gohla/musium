@@ -1666,6 +1666,7 @@ dependencies = [
  "diesel",
  "itertools",
  "serde",
+ "serde_json",
 ]
 
 [[package]]

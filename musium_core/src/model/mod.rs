@@ -1,8 +1,13 @@
 use std::fmt::{Display, Error, Formatter};
+use std::io::Write;
 
+use diesel::backend::Backend;
+use diesel::serialize::{Output, ToSql};
+use diesel::sql_types::Text;
 use serde::{Deserialize, Serialize};
 
 use crate::schema::*;
+use diesel::deserialize::FromSql;
 
 pub mod collection;
 
@@ -16,12 +21,43 @@ pub mod collection;
 pub struct Source {
   pub id: i32,
   pub enabled: bool,
-  pub data: String, // TODO: use Sources enum
+  pub data: Sources,
 }
 
 #[derive(Clone, PartialOrd, PartialEq, Debug, Serialize, Deserialize)]
 pub enum Sources {
   Local { directory: String }
+}
+
+impl Sources {
+  pub fn to_json_string(&self) -> serde_json::Result<String> {
+    serde_json::to_string(self)
+  }
+
+  pub fn from_json_string(str: &str) -> serde_json::Result<Sources> {
+    serde_json::from_str(str)
+  }
+}
+
+impl<DB> ToSql<Text, DB> for Sources
+  where
+    DB: Backend,
+    String: ToSql<Text, DB>,
+{
+  fn to_sql<W: Write>(&self, out: &mut Output<W, DB>) -> diesel::serialize::Result {
+    self.to_json_string().to_sql(out)
+  }
+}
+
+impl<DB> FromSql<Text, DB> for Sources
+where
+  DB: Backend,
+  String: FromSql<Text, DB>
+{
+  fn from_sql(bytes: Option<&<DB as Backend>::RawValue>) -> diesel::deserialize::Result<Self> {
+    let string = String::from_sql(bytes)?;
+    Ok(Sources::from_json_string(&string)?)
+  }
 }
 
 // impl Source {
