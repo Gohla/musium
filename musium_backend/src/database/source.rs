@@ -17,27 +17,40 @@ impl DatabaseConnection<'_> {
   }
 
   pub fn create_source(&self, new_source: NewSource) -> Result<Source, DatabaseQueryError> {
+    let insert_query = {
+      use schema::source::dsl::*;
+      diesel::insert_into(source).values(&new_source)
+    };
+    time!("add_source.insert", insert_query.execute(&self.connection)?);
     let select_query = {
       use schema::source::dsl::*;
       source
-        .filter(directory.eq(&new_source.directory))
+        .order(id.desc())
+        .limit(1)
     };
-    let source = time!("add_source.select", select_query.first::<Source>(&self.connection).optional()?);
-    Ok(if let Some(mut source) = source {
-      // Enable existing source.
-      source.enabled = new_source.enabled;
+    Ok(time!("add_source.select_inserted", select_query.first::<Source>(&self.connection)?))
+  }
+
+  pub fn set_source_enabled_by_id(&self, source_id: i32, enabled: bool) -> Result<Option<Source>, DatabaseQueryError> {
+    let source = {
+      use schema::source::dsl::*;
+      time!("add_source.select", source.find(source_id).first::<Source>(&self.connection).optional()?)
+    };
+    if let Some(mut source) = source {
+      source.enabled = enabled;
       time!("add_source.update", source.save_changes::<Source>(&*self.connection)?);
-      source
+      Ok(Some(source))
     } else {
-      // Insert new scan directory.
-      let insert_query = {
-        use schema::source::dsl::*;
-        diesel::insert_into(source)
-          .values(&new_source)
-      };
-      time!("add_source.insert", insert_query.execute(&self.connection)?);
-      time!("add_source.select_inserted", select_query.first::<Source>(&self.connection)?)
-    })
+      Ok(None)
+    }
+  }
+
+  pub fn enable_source_by_id(&self, source_id: i32) -> Result<Option<Source>, DatabaseQueryError> {
+    self.set_source_enabled_by_id(source_id, true)
+  }
+
+  pub fn disable_source_by_id(&self, source_id: i32) -> Result<Option<Source>, DatabaseQueryError> {
+    self.set_source_enabled_by_id(source_id, false)
   }
 
   pub fn delete_source_by_id(&self, source_id: i32) -> Result<bool, DatabaseQueryError> {

@@ -2,12 +2,12 @@ use std::fmt::{Display, Error, Formatter};
 use std::io::Write;
 
 use diesel::backend::Backend;
+use diesel::deserialize::FromSql;
 use diesel::serialize::{Output, ToSql};
 use diesel::sql_types::Text;
 use serde::{Deserialize, Serialize};
 
 use crate::schema::*;
-use diesel::deserialize::FromSql;
 
 pub mod collection;
 
@@ -21,58 +21,60 @@ pub mod collection;
 pub struct Source {
   pub id: i32,
   pub enabled: bool,
-  pub data: Sources,
+  pub data: SourceData,
 }
-
-#[derive(Clone, PartialOrd, PartialEq, Debug, Serialize, Deserialize)]
-pub enum Sources {
-  Local { directory: String }
-}
-
-impl Sources {
-  pub fn to_json_string(&self) -> serde_json::Result<String> {
-    serde_json::to_string(self)
-  }
-
-  pub fn from_json_string(str: &str) -> serde_json::Result<Sources> {
-    serde_json::from_str(str)
-  }
-}
-
-impl<DB> ToSql<Text, DB> for Sources
-  where
-    DB: Backend,
-    String: ToSql<Text, DB>,
-{
-  fn to_sql<W: Write>(&self, out: &mut Output<W, DB>) -> diesel::serialize::Result {
-    self.to_json_string().to_sql(out)
-  }
-}
-
-impl<DB> FromSql<Text, DB> for Sources
-where
-  DB: Backend,
-  String: FromSql<Text, DB>
-{
-  fn from_sql(bytes: Option<&<DB as Backend>::RawValue>) -> diesel::deserialize::Result<Self> {
-    let string = String::from_sql(bytes)?;
-    Ok(Sources::from_json_string(&string)?)
-  }
-}
-
-// impl Source {
-//   pub fn track_file_path(&self, track: &Track) -> Option<PathBuf> {
-//     track.file_path.as_ref().map(|file_path| PathBuf::from(&self.directory).join(file_path))
-//   }
-// }
 
 #[derive(Clone, Debug, Insertable, Serialize, Deserialize)]
 #[table_name = "source"]
 pub struct NewSource {
   pub enabled: bool,
-  pub data: String, // TODO: use Sources enum
+  pub data: SourceData,
 }
 
+// Source data enum, which gets serialized/deserialized to/from JSON strings.
+
+#[derive(Clone, PartialOrd, PartialEq, Debug, AsExpression, FromSqlRow, Serialize, Deserialize)]
+#[sql_type = "Text"]
+pub enum SourceData {
+  Local(LocalSourceData)
+}
+
+#[derive(Clone, PartialOrd, PartialEq, Debug, Serialize, Deserialize)]
+pub struct LocalSourceData {
+  pub directory: String
+}
+
+// Serialization/deserialization to/from JSON strings, and SQL type conversion for SourceData
+
+impl SourceData {
+  pub fn to_json_string(&self) -> serde_json::Result<String> {
+    serde_json::to_string(self)
+  }
+  pub fn from_json_string(str: &str) -> serde_json::Result<SourceData> {
+    serde_json::from_str(str)
+  }
+}
+
+impl<DB> ToSql<Text, DB> for SourceData
+  where
+    DB: Backend,
+    String: ToSql<Text, DB>,
+{
+  fn to_sql<W: Write>(&self, out: &mut Output<W, DB>) -> diesel::serialize::Result {
+    self.to_json_string()?.to_sql(out)
+  }
+}
+
+impl<DB> FromSql<Text, DB> for SourceData
+  where
+    DB: Backend,
+    String: FromSql<Text, DB>
+{
+  fn from_sql(bytes: Option<&<DB as Backend>::RawValue>) -> diesel::deserialize::Result<Self> {
+    let string = String::from_sql(bytes)?;
+    Ok(SourceData::from_json_string(&string)?)
+  }
+}
 
 //
 // Album/Track/Artist data, and relations between them.

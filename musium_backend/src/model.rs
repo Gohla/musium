@@ -3,8 +3,6 @@ use std::path::PathBuf;
 use musium_core::model::*;
 use musium_core::schema::*;
 
-use crate::scanner::ScannedTrack;
-
 // Helper macros
 
 macro_rules! update {
@@ -19,21 +17,21 @@ macro_rules! update {
 
 // Scan directory
 
-pub trait ScanDirectoryEx {
+pub trait LocalSourceDataEx {
   fn track_file_path(&self, track: &LocalTrack) -> Option<PathBuf>;
-  fn update_from(&mut self, enabled: bool) -> bool;
+  //fn update_from(&mut self, enabled: bool) -> bool;
 }
 
-impl ScanDirectoryEx for Source {
+impl LocalSourceDataEx for LocalSourceData {
   fn track_file_path(&self, track: &LocalTrack) -> Option<PathBuf> {
     track.file_path.as_ref().map(|file_path| PathBuf::from(&self.directory).join(file_path))
   }
 
-  fn update_from(&mut self, enabled: bool) -> bool {
-    let mut changed = false;
-    update!(self.enabled, enabled, changed);
-    changed
-  }
+  // fn update_from(&mut self, enabled: bool) -> bool {
+  //   let mut changed = false;
+  //   update!(self.enabled, enabled, changed);
+  //   changed
+  // }
 }
 
 // Track

@@ -6,7 +6,7 @@ use diesel::r2d2::{self, ConnectionManager, Pool, PooledConnection};
 use thiserror::Error;
 
 use crate::password::PasswordHasher;
-use crate::scanner::Scanner;
+use crate::sync::local::LocalSync;
 
 macro_rules! time {
   ($s:expr, $e:expr) => {{
@@ -22,13 +22,13 @@ pub mod album;
 pub mod track;
 pub mod artist;
 pub mod user;
-pub mod scan;
+pub mod sync;
 
 
 #[derive(Clone)]
 pub struct Database {
   connection_pool: Pool<ConnectionManager<SqliteConnection>>,
-  scanner: Scanner,
+  local_sync: LocalSync,
   password_hasher: PasswordHasher,
 }
 
@@ -46,9 +46,9 @@ impl Database {
     let connection_pool = Pool::builder()
       .max_size(16)
       .build(ConnectionManager::<SqliteConnection>::new(database_url.as_ref()))?;
-    let scanner = Scanner::new();
+    let local_sync = LocalSync::new();
     let password_hasher = PasswordHasher::new(password_hasher_secret_key);
-    Ok(Database { connection_pool, scanner, password_hasher })
+    Ok(Database { connection_pool, local_sync, password_hasher })
   }
 }
 

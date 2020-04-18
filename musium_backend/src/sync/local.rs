@@ -4,40 +4,41 @@ use std::io::{BufReader, Read, Seek};
 use thiserror::Error;
 use walkdir::WalkDir;
 
-use musium_core::model::Source;
+use musium_core::model::{LocalSourceData, Source};
 
 #[derive(Default, Clone, Debug)]
-pub struct Scanner {}
+pub struct LocalSync {}
 
 // Creation
 
-impl Scanner {
+impl LocalSync {
   pub fn new() -> Self {
     Self {}
   }
 }
 
-// Scanning
+// Sync
 
 #[derive(Clone, Debug)]
-pub struct ScannedTrack {
-  pub scan_directory_id: i32,
+pub struct LocalSyncTrack {
+  pub source_id: i32,
   pub disc_number: Option<i32>,
   pub disc_total: Option<i32>,
   pub track_number: Option<i32>,
   pub track_total: Option<i32>,
   pub title: String,
   pub album: String,
+  // OPTO: smallvec?
   pub track_artists: Vec<String>,
-  // OPTO: smallvec
+  // OPTO: smallvec?
   pub album_artists: Vec<String>,
-  // OPTO: smallvec
+  // OPTO: smallstring?
   pub file_path: String,
   pub hash: u32,
 }
 
 #[derive(Debug, Error)]
-pub enum ScanError {
+pub enum LocalSyncError {
   #[error("Failed to walk directory")]
   WalkDirFail(#[from] walkdir::Error),
   #[error("Failed to open file for reading")]
@@ -62,10 +63,10 @@ pub enum ScanError {
   NoAlbumFail(String),
 }
 
-impl Scanner {
-  pub fn scan(&self, scan_directory: Source) -> impl Iterator<Item=Result<ScannedTrack, ScanError>> {
-    use ScanError::*;
-    let Source { id: scan_directory_id, directory, .. } = scan_directory;
+impl LocalSync {
+  pub fn sync(&self, source_id: i32, local_source_data: LocalSourceData) -> impl Iterator<Item=Result<LocalSyncTrack, LocalSyncError>> {
+    use LocalSyncError::*;
+    let LocalSourceData { directory, .. } = local_source_data;
     WalkDir::new(&directory)
       .into_iter()
       .filter_map(move |entry| {
@@ -143,11 +144,11 @@ impl Scanner {
               return Some(Err(FileReadFail(e)));
             }
             // Calculate hash over the audio data.
-            hasher.update(Scanner::skip_id3v1(&buffer)); // Possibly skip the ID3v1 tag which is at the end of the file.
+            hasher.update(LocalSync::skip_id3v1(&buffer)); // Possibly skip the ID3v1 tag which is at the end of the file.
             let hash = hasher.finalize();
 
-            ScannedTrack {
-              scan_directory_id,
+            LocalSyncTrack {
+              source_id,
               disc_number: tag.disc().map(|u| u as i32),
               disc_total: tag.total_discs().map(|u| u as i32),
               track_number: tag.track().map(|u| u as i32),
@@ -171,11 +172,11 @@ impl Scanner {
               return Some(Err(FileReadFail(e)));
             }
             // Calculate hash over the audio data.
-            hasher.update(Scanner::skip_id3v1(&buffer)); // Skip the ID3v1 tag which is at the end of the file.
+            hasher.update(LocalSync::skip_id3v1(&buffer)); // Skip the ID3v1 tag which is at the end of the file.
             let hash = hasher.finalize();
 
-            ScannedTrack {
-              scan_directory_id,
+            LocalSyncTrack {
+              source_id,
               disc_number: None,
               disc_total: None,
               track_number: tag.track.map(|u| u as i32),
