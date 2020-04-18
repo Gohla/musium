@@ -4,7 +4,7 @@ use std::io::{BufReader, Read, Seek};
 use thiserror::Error;
 use walkdir::WalkDir;
 
-use musium_core::model::{LocalSourceData, Source};
+use musium_core::model::LocalSourceData;
 
 #[derive(Default, Clone, Debug)]
 pub struct LocalSync {}

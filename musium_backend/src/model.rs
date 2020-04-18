@@ -3,6 +3,8 @@ use std::path::PathBuf;
 use musium_core::model::*;
 use musium_core::schema::*;
 
+use crate::sync::local::LocalSyncTrack;
+
 // Helper macros
 
 macro_rules! update {
@@ -15,7 +17,7 @@ macro_rules! update {
   }
 }
 
-// Scan directory
+// Source
 
 pub trait LocalSourceDataEx {
   fn track_file_path(&self, track: &LocalTrack) -> Option<PathBuf>;
@@ -26,57 +28,63 @@ impl LocalSourceDataEx for LocalSourceData {
   fn track_file_path(&self, track: &LocalTrack) -> Option<PathBuf> {
     track.file_path.as_ref().map(|file_path| PathBuf::from(&self.directory).join(file_path))
   }
-
-  // fn update_from(&mut self, enabled: bool) -> bool {
-  //   let mut changed = false;
-  //   update!(self.enabled, enabled, changed);
-  //   changed
-  // }
 }
 
 // Track
 
 pub trait TrackEx {
-  fn check_hash_changed(&mut self, scanned_track: &ScannedTrack) -> bool;
-  fn check_metadata_changed(&mut self, album: &LocalAlbum, scanned_track: &ScannedTrack) -> bool;
-  fn update_from(&mut self, album: &LocalAlbum, scanned_track: &ScannedTrack) -> bool;
+  fn check_metadata_changed(&self, album: &Album, local_sync_track: &LocalSyncTrack) -> bool;
+  fn update_from(&mut self, album: &Album, local_sync_track: &LocalSyncTrack) -> bool;
 }
 
-impl TrackEx for LocalTrack {
-  fn check_hash_changed(&mut self, scanned_track: &ScannedTrack) -> bool {
-    self.hash != scanned_track.hash as i64
-  }
-
-  fn check_metadata_changed(&mut self, album: &LocalAlbum, scanned_track: &ScannedTrack) -> bool {
-    if self.source_id != scanned_track.scan_directory_id { return true; }
+impl TrackEx for Track {
+  fn check_metadata_changed(&self, album: &Album, local_sync_track: &LocalSyncTrack) -> bool {
     if self.album_id != album.id { return true; }
-    if self.disc_number != scanned_track.disc_number { return true; }
-    if self.disc_total != scanned_track.disc_total { return true; }
-    if self.track_number != scanned_track.track_number { return true; }
-    if self.track_total != scanned_track.track_total { return true; }
-    if self.title != scanned_track.title { return true; }
+    if self.disc_number != local_sync_track.disc_number { return true; }
+    if self.disc_total != local_sync_track.disc_total { return true; }
+    if self.track_number != local_sync_track.track_number { return true; }
+    if self.track_total != local_sync_track.track_total { return true; }
+    if self.title != local_sync_track.title { return true; }
     return false;
   }
 
-  fn update_from(&mut self, album: &LocalAlbum, scanned_track: &ScannedTrack) -> bool {
+  fn update_from(&mut self, album: &Album, local_sync_track: &LocalSyncTrack) -> bool {
     let mut changed = false;
-    update!(self.source_id, scanned_track.scan_directory_id, changed);
     update!(self.album_id, album.id, changed);
-    update!(self.disc_number, scanned_track.disc_number, changed);
-    update!(self.disc_total, scanned_track.disc_total, changed);
-    update!(self.track_number, scanned_track.track_number, changed);
-    update!(self.track_total, scanned_track.track_total, changed);
-    update!(self.title, scanned_track.title.clone(), changed);
+    update!(self.disc_number, local_sync_track.disc_number, changed);
+    update!(self.disc_total, local_sync_track.disc_total, changed);
+    update!(self.track_number, local_sync_track.track_number, changed);
+    update!(self.track_total, local_sync_track.track_total, changed);
+    update!(self.title, local_sync_track.title.clone(), changed);
+    changed
+  }
+}
+
+// Local Track
+
+pub trait LocalTrackEx {
+  fn check_hash_changed(&self, local_sync_track: &LocalSyncTrack) -> bool;
+  fn update_from(&mut self, local_sync_track: &LocalSyncTrack) -> bool;
+}
+
+impl LocalTrackEx for LocalTrack {
+  fn check_hash_changed(&self, local_sync_track: &LocalSyncTrack) -> bool {
+    self.hash != local_sync_track.hash as i64
+  }
+
+
+  fn update_from(&mut self, local_sync_track: &LocalSyncTrack) -> bool {
+    let mut changed = false;
     if let Some(file_path) = &mut self.file_path {
-      if file_path != &scanned_track.file_path {
-        *file_path = scanned_track.file_path.clone();
+      if file_path != &local_sync_track.file_path {
+        *file_path = local_sync_track.file_path.clone();
         changed = true;
       }
     } else {
-      self.file_path = Some(scanned_track.file_path.clone());
+      self.file_path = Some(local_sync_track.file_path.clone());
       changed = true;
     }
-    update!(self.hash, scanned_track.hash as i64, changed);
+    update!(self.hash, local_sync_track.hash as i64, changed);
     changed
   }
 }

@@ -24,9 +24,7 @@ impl DatabaseConnection<'_> {
     time!("add_source.insert", insert_query.execute(&self.connection)?);
     let select_query = {
       use schema::source::dsl::*;
-      source
-        .order(id.desc())
-        .limit(1)
+      source.order(id.desc()).limit(1)
     };
     Ok(time!("add_source.select_inserted", select_query.first::<Source>(&self.connection)?))
   }
