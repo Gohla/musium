@@ -134,7 +134,7 @@ enum Command {
   },
 
   /// Initiate a scan in all scan directories to add/remove/update tracks
-  Scan,
+  Sync,
 }
 
 fn main() -> Result<()> {
@@ -189,7 +189,7 @@ fn run(command: Command, client: &Client) -> Result<()> {
       println!("{:?}", source);
     }
     Command::DeleteSourceById { id } => {
-      client.delete_scan_directory_by_id(id)?;
+      client.delete_source_by_id(id)?;
     }
 
     Command::ListAlbums => {
@@ -279,12 +279,12 @@ fn run(command: Command, client: &Client) -> Result<()> {
       println!("{:?}", rating);
     }
 
-    Command::Scan => {
-      let started_scan = client.scan()?;
-      if started_scan {
-        println!("Started scanning");
+    Command::Sync => {
+      let started_sync = client.sync()?;
+      if started_sync {
+        println!("Started synchronizing");
       } else {
-        println!("Already scanning");
+        println!("Already synchronizing");
       }
     }
   }

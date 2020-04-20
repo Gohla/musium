@@ -10,7 +10,7 @@ use tracing::info;
 use tracing_log::LogTracer;
 use tracing_subscriber::FmtSubscriber;
 
-use musium_backend::Db;
+use musium_backend::database::Database;
 
 use crate::serve::serve;
 
@@ -67,8 +67,8 @@ fn main() -> Result<()> {
   let controller: Controller = metrics_receiver.controller();
   let mut observer: YamlObserver = YamlBuilder::new().build();
   metrics_receiver.install();
-  // Create backend
-  let backend = Db::new(
+  // Create database
+  let database = Database::new(
     opt.database_file.to_string_lossy(),
     opt.password_hasher_secret_key.as_bytes())
     .with_context(|| "Failed to create backend")?;
@@ -76,7 +76,7 @@ fn main() -> Result<()> {
   let bind_address = opt.bind_address.clone();
   let cookie_identity_secret_key = opt.cookie_identity_secret_key.clone();
   actix_rt::System::new("server")
-    .block_on(async move { serve(backend, bind_address, cookie_identity_secret_key).await })
+    .block_on(async move { serve(database, bind_address, cookie_identity_secret_key).await })
     .with_context(|| "HTTP server failed")?;
   // Print metrics
   if opt.print_metrics {

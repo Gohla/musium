@@ -3,15 +3,15 @@ use std::net;
 use actix_identity::{CookieIdentityPolicy, IdentityService};
 use actix_web::{App, HttpResponse, HttpServer, middleware, web};
 
-use musium_backend::Db;
+use musium_backend::database::Database;
 
 use crate::api::*;
 use crate::auth::*;
-use crate::scanner::Scanner;
+use crate::scanner::Sync;
 
-pub async fn serve<A: net::ToSocketAddrs, C: Into<Vec<u8>>>(backend: Db, bind_address: A, cookie_identity_secret_key: C) -> std::io::Result<()> {
-  let backend_data = web::Data::new(backend);
-  let scanner_data = web::Data::new(Scanner::new());
+pub async fn serve<A: net::ToSocketAddrs, C: Into<Vec<u8>>>(database: Database, bind_address: A, cookie_identity_secret_key: C) -> std::io::Result<()> {
+  let database_data = web::Data::new(database);
+  let scanner_data = web::Data::new(Sync::new());
   let cookie_identity_secret_key = cookie_identity_secret_key.into();
   HttpServer::new(move || {
     App::new()
@@ -21,7 +21,7 @@ pub async fn serve<A: net::ToSocketAddrs, C: Into<Vec<u8>>>(backend: Db, bind_ad
           .name("auth")
           .secure(false)
       ))
-      .app_data(backend_data.clone())
+      .app_data(database_data.clone())
       .app_data(scanner_data.clone())
       .route("/", web::get().to(index))
       // Auth
@@ -29,11 +29,10 @@ pub async fn serve<A: net::ToSocketAddrs, C: Into<Vec<u8>>>(backend: Db, bind_ad
       .route("/logout", web::delete().to(logout))
       // API
       // Scan directory
-      .route("/scan_directory", web::get().to(list_scan_directories))
-      .route("/scan_directory/{id}", web::get().to(show_scan_directory_by_id))
-      .route("/scan_directory", web::post().to(create_scan_directory))
-      .route("/scan_directory", web::delete().to(delete_scan_directory_by_directory))
-      .route("/scan_directory/{id}", web::delete().to(delete_scan_directory_by_id))
+      .route("/source", web::get().to(list_sources))
+      .route("/source/{id}", web::get().to(show_source_by_id))
+      .route("/source", web::post().to(create_scan_directory))
+      .route("/source/{id}", web::delete().to(delete_source_by_id))
       // Album
       .route("/album", web::get().to(list_albums))
       .route("/album/{id}", web::get().to(show_album_by_id))
@@ -56,7 +55,7 @@ pub async fn serve<A: net::ToSocketAddrs, C: Into<Vec<u8>>>(backend: Db, bind_ad
       .route("/user/data/track/{id}/rating/{rating}", web::put().to(set_user_track_rating))
       .route("/user/data/artist/{id}/rating/{rating}", web::put().to(set_user_artist_rating))
       // Scan
-      .route("/scan", web::get().to(scan))
+      .route("/scan", web::get().to(sync))
   })
     .bind(bind_address)?
     .run()

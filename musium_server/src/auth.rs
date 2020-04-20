@@ -9,7 +9,7 @@ use actix_web::http::StatusCode;
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
-use musium_backend::{Db, DbConnection, DbConnectError, UserAddVerifyError};
+use musium_backend::database::{Database, DatabaseConnectError, user::UserAddVerifyError};
 use musium_core::model::{User, UserLogin};
 
 // Handlers
@@ -17,7 +17,7 @@ use musium_core::model::{User, UserLogin};
 #[derive(Debug, Error)]
 pub enum LoginError {
   #[error(transparent)]
-  BackendConnectFail(#[from] DbConnectError),
+  BackendConnectFail(#[from] DatabaseConnectError),
   #[error(transparent)]
   UserVerifyFail(#[from] UserAddVerifyError),
   #[error("Thread pool is gone")]
@@ -35,11 +35,11 @@ impl ResponseError for LoginError {
   }
 }
 
-pub async fn login(user_login: web::Json<UserLogin>, identity: Identity, backend: web::Data<Db>) -> Result<HttpResponse, LoginError> {
+pub async fn login(user_login: web::Json<UserLogin>, identity: Identity, database: web::Data<Database>) -> Result<HttpResponse, LoginError> {
   use LoginError::*;
 
   let user: Result<Option<User>, BlockingError<LoginError>> = web::block(move || {
-    let backend_connected: DbConnection = backend.connect()?;
+    let backend_connected = database.connect()?;
     Ok(backend_connected.verify_user(&*user_login)?)
   }).await;
 
