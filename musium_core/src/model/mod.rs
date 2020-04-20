@@ -36,7 +36,8 @@ pub struct NewSource {
 #[derive(Clone, PartialOrd, PartialEq, Debug, AsExpression, FromSqlRow, Serialize, Deserialize)]
 #[sql_type = "Text"]
 pub enum SourceData {
-  Local(LocalSourceData)
+  Local(LocalSourceData),
+  Spotify(),
 }
 
 #[derive(Clone, PartialOrd, PartialEq, Debug, Serialize, Deserialize)]

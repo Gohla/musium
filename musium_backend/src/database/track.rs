@@ -1,10 +1,12 @@
 use diesel::prelude::*;
 
-use musium_core::model::{Album, AlbumArtist, Artist, Track, TrackArtist};
+use musium_core::model::{Album, AlbumArtist, Artist, Track, TrackArtist, LocalTrack, Source, SourceData};
 use musium_core::model::collection::TracksRaw;
 use musium_core::schema;
 
 use super::{DatabaseConnection, DatabaseQueryError};
+use std::path::PathBuf;
+use crate::model::LocalSourceDataEx;
 
 impl DatabaseConnection<'_> {
   pub fn list_tracks(&self) -> Result<TracksRaw, DatabaseQueryError> {
@@ -21,15 +23,20 @@ impl DatabaseConnection<'_> {
     Ok(track.find(input_id).first::<Track>(&self.connection).optional()?)
   }
 
-  // pub fn get_track_path_by_id(&self, input_id: i32) -> Result<Option<PathBuf>, DatabaseQueryError> {
-  //   let track_and_scan_directory: Option<(Track, Source)> = {
-  //     use schema::track::dsl::*;
-  //     track
-  //       .find(input_id)
-  //       .inner_join(schema::scan_directory::table)
-  //       .first::<(Track, Source)>(&self.connection)
-  //       .optional()?
-  //   };
-  //   Ok(track_and_scan_directory.and_then(|(track, scan_directory)| scan_directory.track_file_path(&track)))
-  // }
+  pub fn get_track_path_by_id(&self, input_id: i32) -> Result<Option<PathBuf>, DatabaseQueryError> {
+    let data: Option<(LocalTrack, Source)> = {
+      use schema::local_track::dsl::*;
+      local_track
+        .filter(track_id.eq(input_id))
+        .inner_join(schema::source::table)
+        .first::<(LocalTrack, Source)>(&self.connection)
+        .optional()?
+    };
+    if let Some((local_track, source)) = data {
+      if let SourceData::Local(local_source_data) = source.data {
+        return Ok(local_source_data.track_file_path(&local_track));
+      }
+    }
+    Ok(None)
+  }
 }

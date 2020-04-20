@@ -70,6 +70,7 @@ impl DatabaseConnection<'_> {
         .flat_map(|source| {
           match source.data {
             SourceData::Local(local_source_data) => self.backend.local_sync.sync(source.id, local_source_data),
+            _ => std::iter::empty::<Result<LocalSyncTrack, LocalSyncError>>(),
           }
         })
         .partition_map(|r| {
