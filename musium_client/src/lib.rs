@@ -58,14 +58,14 @@ impl Client {
 // Scan directory
 
 impl Client {
-  pub fn list_scan_directories(&self) -> Result<Vec<Source>, ClientError> {
+  pub fn list_sources(&self) -> Result<Vec<Source>, ClientError> {
     let scan_directories = self.client.get(self.url.join("scan_directory")?)
       .send()?
       .json()?;
     Ok(scan_directories)
   }
 
-  pub fn get_scan_directory_by_id(&self, id: i32) -> Result<Option<Source>, ClientError> {
+  pub fn get_source_by_id(&self, id: i32) -> Result<Option<Source>, ClientError> {
     let response = self.client.get(self.url.join(&format!("scan_directory/{}", id))?)
       .send()?;
     match response.status() {
@@ -74,7 +74,7 @@ impl Client {
     }
   }
 
-  pub fn create_scan_directory(&self, new_scan_directory: &NewSource) -> Result<Source, ClientError> {
+  pub fn create_source(&self, new_scan_directory: &NewSource) -> Result<Source, ClientError> {
     let scan_directory = self.client.post(self.url.join("scan_directory")?)
       .json(new_scan_directory)
       .send()?

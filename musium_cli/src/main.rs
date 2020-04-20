@@ -38,26 +38,21 @@ struct Opt {
 
 #[derive(Debug, StructOpt)]
 enum Command {
-  /// Lists all scan directories
-  ListScanDirectories,
-  /// Shows a scan directory, found by id
-  ShowScanDirectoryById {
-    /// Id of the scan directory to show
+  /// Lists all sources
+  ListSources,
+  /// Shows a source, found by id
+  ShowSourceById {
+    /// Id of the source to show
     id: i32,
   },
-  /// Creates a (or re-enables a removed) scan directory
-  CreateScanDirectory {
-    /// Directory of the scan directory to create
+  /// Creates a local source
+  CreateLocalSource {
+    /// Directory of the local source to create
     directory: String,
   },
-  /// Deletes a scan directory, found by directory
-  DeleteScanDirectoryByDirectory {
-    /// Directory of scan directory to remove
-    directory: String,
-  },
-  /// Deletes a scan directory, found by id
-  DeleteScanDirectoryById {
-    /// Id of the scan directory to remove
+  /// Deletes a source, found by id
+  DeleteSourceById {
+    /// Id of the source to remove
     id: i32,
   },
 
@@ -180,23 +175,20 @@ fn main() -> Result<()> {
 
 fn run(command: Command, client: &Client) -> Result<()> {
   match command {
-    Command::ListScanDirectories => {
-      for scan_directory in client.list_scan_directories()? {
-        println!("{:?}", scan_directory);
+    Command::ListSources => {
+      for source in client.list_sources()? {
+        println!("{:?}", source);
       }
     }
-    Command::ShowScanDirectoryById { id } => {
-      let scan_directory = client.get_scan_directory_by_id(id)?;
-      println!("{:?}", scan_directory);
+    Command::ShowSourceById { id } => {
+      let source = client.get_source_by_id(id)?;
+      println!("{:?}", source);
     }
-    Command::CreateScanDirectory { directory } => {
-      let scan_directory = client.create_scan_directory(&NewSource { directory, enabled: true })?;
-      println!("{:?}", scan_directory);
+    Command::CreateLocalSource { directory } => {
+      let source = client.create_source(&NewSource { enabled: true, data: SourceData::Local(LocalSourceData { directory }) })?;
+      println!("{:?}", source);
     }
-    Command::DeleteScanDirectoryByDirectory { directory } => {
-      client.delete_scan_directory_by_directory(&directory)?;
-    }
-    Command::DeleteScanDirectoryById { id } => {
+    Command::DeleteSourceById { id } => {
       client.delete_scan_directory_by_id(id)?;
     }
 
@@ -215,8 +207,7 @@ fn run(command: Command, client: &Client) -> Result<()> {
 
     Command::ListTracks => {
       let tracks = client.list_tracks()?;
-      for (scan_directory, track, track_artists, album, album_artists) in tracks.iter() {
-        println!("{:?}", scan_directory);
+      for (track, track_artists, album, album_artists) in tracks.iter() {
         println!("- {:?}", track);
         for artist in track_artists {
           println!("  * {:?}", artist);
