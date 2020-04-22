@@ -3,6 +3,7 @@
 *.iml
 
 # Allow sharing of IntelliJ run configurations.
+!/.idea/runConfigurations/
 !/.idea/runConfigurations/*
 
 # Rust
