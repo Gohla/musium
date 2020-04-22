@@ -2,5 +2,8 @@
 /.idea/*
 *.iml
 
+# Allow sharing of IntelliJ run configurations.
+!/.idea/runConfigurations/*
+
 # Rust
 /target

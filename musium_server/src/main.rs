@@ -11,6 +11,7 @@ use tracing_log::LogTracer;
 use tracing_subscriber::FmtSubscriber;
 
 use musium_backend::database::Database;
+use musium_core::model::NewUser;
 
 use crate::serve::serve;
 
@@ -36,6 +37,13 @@ struct Opt {
   /// Cookie identity secret key to use
   #[structopt(long, env = "MUSIUM_COOKIE_IDENTITY_SECRET_KEY")]
   cookie_identity_secret_key: String,
+
+  /// Name of the admin user that is created by default.
+  #[structopt(long, env = "MUSIUM_LOGIN_NAME")]
+  admin_name: String,
+  /// Password of the admin user that is created by default.
+  #[structopt(long, env = "MUSIUM_LOGIN_PASSWORD")]
+  admin_password: String,
 
   /// Minimum level at which tracing events will be printed to stderr
   #[structopt(long, env = "MUSIUM_TRACING_LEVEL", default_value = "WARN")]
@@ -71,7 +79,11 @@ fn main() -> Result<()> {
   let database = Database::new(
     opt.database_file.to_string_lossy(),
     opt.password_hasher_secret_key.as_bytes())
-    .with_context(|| "Failed to create backend")?;
+    .with_context(|| "Failed to create database")?;
+  database.connect()
+    .with_context(|| "Failed to connect to database to create the admin user")?
+    .create_user(NewUser { name: opt.admin_name, password: opt.admin_password })
+    .ok();
   // Run HTTP server
   let bind_address = opt.bind_address.clone();
   let cookie_identity_secret_key = opt.cookie_identity_secret_key.clone();

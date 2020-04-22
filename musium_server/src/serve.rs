@@ -55,7 +55,7 @@ pub async fn serve<A: net::ToSocketAddrs, C: Into<Vec<u8>>>(database: Database, 
       .route("/user/data/track/{id}/rating/{rating}", web::put().to(set_user_track_rating))
       .route("/user/data/artist/{id}/rating/{rating}", web::put().to(set_user_artist_rating))
       // Scan
-      .route("/scan", web::get().to(sync))
+      .route("/sync", web::get().to(sync))
   })
     .bind(bind_address)?
     .run()

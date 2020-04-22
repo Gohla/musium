@@ -1,0 +1,17 @@
+<component name="ProjectRunConfigurationManager">
+  <configuration default="false" name="Run (fastdev) cli -- list-sources" type="CargoCommandRunConfiguration" factoryName="Cargo Command">
+    <option name="channel" value="DEFAULT" />
+    <option name="command" value="run --bin musium_cli -Z unstable-options --profile fastdev -- list-sources" />
+    <option name="allFeatures" value="false" />
+    <option name="nocapture" value="false" />
+    <option name="emulateTerminal" value="false" />
+    <option name="backtrace" value="SHORT" />
+    <option name="workingDirectory" value="file://$PROJECT_DIR$" />
+    <envs>
+      <env name="SQLITE_MAX_VARIABLE_NUMBER" value="1000000" />
+    </envs>
+    <method v="2">
+      <option name="CARGO.BUILD_TASK_PROVIDER" enabled="true" />
+    </method>
+  </configuration>
+</component>

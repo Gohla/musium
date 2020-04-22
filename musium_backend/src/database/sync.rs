@@ -67,12 +67,13 @@ impl DatabaseConnection<'_> {
     Ok(time!("sync.local_sync", {
       sources
         .into_iter()
-        .flat_map(|source| {
-          match source.data {
-            SourceData::Local(local_source_data) => self.backend.local_sync.sync(source.id, local_source_data),
-            _ => std::iter::empty::<Result<LocalSyncTrack, LocalSyncError>>(),
-          }
+        .filter_map(|source| match source.data {
+          SourceData::Local(local_source_data) => Some((source.id, local_source_data)),
+          _ => None
         })
+        .flat_map(|(source_id, local_source_data)|
+          self.backend.local_sync.sync(source_id, local_source_data)
+        )
         .partition_map(|r| {
           match r {
             Ok(v) => Either::Left(v),

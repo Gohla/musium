@@ -5,7 +5,6 @@ use thiserror::Error;
 
 use musium_backend::database::{Database, DatabaseConnectError, DatabaseQueryError, sync::SyncError, user::UserAddVerifyError};
 use musium_core::model::{NewSource, NewUser};
-use musium_core::model::collection::{Albums, Tracks};
 
 use crate::auth::LoggedInUser;
 use crate::scanner::Sync;
@@ -56,8 +55,7 @@ pub async fn list_albums(
   database: web::Data<Database>,
   _logged_in_user: LoggedInUser,
 ) -> Result<HttpResponse, ApiError> {
-  let albums: Albums = database.connect()?.list_albums()?.into();
-  Ok(HttpResponse::Ok().json(albums))
+  Ok(HttpResponse::Ok().json(database.connect()?.list_albums()?))
 }
 
 pub async fn show_album_by_id(
@@ -76,8 +74,7 @@ pub async fn list_tracks(
   database: web::Data<Database>,
   _logged_in_user: LoggedInUser,
 ) -> Result<HttpResponse, ApiError> {
-  let tracks: Tracks = database.connect()?.list_tracks()?.into();
-  Ok(HttpResponse::Ok().json(tracks))
+  Ok(HttpResponse::Ok().json(database.connect()?.list_tracks()?))
 }
 
 pub async fn show_track_by_id(
