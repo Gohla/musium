@@ -64,9 +64,9 @@ pub enum LocalSyncError {
 }
 
 impl LocalSync {
-  pub fn sync(&self, source_id: i32, local_source_data: LocalSourceData) -> impl Iterator<Item=Result<LocalSyncTrack, LocalSyncError>> {
+  pub fn sync(&self, source_id: i32, local_source_data: &LocalSourceData) -> impl Iterator<Item=Result<LocalSyncTrack, LocalSyncError>> {
     use LocalSyncError::*;
-    let LocalSourceData { directory, .. } = local_source_data;
+    let directory = local_source_data.directory.clone();
     WalkDir::new(&directory)
       .into_iter()
       .filter_map(move |entry| {
