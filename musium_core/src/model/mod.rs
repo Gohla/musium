@@ -45,6 +45,11 @@ pub struct LocalSourceData {
   pub directory: String
 }
 
+#[derive(Clone, PartialOrd, PartialEq, Debug, Serialize, Deserialize)]
+pub struct SpotifySoureData {
+  pub directory: String
+}
+
 // Serialization/deserialization to/from JSON strings, and SQL type conversion for SourceData
 
 impl SourceData {

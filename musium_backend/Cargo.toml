@@ -10,6 +10,7 @@ musium_core = {path = "../musium_core"}
 diesel = { version = "1", features = ["sqlite", "r2d2"] }
 libsqlite3-sys = { version = ">=0.8.0, <0.18.0", features = ["bundled"] } # Make diesel use bundled sqlite.
 id3 = "0.5"
+reqwest = "0.10"
 crc32fast = "1"
 walkdir = "2"
 rust-argon2 = "0.8"

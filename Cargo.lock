@@ -1624,6 +1624,7 @@ dependencies = [
  "metrics",
  "musium_core",
  "rand",
+ "reqwest",
  "rust-argon2",
  "serde",
  "thiserror",
