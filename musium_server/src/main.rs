@@ -11,6 +11,9 @@ use tracing_log::LogTracer;
 use tracing_subscriber::FmtSubscriber;
 
 use musium_backend::database::Database;
+use musium_backend::password::PasswordHasher;
+use musium_backend::sync::local::LocalSync;
+use musium_backend::sync::spotify::SpotifySync;
 use musium_core::model::NewUser;
 
 use crate::serve::serve;
@@ -37,6 +40,13 @@ struct Opt {
   /// Cookie identity secret key to use
   #[structopt(long, env = "MUSIUM_COOKIE_IDENTITY_SECRET_KEY")]
   cookie_identity_secret_key: String,
+
+  /// Spotify client ID to use
+  #[structopt(long, env = "MUSIUM_SPOTIFY_CLIENT_ID")]
+  spotify_client_id: Option<String>,
+  /// Spotify client secret to use
+  #[structopt(long, env = "MUSIUM_SPOTIFY_CLIENT_SECRET")]
+  spotify_client_secret: Option<String>,
 
   /// Name of the admin user that is created by default.
   #[structopt(long, env = "MUSIUM_LOGIN_NAME")]
@@ -76,9 +86,17 @@ fn main() -> Result<()> {
   let mut observer: YamlObserver = YamlBuilder::new().build();
   metrics_receiver.install();
   // Create database
+  let local_sync = LocalSync::new();
+  let spotify_sync = if let (Some(id), Some(secret)) = (opt.spotify_client_id, opt.spotify_client_secret) {
+    Some(SpotifySync::new_from_client_id_secret(id, secret).with_context(|| "Creating Spotify synchronizer failed")?)
+  } else { None };
+  let password_hasher = PasswordHasher::new(opt.password_hasher_secret_key.as_bytes());
   let database = Database::new(
     opt.database_file.to_string_lossy(),
-    opt.password_hasher_secret_key.as_bytes())
+    local_sync,
+    spotify_sync,
+    password_hasher,
+  )
     .with_context(|| "Failed to create database")?;
   database.connect()
     .with_context(|| "Failed to connect to database to create the admin user")?

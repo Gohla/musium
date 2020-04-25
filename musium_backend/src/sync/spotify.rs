@@ -1,6 +1,9 @@
-use reqwest::{Client, IntoUrl, Url, StatusCode};
+use std::collections::HashMap;
+
+use reqwest::{Client, IntoUrl, StatusCode, Url};
 use thiserror::Error;
 
+#[derive(Clone)]
 pub struct SpotifySync {
   http_client: Client,
   accounts_api_base_url: Url,
@@ -14,7 +17,9 @@ pub struct SpotifySync {
 #[derive(Debug, Error)]
 pub enum SpotifySyncCreateError {
   #[error(transparent)]
-  HttpClientCreateFail(#[from] reqwest::Error)
+  UrlCreateFail(#[from] url::ParseError),
+  #[error(transparent)]
+  HttpClientCreateFail(#[from] reqwest::Error),
 }
 
 impl SpotifySync {
@@ -24,16 +29,16 @@ impl SpotifySync {
     api_base_url: U2,
     client_id: String,
     client_secret: String,
-  ) -> Self {
-    let accounts_api_base_url = accounts_api_base_url.into();
-    let api_base_url = api_base_url.into();
-    Self {
+  ) -> Result<Self, SpotifySyncCreateError> {
+    let accounts_api_base_url = accounts_api_base_url.into_url()?;
+    let api_base_url = api_base_url.into_url()?;
+    Ok(Self {
       http_client,
       accounts_api_base_url,
       api_base_url,
       client_id,
       client_secret,
-    }
+    })
   }
 
   pub fn new_from_client_id_secret(
@@ -43,7 +48,7 @@ impl SpotifySync {
     let http_client = Client::builder().build()?;
     let accounts_api_base_url = "https://accounts.spotify.com/api/";
     let api_base_url = "https://api.spotify.com/v1/";
-    Ok(Self::new(http_client, accounts_api_base_url, api_base_url, client_id, client_secret))
+    Self::new(http_client, accounts_api_base_url, api_base_url, client_id, client_secret)
   }
 }
 
@@ -60,9 +65,28 @@ pub enum SpotifySyncRequestFail {
 // Authorization
 
 impl SpotifySync {
-  pub fn request_authorization(&self) -> Result<(), SpotifySyncRequestFail> {
+  pub fn create_authorization_url<S1: Into<String>, S2: Into<String>>(
+    &self,
+    redirect_uri: S1,
+    state: Option<S2>,
+  ) -> Result<Url, SpotifySyncRequestFail> {
     let url = self.accounts_api_base_url.join("authorize")?;
-    let response = self.http_client.get(url)?
+
+    let query_map = {
+      let mut map = HashMap::new();
+      map.insert("client_id", self.client_id.clone());
+      map.insert("response_type", "code".to_owned());
+      map.insert("redirect_uri", redirect_uri.into());
+      if let Some(state) = state {
+        map.insert("state", state.into());
+      }
+      map.insert("scope", "user-read-playback-state user-modify-playback-state user-read-currently-playing user-follow-read".to_owned());
+    };
+    let request = self.http_client
+      .get(url)
+      .query(&query_map)
+      ;
+    Ok(request.build()?.url().clone())
   }
 }
 

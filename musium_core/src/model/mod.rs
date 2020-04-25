@@ -8,6 +8,7 @@ use diesel::sql_types::Text;
 use serde::{Deserialize, Serialize};
 
 use crate::schema::*;
+use chrono::{DateTime, Utc};
 
 pub mod collection;
 
@@ -37,7 +38,7 @@ pub struct NewSource {
 #[sql_type = "Text"]
 pub enum SourceData {
   Local(LocalSourceData),
-  Spotify(),
+  Spotify(SpotifySourceData),
 }
 
 #[derive(Clone, PartialOrd, PartialEq, Debug, Serialize, Deserialize)]
@@ -46,8 +47,10 @@ pub struct LocalSourceData {
 }
 
 #[derive(Clone, PartialOrd, PartialEq, Debug, Serialize, Deserialize)]
-pub struct SpotifySoureData {
-  pub directory: String
+pub struct SpotifySourceData {
+  pub refresh_token: String,
+  pub access_token: String,
+  pub expiry_date: DateTime<Utc>,
 }
 
 // Serialization/deserialization to/from JSON strings, and SQL type conversion for SourceData

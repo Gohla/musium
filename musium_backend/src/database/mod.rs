@@ -7,6 +7,7 @@ use thiserror::Error;
 
 use crate::password::PasswordHasher;
 use crate::sync::local::LocalSync;
+use crate::sync::spotify::SpotifySync;
 
 macro_rules! time {
   ($s:expr, $e:expr) => {{
@@ -29,6 +30,7 @@ pub mod sync;
 pub struct Database {
   connection_pool: Pool<ConnectionManager<SqliteConnection>>,
   local_sync: LocalSync,
+  spotify_sync: Option<SpotifySync>,
   password_hasher: PasswordHasher,
 }
 
@@ -42,13 +44,16 @@ pub enum DatabaseCreateError {
 }
 
 impl Database {
-  pub fn new<D: AsRef<str>, S: Into<Vec<u8>>>(database_url: D, password_hasher_secret_key: S) -> Result<Database, DatabaseCreateError> {
+  pub fn new<D: AsRef<str>>(
+    database_url: D,
+    local_sync: LocalSync,
+    spotify_sync: Option<SpotifySync>,
+    password_hasher: PasswordHasher,
+  ) -> Result<Database, DatabaseCreateError> {
     let connection_pool = Pool::builder()
       .max_size(16)
       .build(ConnectionManager::<SqliteConnection>::new(database_url.as_ref()))?;
-    let local_sync = LocalSync::new();
-    let password_hasher = PasswordHasher::new(password_hasher_secret_key);
-    Ok(Database { connection_pool, local_sync, password_hasher })
+    Ok(Database { connection_pool, local_sync, spotify_sync, password_hasher })
   }
 }
 

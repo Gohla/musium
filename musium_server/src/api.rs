@@ -28,7 +28,7 @@ pub async fn show_source_by_id(
   Ok(HttpResponse::Ok().json(source))
 }
 
-pub async fn create_scan_directory(
+pub async fn create_source(
   new_source: web::Json<NewSource>,
   database: web::Data<Database>,
   _logged_in_user: LoggedInUser,
@@ -48,6 +48,15 @@ pub async fn delete_source_by_id(
     Err(NotFoundFail)
   }
 }
+
+// Spotify
+
+// pub async fn list_sources(
+//   database: web::Data<Database>,
+//   _logged_in_user: LoggedInUser,
+// ) -> Result<HttpResponse, ApiError> {
+//   Ok(HttpResponse::Ok().json(database.connect()?.list_sources()?))
+// }
 
 // Albums
 

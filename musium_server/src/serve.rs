@@ -28,11 +28,13 @@ pub async fn serve<A: net::ToSocketAddrs, C: Into<Vec<u8>>>(database: Database, 
       .route("/login", web::post().to(login))
       .route("/logout", web::delete().to(logout))
       // API
-      // Scan directory
+      // Source
       .route("/source", web::get().to(list_sources))
       .route("/source/{id}", web::get().to(show_source_by_id))
-      .route("/source", web::post().to(create_scan_directory))
+      .route("/source", web::post().to(create_source))
       .route("/source/{id}", web::delete().to(delete_source_by_id))
+      // Spotify source
+      .route("/source/spotify/")
       // Album
       .route("/album", web::get().to(list_albums))
       .route("/album/{id}", web::get().to(show_album_by_id))
