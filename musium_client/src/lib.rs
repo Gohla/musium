@@ -58,15 +58,15 @@ impl Client {
 // Source
 
 impl Client {
-  pub fn list_sources(&self) -> Result<Vec<Source>, ClientError> {
-    let scan_directories = self.client.get(self.url.join("source")?)
+  pub fn list_local_sources(&self) -> Result<Vec<LocalSource>, ClientError> {
+    let local_sources = self.client.get(self.url.join("source/local")?)
       .send()?
       .json()?;
-    Ok(scan_directories)
+    Ok(local_sources)
   }
 
-  pub fn get_source_by_id(&self, id: i32) -> Result<Option<Source>, ClientError> {
-    let response = self.client.get(self.url.join(&format!("source/{}", id))?)
+  pub fn get_local_source_by_id(&self, id: i32) -> Result<Option<LocalSource>, ClientError> {
+    let response = self.client.get(self.url.join(&format!("source/local/{}", id))?)
       .send()?;
     match response.status() {
       StatusCode::OK => Ok(Some(response.json()?)),
@@ -74,19 +74,20 @@ impl Client {
     }
   }
 
-  pub fn create_source(&self, new_scan_directory: &NewSource) -> Result<Source, ClientError> {
-    let scan_directory = self.client.post(self.url.join("source")?)
-      .json(new_scan_directory)
+  pub fn create_or_enable_local_source(&self, new_local_source: &NewLocalSource) -> Result<LocalSource, ClientError> {
+    let local_source = self.client.post(self.url.join("source/local")?)
+      .json(new_local_source)
       .send()?
       .json()?;
-    Ok(scan_directory)
+    Ok(local_source)
   }
 
-  pub fn delete_source_by_id(&self, id: i32) -> Result<(), ClientError> {
-    self.client.delete(self.url.join(&format!("source/{}", id))?)
+  pub fn set_local_source_enabled_by_id(&self, id: i32, enabled: bool) -> Result<Option<LocalSource>, ClientError> {
+    let local_source = self.client.post(self.url.join(&format!("source/local/set_enabled/{}", id))?)
+      .json(&enabled)
       .send()?
-      .error_for_status()?;
-    Ok(())
+      .json()?;
+    Ok(local_source)
   }
 }
 

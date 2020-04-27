@@ -4,7 +4,7 @@ use std::io::{BufReader, Read, Seek};
 use thiserror::Error;
 use walkdir::WalkDir;
 
-use musium_core::model::LocalSourceData;
+use musium_core::model::LocalSource;
 
 #[derive(Default, Clone, Debug)]
 pub struct LocalSync {}
@@ -21,7 +21,7 @@ impl LocalSync {
 
 #[derive(Clone, Debug)]
 pub struct LocalSyncTrack {
-  pub source_id: i32,
+  pub local_source_id: i32,
   pub disc_number: Option<i32>,
   pub disc_total: Option<i32>,
   pub track_number: Option<i32>,
@@ -64,9 +64,9 @@ pub enum LocalSyncError {
 }
 
 impl LocalSync {
-  pub fn sync(&self, source_id: i32, local_source_data: &LocalSourceData) -> impl Iterator<Item=Result<LocalSyncTrack, LocalSyncError>> {
+  pub fn sync(&self, local_source: &LocalSource) -> impl Iterator<Item=Result<LocalSyncTrack, LocalSyncError>> {
     use LocalSyncError::*;
-    let directory = local_source_data.directory.clone();
+    let LocalSource { id: local_source_id, directory, .. } = local_source.clone();
     WalkDir::new(&directory)
       .into_iter()
       .filter_map(move |entry| {
@@ -148,7 +148,7 @@ impl LocalSync {
             let hash = hasher.finalize();
 
             LocalSyncTrack {
-              source_id,
+              local_source_id,
               disc_number: tag.disc().map(|u| u as i32),
               disc_total: tag.total_discs().map(|u| u as i32),
               track_number: tag.track().map(|u| u as i32),
@@ -176,7 +176,7 @@ impl LocalSync {
             let hash = hasher.finalize();
 
             LocalSyncTrack {
-              source_id,
+              local_source_id,
               disc_number: None,
               disc_total: None,
               track_number: tag.track.map(|u| u as i32),

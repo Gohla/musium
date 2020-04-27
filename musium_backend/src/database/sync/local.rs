@@ -6,7 +6,7 @@ use itertools::{Either, Itertools};
 use thiserror::Error;
 use tracing::{event, Level};
 
-use musium_core::model::{Album, AlbumArtist, Artist, LocalAlbum, LocalArtist, LocalTrack, NewAlbum, NewAlbumArtist, NewArtist, NewLocalAlbum, NewLocalArtist, NewLocalTrack, NewTrack, NewTrackArtist, Source, SourceData, Track, TrackArtist};
+use musium_core::model::{Album, AlbumArtist, Artist, LocalAlbum, LocalArtist, LocalSource, LocalTrack, NewAlbum, NewAlbumArtist, NewArtist, NewLocalAlbum, NewLocalArtist, NewLocalTrack, NewTrack, NewTrackArtist, Track, TrackArtist};
 use musium_core::schema;
 
 use crate::database::DatabaseConnection;
@@ -26,16 +26,12 @@ pub enum LocalSyncDatabaseError {
 }
 
 impl DatabaseConnection<'_> {
-  pub(crate) fn local_sync(&self, sources: &Vec<Source>) -> Result<(Vec<LocalSyncTrack>, Vec<LocalSyncError>), LocalSyncDatabaseError> {
+  pub(crate) fn local_sync(&self, local_sources: &Vec<LocalSource>) -> Result<(Vec<LocalSyncTrack>, Vec<LocalSyncError>), LocalSyncDatabaseError> {
     let do_local_sync = {
-      || sources
+      || local_sources
         .into_iter()
-        .filter_map(|source| match &source.data {
-          SourceData::Local(local_source_data) => Some((source.id, local_source_data)),
-          _ => None
-        })
-        .flat_map(|(source_id, local_source_data)|
-          self.backend.local_sync.sync(source_id, local_source_data)
+        .flat_map(|local_source|
+          self.backend.local_sync.sync(local_source)
         )
         .partition_map(|r| {
           match r {
@@ -68,7 +64,7 @@ impl DatabaseConnection<'_> {
       time!("sync.insert_album", insert_album_query.execute(&self.connection)?);
       let album = time!("sync.select_inserted_album", select_query.first::<Album>(&self.connection)?);
       // Insert local album corresponding to album.
-      let new_local_album = NewLocalAlbum { album_id: album.id, source_id: local_sync_track.source_id };
+      let new_local_album = NewLocalAlbum { album_id: album.id, local_source_id: local_sync_track.local_source_id };
       event!(Level::DEBUG, ?new_local_album, "Inserting local album");
       let insert_local_album_query = {
         use schema::local_album::dsl::*;
@@ -81,7 +77,7 @@ impl DatabaseConnection<'_> {
       let db_album = db_albums.into_iter().next().unwrap();
       let select_local_album_query = {
         use schema::local_album::dsl::*;
-        local_album.find((db_album.id, local_sync_track.source_id))
+        local_album.find((db_album.id, local_sync_track.local_source_id))
       };
       let db_local_album = time!("sync.select_local_album", select_local_album_query.first(&self.connection).optional()?);
       if let Some(db_local_album) = db_local_album {
@@ -90,7 +86,7 @@ impl DatabaseConnection<'_> {
         // TODO: update local album columns when they are added.
       } else {
         // No local album was found for the album: insert it.
-        let new_local_album = NewLocalAlbum { album_id: db_album.id, source_id: local_sync_track.source_id };
+        let new_local_album = NewLocalAlbum { album_id: db_album.id, local_source_id: local_sync_track.local_source_id };
         event!(Level::DEBUG, ?new_local_album, "Inserting local album");
         let insert_local_album_query = {
           use schema::local_album::dsl::*;
@@ -122,7 +118,7 @@ impl DatabaseConnection<'_> {
     let local_track_select_query = {
       use schema::local_track::dsl::*;
       local_track
-        .filter(source_id.eq(local_sync_track.source_id))
+        .filter(local_source_id.eq(local_sync_track.local_source_id))
         .filter(file_path.eq(&track_file_path))
     };
     let db_local_track = time!("sync.select_local_track", local_track_select_query.first::<LocalTrack>(&self.connection).optional()?);
@@ -181,7 +177,7 @@ impl DatabaseConnection<'_> {
       let select_by_hash_query = {
         use schema::local_track::dsl::*;
         local_track
-          .filter(source_id.eq(local_sync_track.source_id))
+          .filter(local_source_id.eq(local_sync_track.local_source_id))
           .filter(hash.eq(local_sync_track.hash as i64))
       };
       let tracks_by_hash: Vec<LocalTrack> = time!("sync.select_local_tracks_by_hash", select_by_hash_query.load::<LocalTrack>(&self.connection)?);
@@ -241,7 +237,7 @@ impl DatabaseConnection<'_> {
 
     let new_local_track = NewLocalTrack {
       track_id: track.id,
-      source_id: local_sync_track.source_id,
+      local_source_id: local_sync_track.local_source_id,
       file_path: Some(local_sync_track.file_path.clone()),
       hash: local_sync_track.hash as i64,
     };
@@ -333,7 +329,7 @@ impl DatabaseConnection<'_> {
       time!("sync.insert_artist", insert_artist_query.execute(&self.connection)?);
       let artist = time!("sync.select_inserted_artist", select_query.first::<Artist>(&self.connection)?);
       // Insert local artist corresponding to artist.
-      let new_local_artist = NewLocalArtist { artist_id: artist.id, source_id: local_sync_track.source_id };
+      let new_local_artist = NewLocalArtist { artist_id: artist.id, local_source_id: local_sync_track.local_source_id };
       event!(Level::DEBUG, ?new_local_artist, "Inserting local artist");
       let insert_local_artist_query = {
         use schema::local_artist::dsl::*;
@@ -346,7 +342,7 @@ impl DatabaseConnection<'_> {
       let db_artist = db_artists.into_iter().next().unwrap();
       let select_local_artist_query = {
         use schema::local_artist::dsl::*;
-        local_artist.find((db_artist.id, local_sync_track.source_id))
+        local_artist.find((db_artist.id, local_sync_track.local_source_id))
       };
       let db_local_artist = time!("sync.select_local_artist", select_local_artist_query.first(&self.connection).optional()?);
       if let Some(db_local_artist) = db_local_artist {
@@ -355,7 +351,7 @@ impl DatabaseConnection<'_> {
         // TODO: update local artist columns when they are added.
       } else {
         // No local artist was found for the artist: insert it.
-        let new_local_artist = NewLocalArtist { artist_id: db_artist.id, source_id: local_sync_track.source_id };
+        let new_local_artist = NewLocalArtist { artist_id: db_artist.id, local_source_id: local_sync_track.local_source_id };
         event!(Level::DEBUG, ?new_local_artist, "Inserting local artist");
         let insert_local_artist_query = {
           use schema::local_artist::dsl::*;
@@ -379,23 +375,23 @@ impl DatabaseConnection<'_> {
   }
 
 
-  pub(crate) fn sync_local_removed_tracks(&self, non_synced_tracks_per_source: HashMap::<i32, HashSet<String>>) -> Result<(), LocalSyncDatabaseError> {
+  pub(crate) fn sync_local_removed_tracks(&self, non_synced_tracks_per_local_source: HashMap::<i32, HashSet<String>>) -> Result<(), LocalSyncDatabaseError> {
     let db_local_track_data: Vec<(i32, i32, Option<String>)> = {
       use schema::local_track::dsl::*;
       local_track
-        .select((track_id, source_id, file_path))
+        .select((track_id, local_source_id, file_path))
         .filter(file_path.is_not_null())
         .load::<(i32, i32, Option<String>)>(&self.connection)?
     };
-    for (db_track_id, db_source_id, db_file_path) in db_local_track_data {
-      if let (Some(db_file_path), Some(non_synced_file_paths)) = (db_file_path, non_synced_tracks_per_source.get(&db_source_id)) {
+    for (db_track_id, db_local_source_id, db_file_path) in db_local_track_data {
+      if let (Some(db_file_path), Some(non_synced_file_paths)) = (db_file_path, non_synced_tracks_per_local_source.get(&db_local_source_id)) {
         if !non_synced_file_paths.contains(&db_file_path) {
           event!(Level::DEBUG, ?db_track_id, ?db_file_path, "Local track '{}' at '{}' was not seen during synchronization: setting it as removed in the database", db_track_id, db_file_path);
           let update_query = {
             use schema::local_track::dsl::*;
             diesel::update(local_track)
               .filter(track_id.eq(db_track_id))
-              .filter(source_id.eq(db_source_id))
+              .filter(local_source_id.eq(db_local_source_id))
               .set(file_path.eq::<Option<String>>(None))
           };
           time!("sync.update_removed_local_track", update_query.execute(&self.connection)?);

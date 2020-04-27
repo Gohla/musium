@@ -7,11 +7,11 @@ use musium_backend::database::Database;
 
 use crate::api::*;
 use crate::auth::*;
-use crate::scanner::Sync;
+use crate::sync::Sync;
 
 pub async fn serve<A: net::ToSocketAddrs, C: Into<Vec<u8>>>(database: Database, bind_address: A, cookie_identity_secret_key: C) -> std::io::Result<()> {
   let database_data = web::Data::new(database);
-  let scanner_data = web::Data::new(Sync::new());
+  let sync_data = web::Data::new(Sync::new());
   let cookie_identity_secret_key = cookie_identity_secret_key.into();
   HttpServer::new(move || {
     App::new()
@@ -22,19 +22,17 @@ pub async fn serve<A: net::ToSocketAddrs, C: Into<Vec<u8>>>(database: Database, 
           .secure(false)
       ))
       .app_data(database_data.clone())
-      .app_data(scanner_data.clone())
+      .app_data(sync_data.clone())
       .route("/", web::get().to(index))
       // Auth
       .route("/login", web::post().to(login))
       .route("/logout", web::delete().to(logout))
       // API
       // Source
-      .route("/source", web::get().to(list_sources))
-      .route("/source/{id}", web::get().to(show_source_by_id))
-      .route("/source", web::post().to(create_source))
-      .route("/source/{id}", web::delete().to(delete_source_by_id))
-      // Spotify source
-      .route("/source/spotify/")
+      .route("/source/local", web::get().to(list_local_sources))
+      .route("/source/local/{id}", web::get().to(show_local_source_by_id))
+      .route("/source/local", web::post().to(create_or_enable_local_source))
+      .route("/source/local/set_enabled/{id}", web::post().to(set_local_source_enabled))
       // Album
       .route("/album", web::get().to(list_albums))
       .route("/album/{id}", web::get().to(show_album_by_id))

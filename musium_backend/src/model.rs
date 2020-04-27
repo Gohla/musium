@@ -19,12 +19,11 @@ macro_rules! update {
 
 // Source
 
-pub trait LocalSourceDataEx {
+pub trait LocalSourceEx {
   fn track_file_path(&self, track: &LocalTrack) -> Option<PathBuf>;
-  //fn update_from(&mut self, enabled: bool) -> bool;
 }
 
-impl LocalSourceDataEx for LocalSourceData {
+impl LocalSourceEx for LocalSource {
   fn track_file_path(&self, track: &LocalTrack) -> Option<PathBuf> {
     track.file_path.as_ref().map(|file_path| PathBuf::from(&self.directory).join(file_path))
   }

@@ -1,68 +1,69 @@
 use diesel::prelude::*;
 
-use musium_core::model::{NewSource, Source};
+use musium_core::model::{LocalSource, NewLocalSource};
 use musium_core::schema;
 
 use super::{DatabaseConnection, DatabaseQueryError};
 
 impl DatabaseConnection<'_> {
-  pub fn list_sources(&self) -> Result<Vec<Source>, DatabaseQueryError> {
-    use schema::source::dsl::*;
-    Ok(source.load::<Source>(&self.connection)?)
+  pub fn list_local_sources(&self) -> Result<Vec<LocalSource>, DatabaseQueryError> {
+    use schema::local_source::dsl::*;
+    Ok(time!("list_local_sources.select", local_source.load::<LocalSource>(&self.connection)?))
   }
 
-  pub fn get_source_by_id(&self, source_id: i32) -> Result<Option<Source>, DatabaseQueryError> {
-    use schema::source::dsl::*;
-    Ok(source.find(source_id).first::<Source>(&self.connection).optional()?)
+  pub fn get_local_source_by_id(&self, local_source_id: i32) -> Result<Option<LocalSource>, DatabaseQueryError> {
+    let query = {
+      use schema::local_source::dsl::*;
+      local_source.find(local_source_id)
+    };
+    Ok(time!("get_local_source_by_id.select", query.first::<LocalSource>(&self.connection).optional()?))
   }
 
-  pub fn create_source(&self, new_source: NewSource) -> Result<Source, DatabaseQueryError> {
-    let insert_query = {
-      use schema::source::dsl::*;
-      diesel::insert_into(source).values(&new_source)
+  pub fn create_or_enable_local_source(&self, new_local_source: &NewLocalSource) -> Result<LocalSource, DatabaseQueryError> {
+    let select_by_directory_query = {
+      use schema::local_source::dsl::*;
+      local_source.filter(directory.eq(&new_local_source.directory))
     };
-    time!("add_source.insert", insert_query.execute(&self.connection)?);
-    let select_query = {
-      use schema::source::dsl::*;
-      source.order(id.desc()).limit(1)
-    };
-    Ok(time!("add_source.select_inserted", select_query.first::<Source>(&self.connection)?))
+    let db_local_source: Option<LocalSource> = time!("create_or_enable_local_source.select", select_by_directory_query.first::<LocalSource>(&self.connection).optional()?);
+    Ok(if let Some(mut db_local_source) = db_local_source {
+      if !db_local_source.enabled {
+        db_local_source.enabled = true;
+        time!("create_or_enable_local_source.update", db_local_source.save_changes::<LocalSource>(&*self.connection)?);
+      }
+      db_local_source
+    } else {
+      let insert_query = {
+        use schema::local_source::dsl::*;
+        diesel::insert_into(local_source).values(new_local_source)
+      };
+      time!("create_or_enable_local_source.insert", insert_query.execute(&self.connection)?);
+      let select_query = {
+        use schema::local_source::dsl::*;
+        local_source.order(id.desc()).limit(1)
+      };
+      time!("create_or_enable_local_source.select_inserted", select_query.first::<LocalSource>(&self.connection)?)
+    })
   }
 
-  pub fn set_source_enabled_by_id(&self, source_id: i32, enabled: bool) -> Result<Option<Source>, DatabaseQueryError> {
-    let source = {
-      use schema::source::dsl::*;
-      time!("add_source.select", source.find(source_id).first::<Source>(&self.connection).optional()?)
+  pub fn set_local_source_enabled_by_id(&self, local_source_id: i32, enabled: bool) -> Result<Option<LocalSource>, DatabaseQueryError> {
+    let local_source = {
+      use schema::local_source::dsl::*;
+      time!("set_local_source_enabled_by_id.select", local_source.find(local_source_id).first::<LocalSource>(&self.connection).optional()?)
     };
-    if let Some(mut source) = source {
-      source.enabled = enabled;
-      time!("add_source.update", source.save_changes::<Source>(&*self.connection)?);
-      Ok(Some(source))
+    if let Some(mut local_source) = local_source {
+      local_source.enabled = enabled;
+      time!("set_local_source_enabled_by_id.update", local_source.save_changes::<LocalSource>(&*self.connection)?);
+      Ok(Some(local_source))
     } else {
       Ok(None)
     }
   }
 
-  pub fn enable_source_by_id(&self, source_id: i32) -> Result<Option<Source>, DatabaseQueryError> {
-    self.set_source_enabled_by_id(source_id, true)
+  pub fn enable_local_source_by_id(&self, local_source_id: i32) -> Result<Option<LocalSource>, DatabaseQueryError> {
+    self.set_local_source_enabled_by_id(local_source_id, true)
   }
 
-  pub fn disable_source_by_id(&self, source_id: i32) -> Result<Option<Source>, DatabaseQueryError> {
-    self.set_source_enabled_by_id(source_id, false)
-  }
-
-  pub fn delete_source_by_id(&self, source_id: i32) -> Result<bool, DatabaseQueryError> {
-    let select_query = {
-      use schema::source::dsl::*;
-      source.find(source_id)
-    };
-    let source = time!("remove_source.select", select_query.first::<Source>(&self.connection).optional()?);
-    if let Some(mut source) = source {
-      source.enabled = false;
-      time!("remove_source.update", source.save_changes::<Source>(&*self.connection)?);
-      Ok(true)
-    } else {
-      Ok(false)
-    }
+  pub fn disable_local_source_by_id(&self, local_source_id: i32) -> Result<Option<LocalSource>, DatabaseQueryError> {
+    self.set_local_source_enabled_by_id(local_source_id, false)
   }
 }

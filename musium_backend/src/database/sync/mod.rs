@@ -5,7 +5,7 @@ use diesel::prelude::*;
 use thiserror::Error;
 use tracing::{event, instrument, Level};
 
-use musium_core::model::Source;
+use musium_core::model::LocalSource;
 
 use crate::database::{DatabaseConnection, DatabaseQueryError};
 use crate::database::sync::local::LocalSyncDatabaseError;
@@ -32,16 +32,16 @@ impl DatabaseConnection<'_> {
   pub fn sync(&self) -> Result<(), SyncError> {
     use SyncError::*;
 
-    let sources: Vec<Source> = time!("sync.list_sources", self.list_sources()?);
+    let local_sources: Vec<LocalSource> = time!("sync.list_local_sources", self.list_local_sources()?);
 
-    let (local_sync_tracks, local_sync_errors) = self.local_sync(&sources)?;
+    let (local_sync_tracks, local_sync_errors) = self.local_sync(&local_sources)?;
     let mut synced_file_paths = HashMap::<i32, HashSet<String>>::new();
 
     self.connection.transaction::<_, SyncError, _>(|| {
       // Insert tracks and related entities.
       for local_sync_track in local_sync_tracks {
         event!(Level::TRACE, ?local_sync_track, "Processing local sync track");
-        synced_file_paths.entry(local_sync_track.source_id)
+        synced_file_paths.entry(local_sync_track.local_source_id)
           .or_default()
           .insert(local_sync_track.file_path.clone());
         let album = self.sync_local_album(&local_sync_track)?;

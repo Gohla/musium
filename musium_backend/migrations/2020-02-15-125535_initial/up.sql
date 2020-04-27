@@ -1,32 +1,4 @@
--- Sources of albums/tracks/artists.
-
-CREATE TABLE local_source
-(
-    id        INTEGER NOT NULL,
-    enabled   BOOLEAN NOT NULL DEFAULT true,
-    directory TEXT    NOT NULL,
-
-    PRIMARY KEY (id),
-    UNIQUE (directory)
-);
-
-CREATE TABLE spotify_source
-(
-    id            INTEGER  NOT NULL,
-    user_id       INTEGER  NOT NULL,
-    enabled       BOOLEAN  NOT NULL DEFAULT true,
-    refresh_token TEXT     NOT NULL,
-    access_token  TEXT     NOT NULL,
-    expiry_date   DATETIME NULL,
-
-    PRIMARY KEY (id),
-    FOREIGN KEY (user_id) REFERENCES user (id),
-    UNIQUE (user_id)
-);
-
-
--- Albums, tracks, artists, and relations between them. All data is shared between sources, with additional tables
--- linking albums, tracks, and artists to source-specific equivalents.
+-- Albums, tracks, artists, and relations between them.
 
 CREATE TABLE album
 (
@@ -79,7 +51,19 @@ CREATE TABLE album_artist
 );
 
 
--- Local source data
+-- Local source, which synchronizes files in a directory on the filesystem.
+
+CREATE TABLE local_source
+(
+    id        INTEGER NOT NULL,
+    enabled   BOOLEAN NOT NULL DEFAULT true,
+    directory TEXT    NOT NULL,
+
+    PRIMARY KEY (id),
+    UNIQUE (directory)
+);
+
+-- Linking albums/tracks/artists to a local source with additional data.
 
 CREATE TABLE local_album
 (
@@ -119,7 +103,23 @@ CREATE TABLE local_artist
 );
 
 
--- Spotify global data
+-- Spotify source, which synchronizes Spotify albums/tracks/artists from the followed artists of a user.
+
+CREATE TABLE spotify_source
+(
+    id            INTEGER  NOT NULL,
+    user_id       INTEGER  NOT NULL,
+    enabled       BOOLEAN  NOT NULL DEFAULT true,
+    refresh_token TEXT     NOT NULL,
+    access_token  TEXT     NOT NULL,
+    expiry_date   DATETIME NOT NULL,
+
+    PRIMARY KEY (id),
+    FOREIGN KEY (user_id) REFERENCES user (id),
+    UNIQUE (user_id)
+);
+
+-- Linking albums/tracks/artists to a Spotify ID and additional data.
 
 CREATE TABLE spotify_album
 (
@@ -148,8 +148,7 @@ CREATE TABLE spotify_artist
     FOREIGN KEY (artist_id) REFERENCES artist (id)
 );
 
-
--- Spotify per-user/source data
+-- Linking albums/tracks/artists to a Spotify source, which is linked to a specific user.
 
 CREATE TABLE spotify_album_source
 (

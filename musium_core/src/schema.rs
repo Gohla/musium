@@ -85,7 +85,7 @@ table! {
         enabled -> Bool,
         refresh_token -> Text,
         access_token -> Text,
-        expiry_date -> Nullable<Timestamp>,
+        expiry_date -> Timestamp,
     }
 }
 

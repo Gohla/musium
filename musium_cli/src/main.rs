@@ -38,22 +38,25 @@ struct Opt {
 
 #[derive(Debug, StructOpt)]
 enum Command {
-  /// Lists all sources
-  ListSources,
-  /// Shows a source, found by id
-  ShowSourceById {
-    /// Id of the source to show
+  /// Lists all local sources
+  ListLocalSources,
+  /// Shows a local source, found by id
+  ShowLocalSourceById {
+    /// Id of the local source to show
     id: i32,
   },
-  /// Creates a local source
-  CreateLocalSource {
+  /// Creates or enables a local source
+  CreateOrEnableLocalSource {
     /// Directory of the local source to create
     directory: String,
   },
-  /// Deletes a source, found by id
-  DeleteSourceById {
-    /// Id of the source to remove
+  /// Enables or disables a local source, found by id
+  SetLocalSourceEnabledById {
+    /// Id of the local source
     id: i32,
+    /// Whether to enable or disable the local source
+    #[structopt(short, long)]
+    enabled: bool,
   },
 
   /// Lists all albums
@@ -175,21 +178,21 @@ fn main() -> Result<()> {
 
 fn run(command: Command, client: &Client) -> Result<()> {
   match command {
-    Command::ListSources => {
-      for source in client.list_sources()? {
-        println!("{:?}", source);
+    Command::ListLocalSources => {
+      for local_source in client.list_local_sources()? {
+        println!("{:?}", local_source);
       }
     }
-    Command::ShowSourceById { id } => {
-      let source = client.get_source_by_id(id)?;
-      println!("{:?}", source);
+    Command::ShowLocalSourceById { id } => {
+      let local_source = client.get_local_source_by_id(id)?;
+      println!("{:?}", local_source);
     }
-    Command::CreateLocalSource { directory } => {
-      let source = client.create_source(&NewSource { enabled: true, data: SourceData::Local(LocalSourceData { directory }) })?;
-      println!("{:?}", source);
+    Command::CreateOrEnableLocalSource { directory } => {
+      let local_source = client.create_or_enable_local_source(&NewLocalSource { enabled: true, directory })?;
+      println!("{:?}", local_source);
     }
-    Command::DeleteSourceById { id } => {
-      client.delete_source_by_id(id)?;
+    Command::SetLocalSourceEnabledById { id, enabled } => {
+      client.set_local_source_enabled_by_id(id, enabled)?;
     }
 
     Command::ListAlbums => {

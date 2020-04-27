@@ -4,59 +4,46 @@ use actix_web::http::StatusCode;
 use thiserror::Error;
 
 use musium_backend::database::{Database, DatabaseConnectError, DatabaseQueryError, sync::SyncError, user::UserAddVerifyError};
-use musium_core::model::{NewSource, NewUser};
+use musium_core::model::{NewLocalSource, NewUser};
 
 use crate::auth::LoggedInUser;
-use crate::scanner::Sync;
+use crate::sync::Sync;
 
 // Source
 
-pub async fn list_sources(
+pub async fn list_local_sources(
   database: web::Data<Database>,
   _logged_in_user: LoggedInUser,
 ) -> Result<HttpResponse, ApiError> {
-  Ok(HttpResponse::Ok().json(database.connect()?.list_sources()?))
+  Ok(HttpResponse::Ok().json(database.connect()?.list_local_sources()?))
 }
 
-pub async fn show_source_by_id(
+pub async fn show_local_source_by_id(
   id: web::Path<i32>,
   database: web::Data<Database>,
   _logged_in_user: LoggedInUser,
 ) -> Result<HttpResponse, ApiError> {
   use ApiError::*;
-  let source = database.connect()?.get_source_by_id(*id)?.ok_or(NotFoundFail)?;
-  Ok(HttpResponse::Ok().json(source))
+  let local_source = database.connect()?.get_local_source_by_id(*id)?.ok_or(NotFoundFail)?;
+  Ok(HttpResponse::Ok().json(local_source))
 }
 
-pub async fn create_source(
-  new_source: web::Json<NewSource>,
+pub async fn create_or_enable_local_source(
+  new_local_source: web::Json<NewLocalSource>,
   database: web::Data<Database>,
   _logged_in_user: LoggedInUser,
 ) -> Result<HttpResponse, ApiError> {
-  Ok(HttpResponse::Ok().json(database.connect()?.create_source(new_source.0)?))
+  Ok(HttpResponse::Ok().json(database.connect()?.create_or_enable_local_source(&new_local_source)?))
 }
 
-pub async fn delete_source_by_id(
+pub async fn set_local_source_enabled(
   id: web::Path<i32>,
+  enabled: web::Json<bool>,
   database: web::Data<Database>,
   _logged_in_user: LoggedInUser,
 ) -> Result<HttpResponse, ApiError> {
-  use ApiError::*;
-  if database.connect()?.delete_source_by_id(*id)? {
-    Ok(HttpResponse::Ok().finish())
-  } else {
-    Err(NotFoundFail)
-  }
+  Ok(HttpResponse::Ok().json(database.connect()?.set_local_source_enabled_by_id(*id, *enabled)?))
 }
-
-// Spotify
-
-// pub async fn list_sources(
-//   database: web::Data<Database>,
-//   _logged_in_user: LoggedInUser,
-// ) -> Result<HttpResponse, ApiError> {
-//   Ok(HttpResponse::Ok().json(database.connect()?.list_sources()?))
-// }
 
 // Albums
 

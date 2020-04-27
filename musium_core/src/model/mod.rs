@@ -1,89 +1,11 @@
 use std::fmt::{Display, Error, Formatter};
-use std::io::Write;
 
-use diesel::backend::Backend;
-use diesel::deserialize::FromSql;
-use diesel::serialize::{Output, ToSql};
-use diesel::sql_types::Text;
+use chrono::NaiveDateTime;
 use serde::{Deserialize, Serialize};
 
 use crate::schema::*;
-use chrono::{DateTime, Utc};
 
 pub mod collection;
-
-//
-// Sources
-//
-
-#[derive(Clone, PartialOrd, PartialEq, Debug, Identifiable, Queryable, AsChangeset, Serialize, Deserialize)]
-#[table_name = "source"]
-#[changeset_options(treat_none_as_null = "true")]
-pub struct Source {
-  pub id: i32,
-  pub enabled: bool,
-  pub data: SourceData,
-}
-
-#[derive(Clone, Debug, Insertable, Serialize, Deserialize)]
-#[table_name = "source"]
-pub struct NewSource {
-  pub enabled: bool,
-  pub data: SourceData,
-}
-
-// Source data enum, which gets serialized/deserialized to/from JSON strings.
-
-#[derive(Clone, PartialOrd, PartialEq, Debug, AsExpression, FromSqlRow, Serialize, Deserialize)]
-#[sql_type = "Text"]
-pub enum SourceData {
-  Local(LocalSourceData),
-  Spotify(SpotifySourceData),
-}
-
-#[derive(Clone, PartialOrd, PartialEq, Debug, Serialize, Deserialize)]
-pub struct LocalSourceData {
-  pub directory: String
-}
-
-#[derive(Clone, PartialOrd, PartialEq, Debug, Serialize, Deserialize)]
-pub struct SpotifySourceData {
-  pub refresh_token: String,
-  pub access_token: String,
-  pub expiry_date: DateTime<Utc>,
-}
-
-// Serialization/deserialization to/from JSON strings, and SQL type conversion for SourceData
-
-impl SourceData {
-  pub fn to_json_string(&self) -> serde_json::Result<String> {
-    serde_json::to_string(self)
-  }
-  pub fn from_json_string(str: &str) -> serde_json::Result<SourceData> {
-    serde_json::from_str(str)
-  }
-}
-
-impl<DB> ToSql<Text, DB> for SourceData
-  where
-    DB: Backend,
-    String: ToSql<Text, DB>,
-{
-  fn to_sql<W: Write>(&self, out: &mut Output<W, DB>) -> diesel::serialize::Result {
-    self.to_json_string()?.to_sql(out)
-  }
-}
-
-impl<DB> FromSql<Text, DB> for SourceData
-  where
-    DB: Backend,
-    String: FromSql<Text, DB>
-{
-  fn from_sql(bytes: Option<&<DB as Backend>::RawValue>) -> diesel::deserialize::Result<Self> {
-    let string = String::from_sql(bytes)?;
-    Ok(SourceData::from_json_string(&string)?)
-  }
-}
 
 //
 // Album/Track/Artist data, and relations between them.
@@ -186,36 +108,53 @@ pub struct NewAlbumArtist {
   pub artist_id: i32,
 }
 
+
 //
-// Local data
+// Local source and linked data
 //
 
+#[derive(Clone, PartialOrd, PartialEq, Debug, Identifiable, Queryable, AsChangeset, Serialize, Deserialize)]
+#[table_name = "local_source"]
+#[changeset_options(treat_none_as_null = "true")]
+pub struct LocalSource {
+  pub id: i32,
+  pub enabled: bool,
+  pub directory: String,
+}
+
+#[derive(Clone, Debug, Insertable, Serialize, Deserialize)]
+#[table_name = "local_source"]
+pub struct NewLocalSource {
+  pub enabled: bool,
+  pub directory: String,
+}
+
 #[derive(Clone, PartialOrd, PartialEq, Debug, Identifiable, Queryable, Associations, Serialize, Deserialize)]
-#[primary_key(album_id, source_id)]
+#[primary_key(album_id, local_source_id)]
 #[table_name = "local_album"]
 #[belongs_to(Album)]
-#[belongs_to(Source)]
+#[belongs_to(LocalSource)]
 pub struct LocalAlbum {
   pub album_id: i32,
-  pub source_id: i32,
+  pub local_source_id: i32,
 }
 
 #[derive(Debug, Insertable)]
 #[table_name = "local_album"]
 pub struct NewLocalAlbum {
   pub album_id: i32,
-  pub source_id: i32,
+  pub local_source_id: i32,
 }
 
 #[derive(Clone, PartialOrd, PartialEq, Debug, Identifiable, Queryable, Associations, AsChangeset, Serialize, Deserialize)]
-#[primary_key(track_id, source_id)]
+#[primary_key(track_id, local_source_id)]
 #[table_name = "local_track"]
 #[belongs_to(Track)]
-#[belongs_to(Source)]
+#[belongs_to(LocalSource)]
 #[changeset_options(treat_none_as_null = "true")]
 pub struct LocalTrack {
   pub track_id: i32,
-  pub source_id: i32,
+  pub local_source_id: i32,
   pub file_path: Option<String>,
   pub hash: i64,
 }
@@ -224,31 +163,54 @@ pub struct LocalTrack {
 #[table_name = "local_track"]
 pub struct NewLocalTrack {
   pub track_id: i32,
-  pub source_id: i32,
+  pub local_source_id: i32,
   pub file_path: Option<String>,
   pub hash: i64,
 }
 
 #[derive(Clone, PartialOrd, PartialEq, Debug, Identifiable, Queryable, Associations, Serialize, Deserialize)]
-#[primary_key(artist_id, source_id)]
+#[primary_key(artist_id, local_source_id)]
 #[table_name = "local_artist"]
 #[belongs_to(Artist)]
-#[belongs_to(Source)]
+#[belongs_to(LocalSource)]
 pub struct LocalArtist {
   pub artist_id: i32,
-  pub source_id: i32,
+  pub local_source_id: i32,
 }
 
 #[derive(Debug, Insertable)]
 #[table_name = "local_artist"]
 pub struct NewLocalArtist {
   pub artist_id: i32,
-  pub source_id: i32,
+  pub local_source_id: i32,
 }
 
 //
 // Spotify data
 //
+
+#[derive(Clone, PartialOrd, PartialEq, Debug, Identifiable, Queryable, Associations, AsChangeset, Serialize, Deserialize)]
+#[table_name = "spotify_source"]
+#[belongs_to(User)]
+#[changeset_options(treat_none_as_null = "true")]
+pub struct SpotifySource {
+  pub id: i32,
+  pub user_id: i32,
+  pub enabled: bool,
+  pub refresh_token: String,
+  pub access_token: String,
+  pub expiry_date: NaiveDateTime,
+}
+
+#[derive(Clone, Debug, Insertable, Serialize, Deserialize)]
+#[table_name = "spotify_source"]
+pub struct NewSpotifySource {
+  pub user_id: i32,
+  pub enabled: bool,
+  pub refresh_token: String,
+  pub access_token: String,
+  pub expiry_date: NaiveDateTime,
+}
 
 #[derive(Clone, PartialOrd, PartialEq, Debug, Identifiable, Queryable, Associations, Serialize, Deserialize)]
 #[primary_key(album_id, spotify_id)]
@@ -299,26 +261,60 @@ pub struct NewSpotifyArtist {
 }
 
 //
-// Generic data
+// Spotify source data
 //
 
-#[derive(Clone, PartialOrd, PartialEq, Debug, Serialize, Deserialize)]
-pub enum AlbumSource {
-  Local(LocalAlbum),
-  Spotify(SpotifyAlbum),
+#[derive(Clone, PartialOrd, PartialEq, Debug, Identifiable, Queryable, Associations, Serialize, Deserialize)]
+#[primary_key(album_id, spotify_source_id)]
+#[table_name = "spotify_album_source"]
+#[belongs_to(Album)]
+#[belongs_to(SpotifySource)]
+pub struct SpotifyAlbumSource {
+  pub album_id: i32,
+  pub spotify_source_id: i32,
 }
 
-#[derive(Clone, PartialOrd, PartialEq, Debug, Serialize, Deserialize)]
-pub enum TrackSource {
-  Local(LocalTrack),
-  Spotify(SpotifyTrack),
+#[derive(Debug, Insertable)]
+#[table_name = "spotify_album_source"]
+pub struct NewSpotifyAlbumSource {
+  pub album_id: i32,
+  pub spotify_source_id: i32,
 }
 
-#[derive(Clone, PartialOrd, PartialEq, Debug, Serialize, Deserialize)]
-pub enum ArtistSource {
-  Local(LocalArtist),
-  Spotify(SpotifyArtist),
+#[derive(Clone, PartialOrd, PartialEq, Debug, Identifiable, Queryable, Associations, Serialize, Deserialize)]
+#[primary_key(track_id, spotify_source_id)]
+#[table_name = "spotify_track_source"]
+#[belongs_to(Track)]
+#[belongs_to(SpotifySource)]
+pub struct SpotifyTrackSource {
+  pub track_id: i32,
+  pub spotify_source_id: i32,
 }
+
+#[derive(Debug, Insertable)]
+#[table_name = "spotify_track_source"]
+pub struct NewSpotifyTrackSource {
+  pub track_id: i32,
+  pub spotify_source_id: i32,
+}
+
+#[derive(Clone, PartialOrd, PartialEq, Debug, Identifiable, Queryable, Associations, Serialize, Deserialize)]
+#[primary_key(artist_id, spotify_source_id)]
+#[table_name = "spotify_artist_source"]
+#[belongs_to(Artist)]
+#[belongs_to(SpotifySource)]
+pub struct SpotifyArtistSource {
+  pub artist_id: i32,
+  pub spotify_source_id: i32,
+}
+
+#[derive(Debug, Insertable)]
+#[table_name = "spotify_artist_source"]
+pub struct NewSpotifyArtistSource {
+  pub artist_id: i32,
+  pub spotify_source_id: i32,
+}
+
 
 //
 // User and user data
@@ -435,9 +431,3 @@ impl Display for Track {
     Ok(())
   }
 }
-
-// impl Display for Source {
-//   fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), Error> {
-//     f.write_str(&self.directory)
-//   }
-// }

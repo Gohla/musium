@@ -1,7 +1,7 @@
 <component name="ProjectRunConfigurationManager">
-  <configuration default="false" name="Run (fastdev) cli -- list-sources" type="CargoCommandRunConfiguration" factoryName="Cargo Command">
+  <configuration default="false" name="Run (fastdev) cli -- create-or-enable-local-source" type="CargoCommandRunConfiguration" factoryName="Cargo Command">
     <option name="channel" value="DEFAULT" />
-    <option name="command" value="run --bin musium_cli -Z unstable-options --profile fastdev -- list-sources" />
+    <option name="command" value="run --bin musium_cli -Z unstable-options --profile fastdev -- create-or-enable-local-source target/music" />
     <option name="allFeatures" value="false" />
     <option name="nocapture" value="false" />
     <option name="emulateTerminal" value="false" />
