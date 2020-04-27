@@ -61,7 +61,7 @@ impl Database {
 // Connecting to the database
 
 pub struct DatabaseConnection<'a> {
-  backend: &'a Database,
+  database: &'a Database,
   connection: PooledConnection<ConnectionManager<SqliteConnection>>,
 }
 
@@ -74,7 +74,7 @@ pub enum DatabaseConnectError {
 impl Database {
   pub fn connect(&self) -> Result<DatabaseConnection, DatabaseConnectError> {
     let connection = self.connection_pool.get()?;
-    Ok(DatabaseConnection { backend: self, connection })
+    Ok(DatabaseConnection { database: self, connection })
   }
 }
 

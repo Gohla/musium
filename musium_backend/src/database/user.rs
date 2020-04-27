@@ -40,7 +40,7 @@ impl DatabaseConnection<'_> {
         .optional()?
     };
     if let Some(user) = user {
-      if self.backend.password_hasher.verify(&user_login.password, &user.salt, &user.hash)? {
+      if self.database.password_hasher.verify(&user_login.password, &user.salt, &user.hash)? {
         Ok(Some(user.into()))
       } else {
         Ok(None)
@@ -52,8 +52,8 @@ impl DatabaseConnection<'_> {
 
   pub fn create_user(&self, new_user: NewUser) -> Result<User, UserAddVerifyError> {
     use schema::user;
-    let salt = self.backend.password_hasher.generate_salt();
-    let hash = self.backend.password_hasher.hash(new_user.password, &salt)?;
+    let salt = self.database.password_hasher.generate_salt();
+    let hash = self.database.password_hasher.hash(new_user.password, &salt)?;
     let internal_new_user = InternalNewUser {
       name: new_user.name.clone(),
       hash,

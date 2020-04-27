@@ -1,6 +1,7 @@
 use std::collections::HashMap;
 
 use reqwest::{Client, IntoUrl, StatusCode, Url};
+use serde::Deserialize;
 use thiserror::Error;
 
 #[derive(Clone)]
@@ -64,6 +65,15 @@ pub enum SpotifySyncRequestFail {
 
 // Authorization
 
+#[derive(Deserialize, Debug)]
+pub struct SpotifyAuthorizationInfo {
+  pub access_token: String,
+  pub token_type: String,
+  pub scope: String,
+  pub expires_in: i32,
+  pub refresh_token: String,
+}
+
 impl SpotifySync {
   pub fn create_authorization_url<S1: Into<String>, S2: Into<String>>(
     &self,
@@ -87,6 +97,27 @@ impl SpotifySync {
       .query(&query_map)
       ;
     Ok(request.build()?.url().clone())
+  }
+
+  pub async fn authorization_callback<S1: Into<String>>(
+    &self,
+    code: String,
+    state: Option<String>, // TODO: verify
+    redirect_uri: S1,
+  ) -> Result<SpotifyAuthorizationInfo, SpotifySyncRequestFail> {
+    let url = self.accounts_api_base_url.join("token")?;
+    let request = self.http_client
+      .post(url)
+      .form(&{
+        let mut map = HashMap::new();
+        map.insert("grant_type", "authorization_code".to_owned());
+        map.insert("code", code);
+        map.insert("redirect_uri", redirect_uri.into())
+      })
+      .basic_auth(&self.client_id, Some(&self.client_secret))
+      ;
+    let response = request.send().await?;
+    Ok(response.json().await?)
   }
 }
 

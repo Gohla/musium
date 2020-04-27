@@ -31,7 +31,7 @@ impl DatabaseConnection<'_> {
       || local_sources
         .into_iter()
         .flat_map(|local_source|
-          self.backend.local_sync.sync(local_source)
+          self.database.local_sync.sync(local_source)
         )
         .partition_map(|r| {
           match r {

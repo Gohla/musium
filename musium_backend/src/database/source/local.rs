@@ -3,7 +3,7 @@ use diesel::prelude::*;
 use musium_core::model::{LocalSource, NewLocalSource};
 use musium_core::schema;
 
-use super::{DatabaseConnection, DatabaseQueryError};
+use crate::database::{DatabaseConnection, DatabaseQueryError};
 
 impl DatabaseConnection<'_> {
   pub fn list_local_sources(&self) -> Result<Vec<LocalSource>, DatabaseQueryError> {
