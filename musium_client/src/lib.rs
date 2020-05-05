@@ -1,7 +1,9 @@
 use std::io::Read;
 
 use reqwest::blocking::{Client as HttpClient, Response};
+use reqwest::header::ToStrError;
 use reqwest::StatusCode;
+use reqwest::redirect;
 pub use reqwest::Url;
 use thiserror::Error;
 
@@ -25,6 +27,7 @@ impl Client {
   pub fn new(url: Url) -> Result<Self, ClientCreateError> {
     let client: HttpClient = HttpClient::builder()
       .cookie_store(true)
+      .redirect(redirect::Policy::none())
       .build()?;
     Ok(Self { client, url })
   }
@@ -38,6 +41,8 @@ pub enum ClientError {
   UrlJoinFail(#[from] url::ParseError),
   #[error(transparent)]
   HttpRequestFail(#[from] reqwest::Error),
+  #[error(transparent)]
+  HeaderValueToStringFail(#[from] ToStrError),
   #[error("Invalid response {0:?} from the server")]
   InvalidResponse(StatusCode),
 }
@@ -55,7 +60,7 @@ impl Client {
   }
 }
 
-// Source
+// Local source
 
 impl Client {
   pub fn list_local_sources(&self) -> Result<Vec<LocalSource>, ClientError> {
@@ -88,6 +93,22 @@ impl Client {
       .send()?
       .json()?;
     Ok(local_source)
+  }
+}
+
+// Spotify source
+
+impl Client {
+  pub fn create_spotify_source_authorization_url(&self) -> Result<String, ClientError> {
+    use ClientError::*;
+    let response = self.client.get(self.url.join("source/spotify/request_authorization")?)
+      .send()?
+      .error_for_status()?;
+    if let Some(url) = response.headers().get(reqwest::header::LOCATION) {
+      Ok(url.to_str()?.to_owned())
+    } else {
+      Err(InvalidResponse(response.status()))
+    }
   }
 }
 

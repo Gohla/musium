@@ -11,6 +11,7 @@ musium_client = {path = "../musium_client"}
 musium_audio = {path = "../musium_audio"}
 structopt = "0.3"
 dotenv = "0.15"
+open = "1.4"
 anyhow = "1"
 thiserror = "1"
 metrics-core = "0.5"

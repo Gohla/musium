@@ -32,6 +32,7 @@ impl DatabaseConnection<'_> {
       }
       db_local_source
     } else {
+      // TODO: must be done in transaction for consistency.
       let insert_query = {
         use schema::local_source::dsl::*;
         diesel::insert_into(local_source).values(new_local_source)

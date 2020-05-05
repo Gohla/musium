@@ -59,6 +59,9 @@ enum Command {
     enabled: bool,
   },
 
+  /// Creates a new Spotify source by requesting authorization with Spotify
+  CreateSpotifySource,
+
   /// Lists all albums
   ListAlbums,
   /// Shows an album, found by id
@@ -193,6 +196,11 @@ fn run(command: Command, client: &Client) -> Result<()> {
     }
     Command::SetLocalSourceEnabledById { id, enabled } => {
       client.set_local_source_enabled_by_id(id, enabled)?;
+    }
+
+    Command::CreateSpotifySource => {
+      let url = client.create_spotify_source_authorization_url()?;
+      open::that(url)?;
     }
 
     Command::ListAlbums => {

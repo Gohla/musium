@@ -1648,6 +1648,7 @@ dependencies = [
  "musium_audio",
  "musium_client",
  "musium_core",
+ "open",
  "structopt",
  "thiserror",
  "tracing",
@@ -1786,6 +1787,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d79f1db9148be9d0e174bb3ac890f6030fcb1ed947267c5a91ee4c91b5a91e15"
 dependencies = [
  "byteorder",
+]
+
+[[package]]
+name = "open"
+version = "1.4.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "7c283bf0114efea9e42f1a60edea9859e8c47528eae09d01df4b29c1e489cc48"
+dependencies = [
+ "winapi 0.3.8",
 ]
 
 [[package]]

@@ -35,7 +35,11 @@ pub async fn serve<A: net::ToSocketAddrs, C: Into<Vec<u8>>>(database: Database, 
       .route("/source/local/set_enabled/{id}", web::post().to(set_local_source_enabled))
       // Spotify source
       .route("/source/spotify/request_authorization", web::get().to(request_spotify_authorization))
-      .route("/source/spotify/request_authorization/callback", web::get().to(spotify_authorization_callback))
+      .service(web::resource("/source/spotify/request_authorization/callback")
+        .name("spotify_authorization_callback")
+        .route(web::get().to(spotify_authorization_callback))
+      )
+      //.route("/source/spotify/request_authorization/callback", web::get().to(spotify_authorization_callback))
       // Album
       .route("/album", web::get().to(list_albums))
       .route("/album/{id}", web::get().to(show_album_by_id))

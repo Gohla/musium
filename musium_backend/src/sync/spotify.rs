@@ -16,7 +16,7 @@ pub struct SpotifySync {
 // Creation
 
 #[derive(Debug, Error)]
-pub enum SpotifySyncCreateError {
+pub enum CreateError {
   #[error(transparent)]
   UrlCreateFail(#[from] url::ParseError),
   #[error(transparent)]
@@ -30,7 +30,7 @@ impl SpotifySync {
     api_base_url: U2,
     client_id: String,
     client_secret: String,
-  ) -> Result<Self, SpotifySyncCreateError> {
+  ) -> Result<Self, CreateError> {
     let accounts_api_base_url = accounts_api_base_url.into_url()?;
     let api_base_url = api_base_url.into_url()?;
     Ok(Self {
@@ -45,41 +45,30 @@ impl SpotifySync {
   pub fn new_from_client_id_secret(
     client_id: String,
     client_secret: String,
-  ) -> Result<Self, SpotifySyncCreateError> {
+  ) -> Result<Self, CreateError> {
     let http_client = Client::builder().build()?;
-    let accounts_api_base_url = "https://accounts.spotify.com/api/";
+    let accounts_api_base_url = "https://accounts.spotify.com/";
     let api_base_url = "https://api.spotify.com/v1/";
     Self::new(http_client, accounts_api_base_url, api_base_url, client_id, client_secret)
   }
 }
 
+// Create authorization URL
+
 #[derive(Debug, Error)]
-pub enum SpotifySyncRequestFail {
+pub enum CreateAuthorizationUrlError {
   #[error(transparent)]
   UrlJoinFail(#[from] url::ParseError),
   #[error(transparent)]
-  HttpRequestFail(#[from] reqwest::Error),
-  #[error("Invalid response {0:?} from the server")]
-  InvalidResponse(StatusCode),
-}
-
-// Authorization
-
-#[derive(Deserialize, Debug)]
-pub struct SpotifyAuthorizationInfo {
-  pub access_token: String,
-  pub token_type: String,
-  pub scope: String,
-  pub expires_in: i32,
-  pub refresh_token: String,
+  HttpRequestBuildFail(#[from] reqwest::Error),
 }
 
 impl SpotifySync {
-  pub fn create_authorization_url<S1: Into<String>, S2: Into<String>>(
+  pub fn create_authorization_url(
     &self,
-    redirect_uri: S1,
-    state: Option<S2>,
-  ) -> Result<Url, SpotifySyncRequestFail> {
+    redirect_uri: impl Into<String>,
+    state: Option<impl Into<String>>,
+  ) -> Result<Url, CreateAuthorizationUrlError> {
     let url = self.accounts_api_base_url.join("authorize")?;
 
     let query_map = {
@@ -91,6 +80,7 @@ impl SpotifySync {
         map.insert("state", state.into());
       }
       map.insert("scope", "user-read-playback-state user-modify-playback-state user-read-currently-playing user-follow-read".to_owned());
+      map
     };
     let request = self.http_client
       .get(url)
@@ -98,41 +88,53 @@ impl SpotifySync {
       ;
     Ok(request.build()?.url().clone())
   }
+}
 
-  pub async fn authorization_callback<S1: Into<String>>(
+// Authorization callback
+
+#[derive(Deserialize, Debug)]
+pub struct AuthorizationInfo {
+  pub access_token: String,
+  pub token_type: String,
+  pub scope: String,
+  pub expires_in: i32,
+  pub refresh_token: String,
+}
+
+#[derive(Debug, Error)]
+pub enum AuthorizationError {
+  #[error(transparent)]
+  UrlJoinFail(#[from] url::ParseError),
+  #[error(transparent)]
+  HttpRequestFail(#[from] reqwest::Error),
+  #[error("Invalid response {0:?} from the server")]
+  InvalidResponse(StatusCode),
+}
+
+impl SpotifySync {
+  pub async fn authorization_callback(
     &self,
-    code: String,
-    state: Option<String>, // TODO: verify
-    redirect_uri: S1,
-  ) -> Result<SpotifyAuthorizationInfo, SpotifySyncRequestFail> {
-    let url = self.accounts_api_base_url.join("token")?;
+    code: impl Into<String>,
+    redirect_uri: impl Into<String>,
+    _state: Option<impl Into<String>>, // TODO: verify
+  ) -> Result<AuthorizationInfo, AuthorizationError> {
+    let url = self.accounts_api_base_url.join("api/token")?;
     let request = self.http_client
       .post(url)
       .form(&{
         let mut map = HashMap::new();
         map.insert("grant_type", "authorization_code".to_owned());
-        map.insert("code", code);
-        map.insert("redirect_uri", redirect_uri.into())
+        map.insert("code", code.into());
+        map.insert("redirect_uri", redirect_uri.into());
+        map
       })
       .basic_auth(&self.client_id, Some(&self.client_secret))
       ;
-    let response = request.send().await?;
-    Ok(response.json().await?)
+    Ok(request
+      .send()
+      .await?
+      .error_for_status()?
+      .json().await?
+    )
   }
 }
-
-// impl SpotifySync {
-//   pub fn request_authorization(&self, )
-// }
-
-// #[derive(Clone, Debug)]
-// pub struct SpotifySyncTrack {
-//   pub source_id: i32,
-//   pub title: String,
-// }
-//
-// impl SpotifySync {
-//   pub fn sync(source_id: i32, data: &SpotifySourceData) -> impl Iterator<Item=SpotifySyncTrack> {
-//
-//   }
-// }
