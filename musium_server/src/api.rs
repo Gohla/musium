@@ -1,3 +1,6 @@
+use std::num::ParseIntError;
+use std::str::FromStr;
+
 use actix_files::NamedFile;
 use actix_web::{http, HttpRequest, HttpResponse, ResponseError, web};
 use actix_web::error::UrlGenerationError;
@@ -8,13 +11,11 @@ use thiserror::Error;
 use tracing::{event, Level};
 
 use musium_backend::database::{Database, DatabaseConnectError, DatabaseQueryError, sync::SyncError, user::UserAddVerifyError};
-use musium_backend::database::source::spotify::{SpotifySourceCreateAuthorizationUrlError, SpotifySourceCreateError};
+use musium_backend::database::source::spotify;
 use musium_core::model::{NewLocalSource, NewUser};
 
 use crate::auth::LoggedInUser;
 use crate::sync::Sync;
-use std::str::FromStr;
-use std::num::ParseIntError;
 
 // Local source
 
@@ -60,13 +61,10 @@ pub async fn request_spotify_authorization(
   logged_in_user: LoggedInUser,
 ) -> Result<HttpResponse, ApiError> {
   use ApiError::*;
-  let redirect_uri = request.url_for_static("spotify_authorization_callback").map_err(|e|UrlGenerationFail(e))?.to_string();
+  let redirect_uri = request.url_for_static("spotify_authorization_callback").map_err(|e| UrlGenerationFail(e))?.to_string();
   // TODO: do not use user ID as state, since it is easily guessable.
-  if let Some(url) = database.connect()?.create_spotify_authorization_url(&logged_in_user.user, redirect_uri, Some(format!("{}", logged_in_user.user.id)))? {
-    Ok(HttpResponse::TemporaryRedirect().header(http::header::LOCATION, url.to_string()).finish().into_body())
-  } else {
-    Err(NotFoundFail) // TODO: better error
-  }
+  let url = database.connect()?.create_spotify_authorization_url(&logged_in_user.user, redirect_uri, Some(format!("{}", logged_in_user.user.id)))?;
+  Ok(HttpResponse::TemporaryRedirect().header(http::header::LOCATION, url.to_string()).finish().into_body())
 }
 
 #[derive(Deserialize)]
@@ -85,7 +83,7 @@ pub(crate) async fn spotify_authorization_callback(
   use ApiError::*;
   match query.into_inner() {
     SpotifyCallbackData { code: Some(code), error: None, state: Some(state) } => {
-      let redirect_uri = request.url_for_static("spotify_authorization_callback").map_err(|e|UrlGenerationFail(e))?.to_string();
+      let redirect_uri = request.url_for_static("spotify_authorization_callback").map_err(|e| UrlGenerationFail(e))?.to_string();
       let user_id = i32::from_str(&state)?; // TODO: do not abuse state to carry the user ID.
       let spotify_source = database.connect()?.create_spotify_source_from_authorization_callback(user_id, code, redirect_uri, Some(state)).await?;
       Ok(HttpResponse::Ok().json(spotify_source))
@@ -98,6 +96,14 @@ pub(crate) async fn spotify_authorization_callback(
       Err(NotFoundFail) // TODO: better error
     }
   }
+}
+
+pub(crate) async fn show_spotify_me(
+  database: web::Data<Database>,
+  logged_in_user: LoggedInUser,
+) -> Result<HttpResponse, ApiError> {
+  let me_info = database.connect()?.show_spotify_me(&logged_in_user.user).await?;
+  Ok(HttpResponse::Ok().json(me_info))
 }
 
 // Albums
@@ -294,9 +300,11 @@ pub enum ApiError {
   #[error("URL generation failed: {0:?}")]
   UrlGenerationFail(UrlGenerationError),
   #[error(transparent)]
-  SpotifySourceCreateAuthorizationUrlFail(#[from] SpotifySourceCreateAuthorizationUrlError),
+  SpotifySourceCreateAuthorizationUrlFail(#[from] spotify::CreateAuthorizationUrlError),
   #[error(transparent)]
-  SpotifySourceCreateFail(#[from] SpotifySourceCreateError),
+  SpotifySourceCreateFail(#[from] spotify::CreateError),
+  #[error(transparent)]
+  SpotifyMeInfoError(#[from] spotify::MeInfoError),
   #[error(transparent)]
   ParseUserIdFail(#[from] ParseIntError),
   #[error(transparent)]

@@ -4,6 +4,8 @@ use reqwest::{Client, IntoUrl, StatusCode, Url};
 use serde::Deserialize;
 use thiserror::Error;
 
+use musium_core::api::SpotifyMeInfo;
+
 #[derive(Clone)]
 pub struct SpotifySync {
   http_client: Client,
@@ -70,7 +72,6 @@ impl SpotifySync {
     state: Option<impl Into<String>>,
   ) -> Result<Url, CreateAuthorizationUrlError> {
     let url = self.accounts_api_base_url.join("authorize")?;
-
     let query_map = {
       let mut map = HashMap::new();
       map.insert("client_id", self.client_id.clone());
@@ -90,6 +91,18 @@ impl SpotifySync {
   }
 }
 
+// API errors
+
+#[derive(Debug, Error)]
+pub enum ApiError {
+  #[error(transparent)]
+  UrlJoinFail(#[from] url::ParseError),
+  #[error(transparent)]
+  HttpRequestFail(#[from] reqwest::Error),
+  #[error("Invalid response {0:?} from the server")]
+  InvalidResponse(StatusCode),
+}
+
 // Authorization callback
 
 #[derive(Deserialize, Debug)]
@@ -101,23 +114,13 @@ pub struct AuthorizationInfo {
   pub refresh_token: String,
 }
 
-#[derive(Debug, Error)]
-pub enum AuthorizationError {
-  #[error(transparent)]
-  UrlJoinFail(#[from] url::ParseError),
-  #[error(transparent)]
-  HttpRequestFail(#[from] reqwest::Error),
-  #[error("Invalid response {0:?} from the server")]
-  InvalidResponse(StatusCode),
-}
-
 impl SpotifySync {
   pub async fn authorization_callback(
     &self,
     code: impl Into<String>,
     redirect_uri: impl Into<String>,
     _state: Option<impl Into<String>>, // TODO: verify
-  ) -> Result<AuthorizationInfo, AuthorizationError> {
+  ) -> Result<AuthorizationInfo, ApiError> {
     let url = self.accounts_api_base_url.join("api/token")?;
     let request = self.http_client
       .post(url)
@@ -130,11 +133,46 @@ impl SpotifySync {
       })
       .basic_auth(&self.client_id, Some(&self.client_secret))
       ;
-    Ok(request
-      .send()
-      .await?
-      .error_for_status()?
-      .json().await?
-    )
+    Ok(request.send().await?.error_for_status()?.json().await?)
+  }
+}
+
+// Refresh access token
+
+#[derive(Deserialize, Debug)]
+pub struct RefreshInfo {
+  pub access_token: String,
+  pub token_type: String,
+  pub scope: String,
+  pub expires_in: i32,
+}
+
+impl SpotifySync {
+  pub async fn refresh_access_token(&self, refresh_token: impl Into<String>) -> Result<RefreshInfo, ApiError> {
+    let url = self.accounts_api_base_url.join("api/token")?;
+    let request = self.http_client
+      .post(url)
+      .form(&{
+        let mut map = HashMap::new();
+        map.insert("grant_type", "refresh_token".to_owned());
+        map.insert("refresh_token", refresh_token.into());
+        map
+      })
+      .basic_auth(&self.client_id, Some(&self.client_secret))
+      ;
+    Ok(request.send().await?.error_for_status()?.json().await?)
+  }
+}
+
+// Me info
+
+impl SpotifySync {
+  pub async fn me(&self, access_token: impl Into<String>) -> Result<SpotifyMeInfo, ApiError> {
+    let url = self.api_base_url.join("me")?;
+    let request = self.http_client
+      .get(url)
+      .bearer_auth(access_token.into())
+      ;
+    Ok(request.send().await?.error_for_status()?.json().await?)
   }
 }

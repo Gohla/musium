@@ -43,10 +43,10 @@ struct Opt {
 
   /// Spotify client ID to use
   #[structopt(long, env = "MUSIUM_SPOTIFY_CLIENT_ID")]
-  spotify_client_id: Option<String>,
+  spotify_client_id: String,
   /// Spotify client secret to use
   #[structopt(long, env = "MUSIUM_SPOTIFY_CLIENT_SECRET")]
-  spotify_client_secret: Option<String>,
+  spotify_client_secret: String,
 
   /// Name of the admin user that is created by default.
   #[structopt(long, env = "MUSIUM_LOGIN_NAME")]
@@ -87,9 +87,8 @@ fn main() -> Result<()> {
   metrics_receiver.install();
   // Create database
   let local_sync = LocalSync::new();
-  let spotify_sync = if let (Some(id), Some(secret)) = (opt.spotify_client_id, opt.spotify_client_secret) {
-    Some(SpotifySync::new_from_client_id_secret(id, secret).with_context(|| "Creating Spotify synchronizer failed")?)
-  } else { None };
+  let spotify_sync = SpotifySync::new_from_client_id_secret(opt.spotify_client_id, opt.spotify_client_secret)
+    .with_context(|| "Creating Spotify synchronizer failed")?;
   let password_hasher = PasswordHasher::new(opt.password_hasher_secret_key.as_bytes());
   let database = Database::new(
     opt.database_file.to_string_lossy(),

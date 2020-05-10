@@ -61,6 +61,8 @@ enum Command {
 
   /// Creates a new Spotify source by requesting authorization with Spotify
   CreateSpotifySource,
+  /// Shows me-info for my Spotify source
+  ShowSpotifyMe,
 
   /// Lists all albums
   ListAlbums,
@@ -201,6 +203,10 @@ fn run(command: Command, client: &Client) -> Result<()> {
     Command::CreateSpotifySource => {
       let url = client.create_spotify_source_authorization_url()?;
       open::that(url)?;
+    }
+    Command::ShowSpotifyMe => {
+      let me_info = client.show_spotify_me()?;
+      println!("{:?}", me_info);
     }
 
     Command::ListAlbums => {

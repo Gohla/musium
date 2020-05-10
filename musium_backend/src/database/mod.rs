@@ -30,7 +30,7 @@ pub mod sync;
 pub struct Database {
   connection_pool: Pool<ConnectionManager<SqliteConnection>>,
   local_sync: LocalSync,
-  spotify_sync: Option<SpotifySync>,
+  spotify_sync: SpotifySync,
   password_hasher: PasswordHasher,
 }
 
@@ -47,7 +47,7 @@ impl Database {
   pub fn new<D: AsRef<str>>(
     database_url: D,
     local_sync: LocalSync,
-    spotify_sync: Option<SpotifySync>,
+    spotify_sync: SpotifySync,
     password_hasher: PasswordHasher,
   ) -> Result<Database, DatabaseCreateError> {
     let connection_pool = Pool::builder()

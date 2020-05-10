@@ -2,11 +2,12 @@ use std::io::Read;
 
 use reqwest::blocking::{Client as HttpClient, Response};
 use reqwest::header::ToStrError;
-use reqwest::StatusCode;
 use reqwest::redirect;
+use reqwest::StatusCode;
 pub use reqwest::Url;
 use thiserror::Error;
 
+use musium_core::api::SpotifyMeInfo;
 use musium_core::model::*;
 use musium_core::model::collection::{Albums, AlbumsRaw, Tracks, TracksRaw};
 
@@ -109,6 +110,13 @@ impl Client {
     } else {
       Err(InvalidResponse(response.status()))
     }
+  }
+
+  pub fn show_spotify_me(&self) -> Result<SpotifyMeInfo, ClientError> {
+    let me_info: SpotifyMeInfo = self.client.get(self.url.join("source/spotify/me")?)
+      .send()?
+      .json()?;
+    Ok(me_info)
   }
 }
 

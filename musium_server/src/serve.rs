@@ -39,7 +39,7 @@ pub async fn serve<A: net::ToSocketAddrs, C: Into<Vec<u8>>>(database: Database, 
         .name("spotify_authorization_callback")
         .route(web::get().to(spotify_authorization_callback))
       )
-      //.route("/source/spotify/request_authorization/callback", web::get().to(spotify_authorization_callback))
+      .route("/source/spotify/me", web::get().to(show_spotify_me))
       // Album
       .route("/album", web::get().to(list_albums))
       .route("/album/{id}", web::get().to(show_album_by_id))
