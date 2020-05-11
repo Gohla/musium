@@ -176,3 +176,41 @@ impl SpotifySync {
     Ok(request.send().await?.error_for_status()?.json().await?)
   }
 }
+
+// Sync
+
+pub struct SpotifySyncTrack {}
+
+impl SpotifySync {
+  pub async fn sync(&self, access_token: impl Into<String>) -> Result<impl Iterator<Item=SpotifySyncTrack>, ApiError> {
+    let access_token = access_token.into();
+    let _followed_artist_ids = self.get_followed_artist_ids(&access_token).await?;
+    Ok(std::iter::empty())
+  }
+
+  async fn get_followed_artist_ids(&self, access_token: impl Into<String>) -> Result<impl Iterator<Item=String>, ApiError> {
+    let url = self.api_base_url.join("me/following")?;
+    let request = self.http_client
+      .get(url)
+      .query(&[("type", "artist"), ("limit", "1")])
+      .bearer_auth(access_token.into())
+      ;
+    let artists: CursorPageArtists = request.send().await?.error_for_status()?.json().await?;
+    Ok(artists.artists.items.into_iter().map(|a| a.id))
+  }
+}
+
+#[derive(Deserialize, Debug)]
+struct CursorBasedPage<T> {
+  items: Vec<T>,
+}
+
+#[derive(Deserialize, Debug)]
+struct CursorPageArtists {
+  artists: CursorBasedPage<Artist>,
+}
+
+#[derive(Deserialize, Debug)]
+struct Artist {
+  id: String
+}
