@@ -12,6 +12,7 @@ use crate::database::sync::local::LocalSyncDatabaseError;
 use crate::sync::local::LocalSyncError;
 
 pub mod local;
+pub mod spotify;
 
 #[derive(Debug, Error)]
 pub enum SyncError {

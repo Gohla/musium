@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 
+use itertools::Itertools;
 use reqwest::{Client, IntoUrl, StatusCode, Url};
 use serde::Deserialize;
 use thiserror::Error;
@@ -179,38 +180,113 @@ impl SpotifySync {
 
 // Sync
 
-pub struct SpotifySyncTrack {}
-
 impl SpotifySync {
-  pub async fn sync(&self, access_token: impl Into<String>) -> Result<impl Iterator<Item=SpotifySyncTrack>, ApiError> {
+  pub async fn sync(&self, access_token: impl Into<String>) -> Result<impl Iterator<Item=Album>, ApiError> {
     let access_token = access_token.into();
-    let _followed_artist_ids = self.get_followed_artist_ids(&access_token).await?;
-    Ok(std::iter::empty())
+    let mut all_albums = Vec::new();
+    let followed_artist = self.get_followed_artist(&access_token).await?;
+    for artist in followed_artist {
+      let artist_albums_simple = self.get_artist_albums_simple(&access_token, artist.id).await?;
+      let albums = self.get_albums(&access_token, artist_albums_simple.map(|a| a.id)).await?;
+      all_albums.extend(albums)
+    }
+    Ok(all_albums.into_iter())
   }
 
-  async fn get_followed_artist_ids(&self, access_token: impl Into<String>) -> Result<impl Iterator<Item=String>, ApiError> {
+  async fn get_followed_artist(&self, access_token: impl Into<String>) -> Result<impl Iterator<Item=Artist>, ApiError> {
     let url = self.api_base_url.join("me/following")?;
+    // TODO: do not limit to 1.
+    // TODO: go over all followed artists by following the next link.
     let request = self.http_client
       .get(url)
       .query(&[("type", "artist"), ("limit", "1")])
       .bearer_auth(access_token.into())
       ;
-    let artists: CursorPageArtists = request.send().await?.error_for_status()?.json().await?;
-    Ok(artists.artists.items.into_iter().map(|a| a.id))
+    let artists: CursorBasedPagingArtists = request.send().await?.error_for_status()?.json().await?;
+    Ok(artists.artists.items.into_iter())
+  }
+
+  async fn get_artist_albums_simple(&self, access_token: impl Into<String>, artist_id: impl Into<String>) -> Result<impl Iterator<Item=AlbumSimple>, ApiError> {
+    let url = self.api_base_url.join(&format!("artists/{}/albums", artist_id.into()))?;
+    // TODO: go over all followed artists by following the next link.
+    let request = self.http_client
+      .get(url)
+      .query(&[("limit", "50")])
+      .bearer_auth(access_token.into())
+      ;
+    let albums: Paging<AlbumSimple> = request.send().await?.error_for_status()?.json().await?;
+    Ok(albums.items.into_iter())
+  }
+
+  async fn get_albums(&self, access_token: impl Into<String>, album_ids: impl IntoIterator<Item=String>) -> Result<impl Iterator<Item=Album>, ApiError> {
+    let access_token = access_token.into();
+    let url = self.api_base_url.join("albums")?;
+    let mut all_albums = Vec::new();
+    for mut album_ids_per_20 in &album_ids.into_iter().chunks(20) {
+      let request = self.http_client
+        .get(url.clone())
+        .query(&[("ids", album_ids_per_20.join(","))])
+        .bearer_auth(access_token.clone())
+        ;
+      let albums: Vec<Album> = request.send().await?.error_for_status()?.json().await?;
+      all_albums.extend(albums)
+    }
+    Ok(all_albums.into_iter())
   }
 }
 
 #[derive(Deserialize, Debug)]
-struct CursorBasedPage<T> {
+pub struct Paging<T> {
   items: Vec<T>,
+  next: Option<String>,
 }
 
 #[derive(Deserialize, Debug)]
-struct CursorPageArtists {
-  artists: CursorBasedPage<Artist>,
+pub struct CursorBasedPaging<T> {
+  items: Vec<T>,
+  next: Option<String>,
+}
+
+
+#[derive(Deserialize, Debug)]
+pub struct CursorBasedPagingArtists {
+  artists: CursorBasedPaging<Artist>,
 }
 
 #[derive(Deserialize, Debug)]
-struct Artist {
-  id: String
+pub struct Artist {
+  id: String,
+  name: String,
+}
+
+#[derive(Deserialize, Debug)]
+pub struct ArtistSimple {
+  id: String,
+  name: String,
+}
+
+
+#[derive(Deserialize, Debug)]
+pub struct Album {
+  id: String,
+  name: String,
+  artists: Vec<ArtistSimple>,
+  tracks: Vec<TrackSimple>,
+}
+
+#[derive(Deserialize, Debug)]
+pub struct AlbumSimple {
+  id: String,
+  name: String,
+  artists: Vec<ArtistSimple>,
+}
+
+
+#[derive(Deserialize, Debug)]
+pub struct TrackSimple {
+  id: String,
+  name: String,
+  artists: Vec<ArtistSimple>,
+  track_number: i32,
+  disc_number: i32,
 }
