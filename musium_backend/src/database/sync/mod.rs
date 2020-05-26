@@ -5,7 +5,7 @@ use diesel::prelude::*;
 use thiserror::Error;
 use tracing::{event, instrument, Level};
 
-use musium_core::model::LocalSource;
+use musium_core::model::{LocalSource, SpotifySource};
 
 use crate::database::{DatabaseConnection, DatabaseQueryError};
 use crate::database::sync::local::LocalSyncDatabaseError;
@@ -33,12 +33,11 @@ impl DatabaseConnection<'_> {
   pub fn sync(&self) -> Result<(), SyncError> {
     use SyncError::*;
 
-    let local_sources: Vec<LocalSource> = time!("sync.list_local_sources", self.list_local_sources()?);
-
-    let (local_sync_tracks, local_sync_errors) = self.local_sync(&local_sources)?;
-    let mut synced_file_paths = HashMap::<i32, HashSet<String>>::new();
-
-    self.connection.transaction::<_, SyncError, _>(|| {
+    // Local source sync
+    let local_sync_errors = self.connection.transaction::<_, SyncError, _>(|| {
+      let local_sources: Vec<LocalSource> = time!("sync.list_local_sources", self.list_local_sources()?);
+      let (local_sync_tracks, local_sync_errors) = self.local_sync(&local_sources)?;
+      let mut synced_file_paths = HashMap::<i32, HashSet<String>>::new();
       // Insert tracks and related entities.
       for local_sync_track in local_sync_tracks {
         event!(Level::TRACE, ?local_sync_track, "Processing local sync track");
@@ -51,8 +50,15 @@ impl DatabaseConnection<'_> {
         self.sync_local_album_artists(&album, &local_sync_track)?;
       }
       self.sync_local_removed_tracks(synced_file_paths)?;
+      Ok(local_sync_errors)
+    })?;
+
+    // Spotify source sync
+    self.connection.transaction::<_, SyncError, _>(|| {
+      let spotify_sources: Vec<SpotifySource> = time!("sync.list_spotify_sources", self.list_spotify_sources()?);
       Ok(())
     })?;
+
     if !local_sync_errors.is_empty() {
       return Err(LocalSyncNonFatalFail(local_sync_errors));
     }

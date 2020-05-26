@@ -6,12 +6,27 @@ use thiserror::Error;
 use tracing::{event, Level};
 use url::Url;
 
+use musium_core::api::SpotifyMeInfo;
 use musium_core::model::{NewSpotifySource, SpotifySource, User};
 use musium_core::schema;
 
-use crate::database::DatabaseConnection;
+use crate::database::{DatabaseConnection, DatabaseQueryError};
 use crate::sync::spotify;
-use musium_core::api::SpotifyMeInfo;
+
+impl DatabaseConnection<'_> {
+  pub fn list_spotify_sources(&self) -> Result<Vec<SpotifySource>, DatabaseQueryError> {
+    use schema::spotify_source::dsl::*;
+    Ok(time!("list_spotify_sources.select", spotify_source.load::<SpotifySource>(&self.connection)?))
+  }
+
+  pub fn get_spotify_source_by_id(&self, local_source_id: i32) -> Result<Option<SpotifySource>, DatabaseQueryError> {
+    let query = {
+      use schema::spotify_source::dsl::*;
+      spotify_source.find(local_source_id)
+    };
+    Ok(time!("get_spotify_source_by_id.select", query.first::<SpotifySource>(&self.connection).optional()?))
+  }
+}
 
 // Create authorization URL
 
@@ -100,7 +115,7 @@ pub enum RefreshAccessTokenError {
 }
 
 impl DatabaseConnection<'_> {
-  async fn refresh_access_token_if_needed(&self, spotify_source: SpotifySource) -> Result<SpotifySource, RefreshAccessTokenError> {
+  pub(crate) async fn refresh_access_token_if_needed(&self, spotify_source: SpotifySource) -> Result<SpotifySource, RefreshAccessTokenError> {
     if Utc::now().naive_utc() >= spotify_source.expiry_date {
       self.refresh_access_token(spotify_source).await
     } else {
@@ -108,7 +123,7 @@ impl DatabaseConnection<'_> {
     }
   }
 
-  async fn refresh_access_token(&self, mut spotify_source: SpotifySource) -> Result<SpotifySource, RefreshAccessTokenError> {
+  pub(crate) async fn refresh_access_token(&self, mut spotify_source: SpotifySource) -> Result<SpotifySource, RefreshAccessTokenError> {
     let refresh_info = self.database.spotify_sync.refresh_access_token(&spotify_source.refresh_token).await?;
     event!(Level::DEBUG, ?spotify_source, ?refresh_info, "Updating Spotify source with new access token");
     spotify_source.access_token = refresh_info.access_token.clone();
