@@ -12,9 +12,8 @@ use tracing_subscriber::FmtSubscriber;
 
 use musium_backend::database::Database;
 use musium_backend::password::PasswordHasher;
-use musium_backend::sync::local::LocalSync;
-use musium_backend::sync::spotify::SpotifySync;
 use musium_core::model::NewUser;
+use musium_spotify_sync::SpotifySync;
 
 use crate::serve::serve;
 
@@ -86,13 +85,11 @@ fn main() -> Result<()> {
   let mut observer: YamlObserver = YamlBuilder::new().build();
   metrics_receiver.install();
   // Create database
-  let local_sync = LocalSync::new();
   let spotify_sync = SpotifySync::new_from_client_id_secret(opt.spotify_client_id, opt.spotify_client_secret)
     .with_context(|| "Creating Spotify synchronizer failed")?;
   let password_hasher = PasswordHasher::new(opt.password_hasher_secret_key.as_bytes());
   let database = Database::new(
     opt.database_file.to_string_lossy(),
-    local_sync,
     spotify_sync,
     password_hasher,
   )

@@ -64,7 +64,7 @@ pub async fn request_spotify_authorization(
   let redirect_uri = request.url_for_static("spotify_authorization_callback").map_err(|e| UrlGenerationFail(e))?.to_string();
   // TODO: do not use user ID as state, since it is easily guessable.
   let url = database.connect()?.create_spotify_authorization_url(&logged_in_user.user, redirect_uri, Some(format!("{}", logged_in_user.user.id)))?;
-  Ok(HttpResponse::TemporaryRedirect().header(http::header::LOCATION, url.to_string()).finish().into_body())
+  Ok(HttpResponse::TemporaryRedirect().header(http::header::LOCATION, url).finish().into_body())
 }
 
 #[derive(Deserialize)]

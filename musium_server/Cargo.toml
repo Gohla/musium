@@ -7,6 +7,7 @@ publish = false
 
 [dependencies]
 musium_core = {path = "../musium_core"}
+musium_spotify_sync = {path = "../musium_spotify_sync"}
 musium_backend = {path = "../musium_backend"}
 actix-web = "2"
 actix-rt = "1"

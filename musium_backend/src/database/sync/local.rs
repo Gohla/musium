@@ -8,30 +8,48 @@ use tracing::{event, Level};
 
 use musium_core::model::{Album, AlbumArtist, Artist, LocalAlbum, LocalArtist, LocalSource, LocalTrack, NewAlbum, NewAlbumArtist, NewArtist, NewLocalAlbum, NewLocalArtist, NewLocalTrack, NewTrack, NewTrackArtist, Track, TrackArtist};
 use musium_core::schema;
+use musium_filesystem_sync::{FilesystemSyncError, FilesystemSyncTrack};
 
 use crate::database::DatabaseConnection;
 use crate::model::{LocalTrackEx, TrackEx};
-use crate::sync::local::{LocalSyncError, LocalSyncTrack};
 
 #[derive(Debug, Error)]
 pub enum LocalSyncDatabaseError {
   #[error("Failed to query database")]
   DatabaseQueryFail(#[from] diesel::result::Error, Backtrace),
   #[error("Attempted to synchronize the album from track {0:#?}, but found multiple albums with the same name, which is currently not supported: {1:#?}")]
-  MultipleAlbumsSameName(LocalSyncTrack, Vec<Album>),
+  MultipleAlbumsSameName(FilesystemSyncTrack, Vec<Album>),
   #[error("Attempted to update possibly moved locally synchronized track {0:#?}, but found multiple local tracks in the database with the same source and hash: {1:#?}")]
-  HashCollisionFail(LocalSyncTrack, Vec<LocalTrack>),
+  HashCollisionFail(FilesystemSyncTrack, Vec<LocalTrack>),
   #[error("Attempted to synchronize the artist from track {0:#?}, but found multiple artists with the same name, which is currently not supported: {1:#?}")]
-  MultipleArtistsSameName(LocalSyncTrack, Vec<Artist>),
+  MultipleArtistsSameName(FilesystemSyncTrack, Vec<Artist>),
 }
 
 impl DatabaseConnection<'_> {
-  pub(crate) fn local_sync(&self, local_sources: &Vec<LocalSource>) -> Result<(Vec<LocalSyncTrack>, Vec<LocalSyncError>), LocalSyncDatabaseError> {
+  pub(crate) fn local_sync(&self, local_sources: &Vec<LocalSource>) -> Result<Vec<FilesystemSyncError>, LocalSyncDatabaseError> {
+    let (filesystem_sync_tracks, filesystem_sync_errors) = self.filesystem_sync(&local_sources)?;
+    let mut synced_file_paths = HashMap::<i32, HashSet<String>>::new();
+    // Insert tracks and related entities.
+    for (local_source_id, local_sync_track) in filesystem_sync_tracks {
+      event!(Level::TRACE, ?local_sync_track, "Processing local sync track");
+      synced_file_paths.entry(local_source_id)
+        .or_default()
+        .insert(local_sync_track.file_path.clone());
+      let album = self.sync_local_album(local_source_id, &local_sync_track)?;
+      let track = self.sync_local_track(local_source_id, &album, &local_sync_track)?;
+      self.sync_local_track_artists(local_source_id, &track, &local_sync_track)?;
+      self.sync_local_album_artists(local_source_id, &album, &local_sync_track)?;
+    }
+    self.sync_local_removed_tracks(synced_file_paths)?;
+    Ok(filesystem_sync_errors)
+  }
+
+  pub(crate) fn filesystem_sync(&self, local_sources: &Vec<LocalSource>) -> Result<(Vec<(i32, FilesystemSyncTrack)>, Vec<FilesystemSyncError>), LocalSyncDatabaseError> {
     let do_local_sync = {
       || local_sources
         .into_iter()
         .flat_map(|local_source|
-          self.database.local_sync.sync(local_source)
+          musium_filesystem_sync::sync(local_source.directory.clone()).map(move |track| track.map(|track| (local_source.id, track)))
         )
         .partition_map(|r| {
           match r {
@@ -43,10 +61,10 @@ impl DatabaseConnection<'_> {
     Ok(time!("sync.local_sync", do_local_sync()))
   }
 
-  pub(crate) fn sync_local_album(&self, local_sync_track: &LocalSyncTrack) -> Result<Album, LocalSyncDatabaseError> {
+  pub(crate) fn sync_local_album(&self, local_source_id: i32, filesystem_sync_track: &FilesystemSyncTrack) -> Result<Album, LocalSyncDatabaseError> {
     use LocalSyncDatabaseError::*;
 
-    let album_name = local_sync_track.album.clone();
+    let album_name = filesystem_sync_track.album.clone();
     let select_query = {
       use schema::album::dsl::*;
       album.filter(name.eq(&album_name))
@@ -64,7 +82,7 @@ impl DatabaseConnection<'_> {
       time!("sync.insert_album", insert_album_query.execute(&self.connection)?);
       let album = time!("sync.select_inserted_album", select_query.first::<Album>(&self.connection)?);
       // Insert local album corresponding to album.
-      let new_local_album = NewLocalAlbum { album_id: album.id, local_source_id: local_sync_track.local_source_id };
+      let new_local_album = NewLocalAlbum { album_id: album.id, local_source_id };
       event!(Level::DEBUG, ?new_local_album, "Inserting local album");
       let insert_local_album_query = {
         use schema::local_album::dsl::*;
@@ -77,7 +95,7 @@ impl DatabaseConnection<'_> {
       let db_album = db_albums.into_iter().next().unwrap();
       let select_local_album_query = {
         use schema::local_album::dsl::*;
-        local_album.find((db_album.id, local_sync_track.local_source_id))
+        local_album.find((db_album.id, local_source_id))
       };
       let db_local_album = time!("sync.select_local_album", select_local_album_query.first(&self.connection).optional()?);
       if let Some(db_local_album) = db_local_album {
@@ -86,7 +104,7 @@ impl DatabaseConnection<'_> {
         // TODO: update local album columns when they are added.
       } else {
         // No local album was found for the album: insert it.
-        let new_local_album = NewLocalAlbum { album_id: db_album.id, local_source_id: local_sync_track.local_source_id };
+        let new_local_album = NewLocalAlbum { album_id: db_album.id, local_source_id };
         event!(Level::DEBUG, ?new_local_album, "Inserting local album");
         let insert_local_album_query = {
           use schema::local_album::dsl::*;
@@ -97,7 +115,7 @@ impl DatabaseConnection<'_> {
       db_album
     } else {
       // Multiple albums with the same name were found: for now, we error out.
-      return Err(MultipleAlbumsSameName(local_sync_track.clone(), db_albums));
+      return Err(MultipleAlbumsSameName(filesystem_sync_track.clone(), db_albums));
       // TODO: when there are multiple albums with the same name, but no local albums for any of them: create a local
       //       album for the first one and emit a persistent warning that the user may have to disambiguate manually.
       //       Return the selected album.
@@ -110,7 +128,7 @@ impl DatabaseConnection<'_> {
   }
 
 
-  pub(crate) fn sync_local_track(&self, album: &Album, local_sync_track: &LocalSyncTrack) -> Result<Track, LocalSyncDatabaseError> {
+  pub(crate) fn sync_local_track(&self, local_source_id: i32, album: &Album, local_sync_track: &FilesystemSyncTrack) -> Result<Track, LocalSyncDatabaseError> {
     use LocalSyncDatabaseError::*;
 
     let track_file_path = local_sync_track.file_path.clone();
@@ -118,7 +136,7 @@ impl DatabaseConnection<'_> {
     let local_track_select_query = {
       use schema::local_track::dsl::*;
       local_track
-        .filter(local_source_id.eq(local_sync_track.local_source_id))
+        .filter(local_source_id.eq(local_source_id))
         .filter(file_path.eq(&track_file_path))
     };
     let db_local_track = time!("sync.select_local_track", local_track_select_query.first::<LocalTrack>(&self.connection).optional()?);
@@ -149,7 +167,7 @@ impl DatabaseConnection<'_> {
         time!("sync.update_replaced_local_track", db_local_track.save_changes::<LocalTrack>(&*self.connection)?);
         // Insert replaced track as a new one.
         // TODO: also do the move check here?
-        self.insert_new_track_and_local_track(&album, &local_sync_track)?
+        self.insert_new_track_and_local_track(local_source_id, &album, &local_sync_track)?
       } else if hash_changed {
         // When the hash is different, but the metadata is not, we assume that the track's audio data has (somehow)
         // changed, and just update the hash.
@@ -177,13 +195,13 @@ impl DatabaseConnection<'_> {
       let select_by_hash_query = {
         use schema::local_track::dsl::*;
         local_track
-          .filter(local_source_id.eq(local_sync_track.local_source_id))
+          .filter(local_source_id.eq(local_source_id))
           .filter(hash.eq(local_sync_track.hash as i64))
       };
       let tracks_by_hash: Vec<LocalTrack> = time!("sync.select_local_tracks_by_hash", select_by_hash_query.load::<LocalTrack>(&self.connection)?);
       if tracks_by_hash.is_empty() {
         // No track with the same hash was found: we insert it as a new track.
-        self.insert_new_track_and_local_track(&album, &local_sync_track)?
+        self.insert_new_track_and_local_track(local_source_id, &album, &local_sync_track)?
       } else if tracks_by_hash.len() == 1 {
         // A track with the same hash was found: we update the local track in the database with the locally synchronized track.
         let mut db_local_track: LocalTrack = tracks_by_hash.into_iter().take(1).next().unwrap();
@@ -217,7 +235,7 @@ impl DatabaseConnection<'_> {
     })
   }
 
-  pub(crate) fn insert_new_track_and_local_track(&self, album: &Album, local_sync_track: &LocalSyncTrack) -> Result<Track, LocalSyncDatabaseError> {
+  pub(crate) fn insert_new_track_and_local_track(&self, local_source_id: i32, album: &Album, local_sync_track: &FilesystemSyncTrack) -> Result<Track, LocalSyncDatabaseError> {
     let new_track = NewTrack {
       album_id: album.id,
       disc_number: local_sync_track.disc_number,
@@ -237,7 +255,7 @@ impl DatabaseConnection<'_> {
 
     let new_local_track = NewLocalTrack {
       track_id: track.id,
-      local_source_id: local_sync_track.local_source_id,
+      local_source_id,
       file_path: Some(local_sync_track.file_path.clone()),
       hash: local_sync_track.hash as i64,
     };
@@ -249,8 +267,8 @@ impl DatabaseConnection<'_> {
   }
 
 
-  pub(crate) fn sync_local_track_artists(&self, track: &Track, local_sync_track: &LocalSyncTrack) -> Result<(), LocalSyncDatabaseError> {
-    let mut db_artists: HashSet<Artist> = self.sync_local_artists(local_sync_track.track_artists.iter().cloned(), local_sync_track)?;
+  pub(crate) fn sync_local_track_artists(&self, local_source_id: i32, track: &Track, local_sync_track: &FilesystemSyncTrack) -> Result<(), LocalSyncDatabaseError> {
+    let mut db_artists: HashSet<Artist> = self.sync_local_artists(local_source_id, local_sync_track.track_artists.iter().cloned(), local_sync_track)?;
     use schema::track_artist::dsl::*;
     let db_track_artists: Vec<(TrackArtist, Artist)> = time!("sync.select_track_artists", track_artist
       .filter(track_id.eq(track.id))
@@ -277,8 +295,8 @@ impl DatabaseConnection<'_> {
     Ok(())
   }
 
-  pub(crate) fn sync_local_album_artists(&self, album: &Album, local_sync_track: &LocalSyncTrack) -> Result<(), LocalSyncDatabaseError> {
-    let mut db_artists: HashSet<Artist> = self.sync_local_artists(local_sync_track.album_artists.iter().cloned(), local_sync_track)?;
+  pub(crate) fn sync_local_album_artists(&self, local_source_id: i32, album: &Album, local_sync_track: &FilesystemSyncTrack) -> Result<(), LocalSyncDatabaseError> {
+    let mut db_artists: HashSet<Artist> = self.sync_local_artists(local_source_id, local_sync_track.album_artists.iter().cloned(), local_sync_track)?;
     use schema::album_artist::dsl::*;
     let db_album_artists: Vec<(AlbumArtist, Artist)> = time!("sync.select_album_artists", album_artist
       .filter(album_id.eq(album.id))
@@ -305,11 +323,11 @@ impl DatabaseConnection<'_> {
     Ok(())
   }
 
-  fn sync_local_artists<I: Iterator<Item=String>>(&self, artist_names: I, local_sync_track: &LocalSyncTrack) -> Result<HashSet<Artist>, LocalSyncDatabaseError> {
-    artist_names.map(|artist_name| self.sync_local_artist(artist_name, local_sync_track)).collect()
+  fn sync_local_artists<I: Iterator<Item=String>>(&self, local_source_id: i32, artist_names: I, local_sync_track: &FilesystemSyncTrack) -> Result<HashSet<Artist>, LocalSyncDatabaseError> {
+    artist_names.map(|artist_name| self.sync_local_artist(local_source_id, artist_name, local_sync_track)).collect()
   }
 
-  fn sync_local_artist(&self, artist_name: String, local_sync_track: &LocalSyncTrack) -> Result<Artist, LocalSyncDatabaseError> {
+  fn sync_local_artist(&self, local_source_id: i32, artist_name: String, local_sync_track: &FilesystemSyncTrack) -> Result<Artist, LocalSyncDatabaseError> {
     use LocalSyncDatabaseError::*;
 
     let select_query = {
@@ -329,7 +347,7 @@ impl DatabaseConnection<'_> {
       time!("sync.insert_artist", insert_artist_query.execute(&self.connection)?);
       let artist = time!("sync.select_inserted_artist", select_query.first::<Artist>(&self.connection)?);
       // Insert local artist corresponding to artist.
-      let new_local_artist = NewLocalArtist { artist_id: artist.id, local_source_id: local_sync_track.local_source_id };
+      let new_local_artist = NewLocalArtist { artist_id: artist.id, local_source_id };
       event!(Level::DEBUG, ?new_local_artist, "Inserting local artist");
       let insert_local_artist_query = {
         use schema::local_artist::dsl::*;
@@ -342,7 +360,7 @@ impl DatabaseConnection<'_> {
       let db_artist = db_artists.into_iter().next().unwrap();
       let select_local_artist_query = {
         use schema::local_artist::dsl::*;
-        local_artist.find((db_artist.id, local_sync_track.local_source_id))
+        local_artist.find((db_artist.id, local_source_id))
       };
       let db_local_artist = time!("sync.select_local_artist", select_local_artist_query.first(&self.connection).optional()?);
       if let Some(db_local_artist) = db_local_artist {
@@ -351,7 +369,7 @@ impl DatabaseConnection<'_> {
         // TODO: update local artist columns when they are added.
       } else {
         // No local artist was found for the artist: insert it.
-        let new_local_artist = NewLocalArtist { artist_id: db_artist.id, local_source_id: local_sync_track.local_source_id };
+        let new_local_artist = NewLocalArtist { artist_id: db_artist.id, local_source_id };
         event!(Level::DEBUG, ?new_local_artist, "Inserting local artist");
         let insert_local_artist_query = {
           use schema::local_artist::dsl::*;

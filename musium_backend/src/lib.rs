@@ -5,5 +5,4 @@ extern crate diesel;
 
 pub mod database;
 pub mod model;
-pub mod sync;
 pub mod password;

@@ -1676,21 +1676,18 @@ name = "musium_backend"
 version = "0.1.0"
 dependencies = [
  "chrono",
- "crc32fast",
  "diesel",
- "id3",
  "itertools",
  "libsqlite3-sys",
  "metrics",
  "musium_core",
+ "musium_filesystem_sync",
+ "musium_spotify_sync",
  "rand",
- "reqwest",
  "rust-argon2",
  "serde",
  "thiserror",
  "tracing",
- "url 2.1.1",
- "walkdir",
 ]
 
 [[package]]
@@ -1734,6 +1731,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "musium_filesystem_sync"
+version = "0.1.0"
+dependencies = [
+ "crc32fast",
+ "id3",
+ "thiserror",
+ "tracing",
+ "walkdir",
+]
+
+[[package]]
 name = "musium_server"
 version = "0.1.0"
 dependencies = [
@@ -1749,6 +1757,7 @@ dependencies = [
  "metrics-runtime",
  "musium_backend",
  "musium_core",
+ "musium_spotify_sync",
  "scopeguard",
  "serde",
  "serde_json",
@@ -1760,8 +1769,17 @@ dependencies = [
 ]
 
 [[package]]
-name = "musium_spotify"
+name = "musium_spotify_sync"
 version = "0.1.0"
+dependencies = [
+ "chrono",
+ "itertools",
+ "reqwest",
+ "serde",
+ "thiserror",
+ "tracing",
+ "url 2.1.1",
+]
 
 [[package]]
 name = "native-tls"

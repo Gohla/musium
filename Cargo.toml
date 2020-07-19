@@ -3,7 +3,8 @@ cargo-features = ["named-profiles", "profile-overrides"]
 [workspace]
 members = [
   "musium_core",
-  "musium_spotify",
+  "musium_spotify_sync",
+  "musium_filesystem_sync",
   "musium_backend",
   "musium_server",
   "musium_client",
@@ -32,9 +33,11 @@ debug = false
 opt-level = 3
 [profile.fastdev.package."musium_core"]
 opt-level = 2
-[profile.fastdev.package."musium_backend"]
+[profile.fastdev.package."musium_spotify_sync"]
 opt-level = 2
-[profile.fastdev.package."musium_spotify"]
+[profile.fastdev.package."musium_filesystem_sync"]
+opt-level = 2
+[profile.fastdev.package."musium_backend"]
 opt-level = 2
 [profile.fastdev.package."musium_server"]
 opt-level = 2

@@ -7,14 +7,11 @@ publish = false
 
 [dependencies]
 musium_core = {path = "../musium_core"}
+musium_filesystem_sync = {path = "../musium_filesystem_sync"}
+musium_spotify_sync = {path = "../musium_spotify_sync"}
 diesel = { version = "1", features = ["sqlite", "r2d2", "chrono"] }
 libsqlite3-sys = { version = ">=0.8.0, <0.18.0", features = ["bundled"] } # Make diesel use bundled sqlite.
 chrono = "0.4"
-id3 = "0.5"
-reqwest = { version = "0.10", features = ["json", "gzip"] }
-url = "2"
-crc32fast = "1"
-walkdir = "2"
 rust-argon2 = "0.8"
 rand = "0.7"
 serde = { version = "1", features = ["derive"] }
