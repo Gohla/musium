@@ -18,16 +18,16 @@ pub enum SpotifySyncDatabaseError {
 }
 
 impl DatabaseConnection<'_> {
-  pub(crate) async fn spotify_sync(&self, spotify_sources: Vec<SpotifySource>) -> Result<(), SpotifySyncDatabaseError> {
+  pub(crate) async fn _spotify_sync(&self, spotify_sources: Vec<SpotifySource>) -> Result<(), SpotifySyncDatabaseError> {
     for spotify_source in spotify_sources {
-      self.do_spotify_sync(spotify_source).await?;
+      self._do_spotify_sync(spotify_source).await?;
     }
     Ok(())
   }
 
-  async fn do_spotify_sync(&self, spotify_source: SpotifySource) -> Result<(), SpotifySyncDatabaseError> {
+  async fn _do_spotify_sync(&self, spotify_source: SpotifySource) -> Result<(), SpotifySyncDatabaseError> {
     let spotify_source = self.refresh_access_token_if_needed(spotify_source).await?;
-    let albums = self.database.spotify_sync.sync(spotify_source.access_token).await?;
+    let _albums = self.database.spotify_sync.sync(spotify_source.access_token).await?;
     Ok(())
   }
 }

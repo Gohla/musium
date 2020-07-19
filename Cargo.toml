@@ -3,6 +3,7 @@ cargo-features = ["named-profiles", "profile-overrides"]
 [workspace]
 members = [
   "musium_core",
+  "musium_spotify",
   "musium_backend",
   "musium_server",
   "musium_client",
@@ -32,6 +33,8 @@ opt-level = 3
 [profile.fastdev.package."musium_core"]
 opt-level = 2
 [profile.fastdev.package."musium_backend"]
+opt-level = 2
+[profile.fastdev.package."musium_spotify"]
 opt-level = 2
 [profile.fastdev.package."musium_server"]
 opt-level = 2

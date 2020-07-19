@@ -55,7 +55,7 @@ impl DatabaseConnection<'_> {
 
     // Spotify source sync
     self.connection.transaction::<_, SyncError, _>(|| {
-      let spotify_sources: Vec<SpotifySource> = time!("sync.list_spotify_sources", self.list_spotify_sources()?);
+      let _spotify_sources: Vec<SpotifySource> = time!("sync.list_spotify_sources", self.list_spotify_sources()?);
       Ok(())
     })?;
 
