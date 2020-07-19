@@ -271,8 +271,8 @@ impl DatabaseConnection<'_> {
       let new_track_artist = NewTrackArtist { track_id: track.id, artist_id: artist.id };
       event!(Level::DEBUG, ?new_track_artist, "Inserting track artist");
       time!("sync.insert_track_artist", diesel::insert_into(track_artist)
-    .values(new_track_artist)
-    .execute(&self.connection)?);
+        .values(new_track_artist)
+        .execute(&self.connection)?);
     }
     Ok(())
   }
