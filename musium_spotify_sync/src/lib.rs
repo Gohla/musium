@@ -296,56 +296,56 @@ impl SpotifySync {
 
 #[derive(Deserialize, Debug)]
 pub struct Paging<T> {
-  items: Vec<T>,
-  next: Option<String>,
+  pub items: Vec<T>,
+  pub next: Option<String>,
 }
 
 #[derive(Deserialize, Debug)]
 pub struct CursorBasedPaging<T> {
-  items: Vec<T>,
-  next: Option<String>,
+  pub items: Vec<T>,
+  pub next: Option<String>,
 }
 
 
 #[derive(Deserialize, Debug)]
 pub struct CursorBasedPagingArtists {
-  artists: CursorBasedPaging<Artist>,
+  pub artists: CursorBasedPaging<Artist>,
 }
 
 #[derive(Deserialize, Debug)]
 pub struct Artist {
-  id: String,
-  name: String,
+  pub id: String,
+  pub name: String,
 }
 
 #[derive(Deserialize, Debug)]
 pub struct ArtistSimple {
-  id: String,
-  name: String,
+  pub id: String,
+  pub name: String,
 }
 
 
 #[derive(Deserialize, Debug)]
 pub struct Album {
-  id: String,
-  name: String,
-  artists: Vec<ArtistSimple>,
-  tracks: Vec<TrackSimple>,
+  pub id: String,
+  pub name: String,
+  pub artists: Vec<ArtistSimple>,
+  pub tracks: Vec<TrackSimple>,
 }
 
 #[derive(Deserialize, Debug)]
 pub struct AlbumSimple {
-  id: String,
-  name: String,
-  artists: Vec<ArtistSimple>,
+  pub id: String,
+  pub name: String,
+  pub artists: Vec<ArtistSimple>,
 }
 
 
 #[derive(Deserialize, Debug)]
 pub struct TrackSimple {
-  id: String,
-  name: String,
-  artists: Vec<ArtistSimple>,
-  track_number: i32,
-  disc_number: i32,
+  pub id: String,
+  pub name: String,
+  pub artists: Vec<ArtistSimple>,
+  pub track_number: i32,
+  pub disc_number: i32,
 }

@@ -1687,6 +1687,7 @@ dependencies = [
  "rust-argon2",
  "serde",
  "thiserror",
+ "tokio",
  "tracing",
 ]
 
