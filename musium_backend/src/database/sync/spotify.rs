@@ -2,7 +2,7 @@ use std::backtrace::Backtrace;
 
 use diesel::prelude::*;
 use thiserror::Error;
-use tracing::{event, Level};
+use tracing::{event, instrument, Level};
 
 use musium_core::model::{Album, NewSpotifyAlbum, SpotifyAlbum, SpotifySource};
 use musium_core::schema;
@@ -15,8 +15,8 @@ use crate::model::SpotifySourceEx;
 pub enum SpotifySyncError {
   #[error("Failed to query database")]
   DatabaseQueryFail(#[from] diesel::result::Error, Backtrace),
-  #[error(transparent)]
-  SpotifyApiFail(#[from] musium_spotify_sync::ApiError),
+  #[error("Call to Spotify API failed")]
+  SpotifyApiFail(#[from] musium_spotify_sync::ApiError, Backtrace),
   #[error(transparent)]
   GetOrCreateAlbumFail(#[from] GetOrCreateAlbumError),
 }
@@ -30,6 +30,7 @@ impl From<DatabaseQueryError> for SpotifySyncError {
 }
 
 impl DatabaseConnection<'_> {
+  #[instrument(skip(self, spotify_sources), err, level="trace")]
   pub(crate) async fn spotify_sync(&self, spotify_sources: Vec<SpotifySource>) -> Result<(), SpotifySyncError> {
     for mut spotify_source in spotify_sources {
       let mut authorization = spotify_source.to_spotify_authorization();
@@ -45,6 +46,8 @@ impl DatabaseConnection<'_> {
   }
 
   fn sync_spotify_album(&self, spotify_album: &musium_spotify_sync::Album) -> Result<Album, SpotifySyncError> {
+    event!(Level::TRACE, ?spotify_album, "Synchronizing Spotify album");
+
     let spotify_album_id = &spotify_album.id;
     let select_query = {
       use schema::spotify_album::dsl::*;

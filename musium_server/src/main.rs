@@ -1,3 +1,5 @@
+#![feature(backtrace)]
+
 use std::path::PathBuf;
 
 use anyhow::{Context, Result};
@@ -7,8 +9,8 @@ use metrics_observer_yaml::{YamlBuilder, YamlObserver};
 use metrics_runtime::{Controller, Receiver};
 use structopt::StructOpt;
 use tracing::info;
-use tracing_log::LogTracer;
-use tracing_subscriber::FmtSubscriber;
+use tracing_subscriber::{EnvFilter, fmt};
+use tracing_subscriber::prelude::*;
 
 use musium_backend::database::Database;
 use musium_backend::password::PasswordHasher;
@@ -54,9 +56,6 @@ struct Opt {
   #[structopt(long, env = "MUSIUM_LOGIN_PASSWORD")]
   admin_password: String,
 
-  /// Minimum level at which tracing events will be printed to stderr
-  #[structopt(long, env = "MUSIUM_TRACING_LEVEL", default_value = "WARN")]
-  tracing_level: tracing::Level,
   /// Whether to print metrics to stderr before the program exits
   #[structopt(long, env = "MUSIUM_PRINT_METRICS")]
   print_metrics: bool,
@@ -69,15 +68,14 @@ fn main() -> Result<()> {
   // Parse command-line arguments.
   let opt: Opt = Opt::from_args();
   // Setup tracing
-  let subscriber = FmtSubscriber::builder()
+  let fmt_layer = fmt::layer()
     .with_writer(std::io::stderr)
-    .with_max_level(opt.tracing_level.clone())
-    .finish();
-  tracing::subscriber::set_global_default(subscriber)
-    .with_context(|| "Failed to initialize global tracing subscriber")?;
-  // Setup log to forward to tracing.
-  LogTracer::init()
-    .with_context(|| "Failed to initialize log to tracing forwarder")?;
+    ;
+  let filter_layer = EnvFilter::from_default_env();
+  tracing_subscriber::registry()
+    .with(filter_layer)
+    .with(fmt_layer)
+    .init();
   // Setup metrics
   let metrics_receiver: Receiver = Receiver::builder().build()
     .with_context(|| "Failed to initialize metrics receiver")?;

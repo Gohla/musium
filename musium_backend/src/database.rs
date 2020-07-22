@@ -4,6 +4,7 @@ use std::fmt::{Debug, Formatter};
 use diesel::prelude::*;
 use diesel::r2d2::{self, ConnectionManager, Pool, PooledConnection};
 use thiserror::Error;
+use tracing::{event, Level};
 
 use musium_spotify_sync::SpotifySync;
 
@@ -72,6 +73,7 @@ pub enum DatabaseConnectError {
 impl Database {
   pub fn connect(&self) -> Result<DatabaseConnection, DatabaseConnectError> {
     let connection = self.connection_pool.get()?;
+    event!(Level::TRACE, "Created database connection from connection pool");
     Ok(DatabaseConnection { database: self, connection })
   }
 }

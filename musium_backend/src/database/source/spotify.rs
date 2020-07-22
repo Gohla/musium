@@ -87,7 +87,6 @@ impl DatabaseConnection<'_> {
       expiry_date: authorization_info.expiry_date,
     };
     self.connection.transaction::<_, CreateError, _>(|| {
-      // TODO: must be done in transaction for consistency.
       event!(Level::DEBUG, ?new_spotify_source, "Inserting Spotify source");
       let insert_query = {
         use schema::spotify_source::dsl::*;

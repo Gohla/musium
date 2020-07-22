@@ -2,8 +2,7 @@ use std::backtrace::Backtrace;
 
 use diesel::prelude::*;
 use thiserror::Error;
-use tracing::{event, Level};
-use tracing::instrument;
+use tracing::{event, instrument, Level};
 
 use musium_core::model::{Album, LocalSource, NewAlbum, SpotifySource};
 use musium_core::schema;
@@ -28,12 +27,12 @@ pub enum SyncError {
   LocalSyncFail(#[from] LocalSyncError),
   #[error("One or more errors occurred during local filesystem synchronization, but the database has already received a partial update")]
   LocalSyncNonFatalFail(Vec<FilesystemSyncError>),
-  #[error(transparent)]
-  SpotifySyncFail(#[from] SpotifySyncError),
+  #[error("Spotify sync failed")]
+  SpotifySyncFail(#[from] SpotifySyncError, Backtrace),
 }
 
 impl DatabaseConnection<'_> {
-  #[instrument]
+  #[instrument(skip(self), err, level="trace")]
   /// Synchronize with all sources, adding/removing/changing tracks/albums/artists in the database. When a LocalSyncFail
   /// error is returned, the database has already received a partial update.
   pub fn sync(&self) -> Result<(), SyncError> {
@@ -49,7 +48,8 @@ impl DatabaseConnection<'_> {
     // Spotify source sync
     self.connection.transaction::<_, SyncError, _>(|| {
       let spotify_sources: Vec<SpotifySource> = time!("sync.list_spotify_sources", self.list_spotify_sources()?);
-      tokio::runtime::Runtime::new().unwrap().block_on(self.spotify_sync(spotify_sources))?;
+      let mut rt = tokio::runtime::Runtime::new().unwrap();
+      rt.block_on(self.spotify_sync(spotify_sources))?;
       Ok(())
     })?;
 

@@ -1,3 +1,6 @@
+#![feature(backtrace)]
+
+use std::backtrace::Backtrace;
 use std::collections::HashMap;
 
 use chrono::{Duration, NaiveDateTime, Utc};
@@ -96,12 +99,12 @@ impl SpotifySync {
 
 #[derive(Debug, Error)]
 pub enum ApiError {
-  #[error(transparent)]
-  UrlJoinFail(#[from] url::ParseError),
-  #[error(transparent)]
-  HttpRequestFail(#[from] reqwest::Error),
+  #[error("Failed to join URLs")]
+  UrlJoinFail(#[from] url::ParseError, Backtrace),
+  #[error("HTTP request failed")]
+  HttpRequestFail(#[from] reqwest::Error, Backtrace),
   #[error("Invalid response {0:?} from the server")]
-  InvalidResponseFail(StatusCode),
+  InvalidResponseFail(StatusCode, Backtrace),
   #[error("Request was met with a 401 Unauthorized response, but a retry with a new access token was not possible due to the request builder not being cloneable")]
   UnauthorizedAndCannotCloneRequestBuilderFail,
 }
@@ -284,11 +287,11 @@ impl SpotifySync {
         .get(url.clone())
         .query(&[("ids", album_ids_per_20.join(","))])
         ;
-      let albums: Vec<Album> = self
+      let albums: Albums = self
         .send_request_with_access_token(request, authorization).await?
         .error_for_status()?
         .json().await?;
-      all_albums.extend(albums)
+      all_albums.extend(albums.albums)
     }
     Ok(all_albums.into_iter())
   }
@@ -326,11 +329,16 @@ pub struct ArtistSimple {
 
 
 #[derive(Deserialize, Debug)]
+pub struct Albums {
+  pub albums: Vec<Album>
+}
+
+#[derive(Deserialize, Debug)]
 pub struct Album {
   pub id: String,
   pub name: String,
   pub artists: Vec<ArtistSimple>,
-  pub tracks: Vec<TrackSimple>,
+  pub tracks: Paging<TrackSimple>,
 }
 
 #[derive(Deserialize, Debug)]

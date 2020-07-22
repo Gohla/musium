@@ -4,8 +4,11 @@ use std::thread::{JoinHandle, spawn};
 
 use scopeguard::defer;
 use thiserror::Error;
+use tracing::{event, instrument, Level};
+use std::error::Error;
 
 use musium_backend::database::{Database, DatabaseConnectError, sync::SyncError as DatabaseSyncError};
+use std::backtrace::Backtrace;
 
 pub struct Sync {
   thread_handle: Mutex<Option<JoinHandle<Result<(), SyncError>>>>,
@@ -14,10 +17,10 @@ pub struct Sync {
 
 #[derive(Debug, Error)]
 pub enum SyncError {
-  #[error(transparent)]
-  DatabaseConnectFail(#[from] DatabaseConnectError),
-  #[error(transparent)]
-  SyncFail(#[from] DatabaseSyncError),
+  #[error("Database connection failure")]
+  DatabaseConnectFail(#[from] DatabaseConnectError, Backtrace),
+  #[error("Synchronization failure")]
+  SyncFail(#[from] DatabaseSyncError, Backtrace),
 }
 
 impl Sync {
@@ -30,6 +33,7 @@ impl Sync {
 }
 
 impl Sync {
+  #[instrument(skip(self, database), level = "trace")]
   pub fn sync(&self, database: Arc<Database>) -> bool {
     let is_working = self.is_working.swap(true, Ordering::Relaxed);
     if is_working {
@@ -40,7 +44,9 @@ impl Sync {
       *thread_handle_guard = Some(spawn(move || {
         // Set is_working to false when this scope ends (normally, erroneously, or when panicking)
         defer!(is_working_clone.store(false, Ordering::Relaxed));
-        database.connect()?.sync()?;
+        if let Err(e) = (|| -> Result<(), SyncError> { Ok(database.connect()?.sync()?) })() {
+          event!(Level::ERROR, "Synchronization failed: {}.\nError:\n\t{:?}\nBacktrace:\n{}", e, e, e.backtrace().unwrap());
+        }
         Ok(())
       }));
       true

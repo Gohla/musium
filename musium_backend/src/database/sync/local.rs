@@ -4,7 +4,7 @@ use std::collections::{HashMap, HashSet};
 use diesel::prelude::*;
 use itertools::{Either, Itertools};
 use thiserror::Error;
-use tracing::{event, Level};
+use tracing::{event, instrument, Level};
 
 use musium_core::model::{Album, AlbumArtist, Artist, LocalAlbum, LocalArtist, LocalSource, LocalTrack, NewAlbum, NewAlbumArtist, NewArtist, NewLocalAlbum, NewLocalArtist, NewLocalTrack, NewTrack, NewTrackArtist, Track, TrackArtist};
 use musium_core::schema;
@@ -26,6 +26,7 @@ pub enum LocalSyncError {
 }
 
 impl DatabaseConnection<'_> {
+  #[instrument(skip(self, local_sources), err, level="trace")]
   pub(crate) fn local_sync(&self, local_sources: Vec<LocalSource>) -> Result<Vec<FilesystemSyncError>, LocalSyncError> {
     let (filesystem_sync_tracks, filesystem_sync_errors) = self.get_filesystem_sync_tracks(local_sources)?;
     let mut synced_file_paths = HashMap::<i32, HashSet<String>>::new();
