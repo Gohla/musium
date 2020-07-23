@@ -17,6 +17,10 @@ macro_rules! update {
   }
 }
 
+pub trait UpdateFrom<T> {
+  fn update_from(&mut self, album: &Album, source: &T) -> bool;
+}
+
 // Local source
 
 pub trait LocalSourceEx {
@@ -58,7 +62,6 @@ impl SpotifySourceEx for SpotifySource {
 
 pub trait TrackEx {
   fn check_metadata_changed(&self, album: &Album, filesystem_sync_track: &FilesystemSyncTrack) -> bool;
-  fn update_from(&mut self, album: &Album, filesystem_sync_track: &FilesystemSyncTrack) -> bool;
 }
 
 impl TrackEx for Track {
@@ -71,15 +74,28 @@ impl TrackEx for Track {
     if self.title != filesystem_sync_track.title { return true; }
     return false;
   }
+}
 
-  fn update_from(&mut self, album: &Album, filesystem_sync_track: &FilesystemSyncTrack) -> bool {
+impl UpdateFrom<FilesystemSyncTrack> for Track {
+  fn update_from(&mut self, album: &Album, source: &FilesystemSyncTrack) -> bool {
     let mut changed = false;
     update!(self.album_id, album.id, changed);
-    update!(self.disc_number, filesystem_sync_track.disc_number, changed);
-    update!(self.disc_total, filesystem_sync_track.disc_total, changed);
-    update!(self.track_number, filesystem_sync_track.track_number, changed);
-    update!(self.track_total, filesystem_sync_track.track_total, changed);
-    update!(self.title, filesystem_sync_track.title.clone(), changed);
+    update!(self.disc_number, source.disc_number, changed);
+    update!(self.disc_total, source.disc_total, changed);
+    update!(self.track_number, source.track_number, changed);
+    update!(self.track_total, source.track_total, changed);
+    update!(self.title, source.title.clone(), changed);
+    changed
+  }
+}
+
+impl UpdateFrom<musium_spotify_sync::TrackSimple> for Track {
+  fn update_from(&mut self, album: &Album, source: &musium_spotify_sync::TrackSimple) -> bool {
+    let mut changed = false;
+    update!(self.album_id, album.id, changed);
+    update!(self.disc_number, Some(source.disc_number), changed);
+    update!(self.track_number, Some(source.track_number), changed);
+    update!(self.title, source.name.clone(), changed);
     changed
   }
 }

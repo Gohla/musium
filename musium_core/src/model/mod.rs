@@ -43,7 +43,7 @@ pub struct Track {
   pub title: String,
 }
 
-#[derive(Debug, Insertable)]
+#[derive(Default, Debug, Insertable)]
 #[table_name = "track"]
 pub struct NewTrack {
   pub album_id: i32,

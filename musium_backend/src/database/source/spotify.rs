@@ -117,7 +117,7 @@ pub enum MeInfoError {
 impl DatabaseConnection<'_> {
   pub async fn show_spotify_me(&self, user: &User) -> Result<SpotifyMeInfo, MeInfoError> {
     use MeInfoError::*;
-    let spotify_source = {
+    let spotify_source: Option<SpotifySource> = {
       use schema::spotify_source::dsl::*;
       let query = spotify_source.filter(user_id.eq(user.id));
       time!("get_spotify_me_info.select", query.first::<SpotifySource>(&self.connection).optional()?)
@@ -126,6 +126,7 @@ impl DatabaseConnection<'_> {
       let mut authorization = spotify_source.to_spotify_authorization();
       let spotify_sync_me_info = self.database.spotify_sync.me(&mut authorization).await?;
       if spotify_source.update_from_spotify_authorization(authorization) {
+        event!(Level::DEBUG, ?spotify_source, "Spotify source has changed, updating the database");
         spotify_source.save_changes::<SpotifySource>(&*self.connection)?;
       }
       Ok(SpotifyMeInfo {

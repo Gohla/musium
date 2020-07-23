@@ -186,7 +186,7 @@ impl SpotifySync {
 impl SpotifySync {
   async fn update_authorization_info(&self, authorization: &mut Authorization) -> Result<String, ApiError> {
     let refresh_info = self.refresh_access_token(authorization.refresh_token.clone()).await?;
-    event!(Level::DEBUG, ?refresh_info, "Updating Spotify authorization info with new access token");
+    event!(Level::DEBUG, ?refresh_info, "Updating Spotify authorization with new access token");
     authorization.access_token = refresh_info.access_token.clone();
     authorization.expiry_date = (Utc::now() + Duration::seconds(refresh_info.expires_in as i64)).naive_utc();
     Ok(authorization.access_token.clone())
@@ -209,7 +209,7 @@ impl SpotifySync {
       match request_builder_clone {
         Some(request_builder_clone) => {
           // When the request was unauthorized, request a new access token and retry once.
-          event!(Level::DEBUG, ?request_builder_clone, "Request was met with 401 Unauthorized response; retrying with new access token");
+          event!(Level::TRACE, ?request_builder_clone, "Request was met with 401 Unauthorized response; retrying with new access token");
           let access_token = self.update_authorization_info_if_needed(authorization).await?;
           Ok(request_builder_clone.bearer_auth(access_token).send().await?)
         }
