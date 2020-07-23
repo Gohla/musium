@@ -1,12 +1,13 @@
 #![allow(dead_code)]
 
 use std::backtrace::Backtrace;
+use std::collections::HashSet;
 
 use diesel::prelude::*;
 use thiserror::Error;
 use tracing::{event, instrument, Level};
 
-use musium_core::model::{Album, Artist, LocalSource, NewAlbum, NewArtist, NewTrack, SpotifySource, Track};
+use musium_core::model::{Album, AlbumArtist, Artist, LocalSource, NewAlbum, NewAlbumArtist, NewArtist, NewTrack, NewTrackArtist, SpotifySource, Track, TrackArtist};
 use musium_core::schema;
 use musium_filesystem_sync::FilesystemSyncError;
 
@@ -40,20 +41,28 @@ impl DatabaseConnection<'_> {
   pub fn sync(&self) -> Result<(), SyncError> {
     use SyncError::*;
 
+    event!(Level::INFO, "Starting synchronization...");
+
     // Local source sync
     let local_sync_errors = self.connection.transaction::<_, SyncError, _>(|| {
+      event!(Level::INFO, "Starting local filesystem synchronization...");
       let local_sources: Vec<LocalSource> = time!("sync.list_local_sources", self.list_local_sources()?);
       let local_sync_errors = self.local_sync(local_sources)?;
       Ok(local_sync_errors)
     })?;
+    event!(Level::INFO, "... successfully completed local filesystem synchronization");
 
     // Spotify source sync
     self.connection.transaction::<_, SyncError, _>(|| {
+      event!(Level::INFO, "Starting Spotify synchronization...");
       let spotify_sources: Vec<SpotifySource> = time!("sync.list_spotify_sources", self.list_spotify_sources()?);
       let mut rt = tokio::runtime::Runtime::new().unwrap();
       rt.block_on(self.spotify_sync(spotify_sources))?;
       Ok(())
     })?;
+    event!(Level::INFO, "... successfully completed Spotify synchronization");
+
+    event!(Level::INFO, "... successfully completed synchronization");
 
     if !local_sync_errors.is_empty() {
       return Err(LocalSyncNonFatalFail(local_sync_errors));
@@ -229,5 +238,65 @@ impl DatabaseConnection<'_> {
       // Multiple artists with the same name were found: for now, we error out.
       return Err(MultipleArtistsSameName(db_artists));
     })
+  }
+}
+
+impl DatabaseConnection<'_> {
+  fn sync_album_artists(&self, album: &Album, mut db_artists: HashSet<Artist>) -> Result<(), diesel::result::Error> {
+    let select_query = {
+      use schema::album_artist::dsl::*;
+      album_artist
+        .filter(album_id.eq(album.id))
+        .inner_join(schema::artist::table)
+    };
+    let db_album_artists: Vec<(AlbumArtist, Artist)> = time!("sync_album_artists.select_album_artists", select_query.load(&self.connection)?);
+    for (db_album_artist, db_artist) in db_album_artists {
+      if db_artists.contains(&db_artist) {
+        // TODO: update album artist columns if they are added.
+      } else {
+        event!(Level::DEBUG, ?db_album_artist, "Deleting album artist");
+        time!("sync.delete_album_artist", diesel::delete(&db_album_artist).execute(&self.connection)?);
+      }
+      db_artists.remove(&db_artist); // Remove from set, so we know what to insert afterwards.
+    }
+    for artist in db_artists {
+      let new_album_artist = NewAlbumArtist { album_id: album.id, artist_id: artist.id };
+      event!(Level::DEBUG, ?new_album_artist, "Inserting album artist");
+      let insert_query = {
+        use schema::album_artist::dsl::*;
+        diesel::insert_into(album_artist).values(new_album_artist)
+      };
+      time!("sync_album_artists.insert_album_artist", insert_query.execute(&self.connection)?);
+    }
+    Ok(())
+  }
+
+  fn sync_track_artists(&self, track: &Track, mut db_artists: HashSet<Artist>) -> Result<(), diesel::result::Error> {
+    let select_query = {
+      use schema::track_artist::dsl::*;
+      track_artist
+        .filter(track_id.eq(track.id))
+        .inner_join(schema::artist::table)
+    };
+    let db_track_artists: Vec<(TrackArtist, Artist)> = time!("sync_track_artists.select_track_artists", select_query.load(&self.connection)?);
+    for (db_track_artist, db_artist) in db_track_artists {
+      if db_artists.contains(&db_artist) {
+        // TODO: update track artist columns if they are added.
+      } else {
+        event!(Level::DEBUG, ?db_track_artist, "Deleting track artist");
+        time!("sync.delete_track_artist", diesel::delete(&db_track_artist).execute(&self.connection)?);
+      }
+      db_artists.remove(&db_artist); // Remove from set, so we know what to insert afterwards.
+    }
+    for artist in db_artists {
+      let new_track_artist = NewTrackArtist { track_id: track.id, artist_id: artist.id };
+      event!(Level::DEBUG, ?new_track_artist, "Inserting track artist");
+      let insert_query = {
+        use schema::track_artist::dsl::*;
+        diesel::insert_into(track_artist).values(new_track_artist)
+      };
+      time!("sync_track_artists.insert_track_artist", insert_query.execute(&self.connection)?);
+    }
+    Ok(())
   }
 }

@@ -1,4 +1,5 @@
 use std::backtrace::Backtrace;
+use std::collections::HashSet;
 
 use diesel::prelude::*;
 use thiserror::Error;
@@ -41,19 +42,19 @@ impl DatabaseConnection<'_> {
       let spotify_albums = self.database.spotify_sync.get_albums_of_followed_artists(&mut authorization).await?;
       for spotify_album in spotify_albums {
         let db_album = self.sync_spotify_album(&spotify_album)?;
-        let db_album_artists: Result<Vec<_>, _> = spotify_album.artists.iter()
+        let db_album_artists: Result<HashSet<_>, _> = spotify_album.artists.iter()
           .map(|spotify_artist| self.sync_spotify_artist(spotify_artist))
           .collect();
-        let _db_album_artists = db_album_artists?;
-        // TODO: sync album-artists.
+        let db_album_artists = db_album_artists?;
+        self.sync_album_artists(&db_album, db_album_artists)?;
 
         for spotify_track in &spotify_album.tracks.items {
-          let _db_track = self.sync_spotify_track(spotify_track, &db_album)?;
-          let db_track_artists: Result<Vec<_>, _> = spotify_track.artists.iter()
+          let db_track = self.sync_spotify_track(spotify_track, &db_album)?;
+          let db_track_artists: Result<HashSet<_>, _> = spotify_track.artists.iter()
             .map(|spotify_artist| self.sync_spotify_artist(spotify_artist))
             .collect();
-          let _db_track_artists = db_track_artists?;
-          // TODO: sync track-artists.
+          let db_track_artists = db_track_artists?;
+          self.sync_track_artists(&db_track, db_track_artists)?;
         }
       }
       if spotify_source.update_from_spotify_authorization(authorization) {
