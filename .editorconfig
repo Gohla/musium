@@ -17,3 +17,10 @@ ij_formatter_tags_enabled = true
 ij_rust_keep_blank_lines_in_code = 2
 ij_rust_keep_blank_lines_in_declarations = 2
 ij_rust_keep_line_breaks = true
+
+[*.ps1]
+ij_powershell_block_brace_style = end_of_line
+ij_powershell_space_before_if_parentheses = false
+ij_powershell_else_on_new_line = false
+ij_powershell_special_else_if_treatment = false
+ij_powershell_method_brace_style = end_of_line
