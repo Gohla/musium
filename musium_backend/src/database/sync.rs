@@ -1,10 +1,12 @@
+#![allow(dead_code)]
+
 use std::backtrace::Backtrace;
 
 use diesel::prelude::*;
 use thiserror::Error;
 use tracing::{event, instrument, Level};
 
-use musium_core::model::{Album, LocalSource, NewAlbum, NewTrack, SpotifySource, Track};
+use musium_core::model::{Album, Artist, LocalSource, NewAlbum, NewArtist, NewTrack, SpotifySource, Track};
 use musium_core::schema;
 use musium_filesystem_sync::FilesystemSyncError;
 
@@ -71,6 +73,25 @@ pub enum SelectOrInsertAlbumError {
 }
 
 impl DatabaseConnection<'_> {
+  pub(crate) fn select_album_by_id(&self, input_id: i32) -> Result<Album, diesel::result::Error> {
+    use schema::album::dsl::*;
+    Ok(album.find(input_id).first::<Album>(&self.connection)?)
+  }
+
+  pub(crate) fn select_album_by_name(&self, input_name: &String) -> Result<Album, diesel::result::Error> {
+    use schema::album::dsl::*;
+    Ok(album.filter(name.eq(input_name)).first::<Album>(&self.connection)?)
+  }
+
+  pub(crate) fn insert_album(&self, input_name: &String) -> Result<Album, diesel::result::Error> {
+    use schema::album::dsl::*;
+    let new_album = NewAlbum { name: input_name.clone() };
+    event!(Level::DEBUG, ?new_album, "Inserting album");
+    time!("insert_album.insert_album", diesel::insert_into(album).values(new_album).execute(&self.connection)?);
+    // NOTE: must be executed in a transaction for consistency
+    Ok(time!("insert_album.select_inserted_album", album.order(id.desc()).first::<Album>(&self.connection)?))
+  }
+
   pub(crate) fn select_or_insert_album(&self, input_name: &String) -> Result<Album, SelectOrInsertAlbumError> {
     use SelectOrInsertAlbumError::*;
     let select_query = {
@@ -79,25 +100,18 @@ impl DatabaseConnection<'_> {
     };
     let db_albums: Vec<Album> = time!("get_or_create_album.select_album", select_query.load::<Album>(&self.connection)?);
     let db_albums_len = db_albums.len();
-    if db_albums_len == 0 {
+    Ok(if db_albums_len == 0 {
       // No album with the same name was found: insert it.
-      let new_album = NewAlbum { name: input_name.clone() };
-      event!(Level::DEBUG, ?new_album, "Inserting album");
-      let insert_album_query = {
-        use schema::album::dsl::*;
-        diesel::insert_into(album).values(new_album)
-      };
-      time!("get_or_create_album.insert_album", insert_album_query.execute(&self.connection)?);
-      let album = time!("get_or_create_album.select_inserted_album", select_query.first::<Album>(&self.connection)?);
-      Ok(album)
+      self.insert_album(input_name)?
     } else if db_albums_len == 1 {
       // One album with the same name was found: return it.
-      let album = db_albums.into_iter().next().unwrap();
-      Ok(album)
+      let db_album = db_albums.into_iter().next().unwrap();
+      // TODO: update album columns when they are added.
+      db_album
     } else {
       // Multiple albums with the same name were found: for now, we error out.
-      Err(MultipleAlbumsSameName(db_albums))
-    }
+      return Err(MultipleAlbumsSameName(db_albums));
+    })
   }
 }
 
@@ -110,18 +124,22 @@ pub enum SelectOrInsertTrackError {
 }
 
 impl DatabaseConnection<'_> {
+  pub(crate) fn select_track_by_id(&self, input_id: i32) -> Result<Track, diesel::result::Error> {
+    use schema::track::dsl::*;
+    Ok(track.find(input_id).first::<Track>(&self.connection)?)
+  }
+
+  pub(crate) fn select_track_by_album_title(&self, input_album_id: i32, input_title: &String) -> Result<Track, diesel::result::Error> {
+    use schema::track::dsl::*;
+    Ok(track.filter(album_id.eq(input_album_id)).filter(title.eq(input_title)).first::<Track>(&self.connection)?)
+  }
+
   pub(crate) fn insert_track(&self, new_track: NewTrack) -> Result<Track, diesel::result::Error> {
+    use schema::track::dsl::*;
     event!(Level::DEBUG, ?new_track, "Inserting track");
-    let (select_query, insert_query) = {
-      use schema::track::dsl::*;
-      (
-        track.filter(album_id.eq(new_track.album_id)).filter(title.eq(new_track.title.clone())),
-        diesel::insert_into(track).values(new_track),
-      )
-    };
-    time!("get_or_create_track.insert_track", insert_query.execute(&self.connection)?);
-    let db_track = time!("get_or_create_track.select_inserted_track", select_query.first::<Track>(&self.connection)?);
-    Ok(db_track)
+    time!("insert_track.insert_track", diesel::insert_into(track).values(new_track).execute(&self.connection)?);
+    // NOTE: must be executed in a transaction for consistency
+    Ok(time!("insert_track.select_inserted_track", track.order(id.desc()).first::<Track>(&self.connection)?))
   }
 
   pub(crate) fn select_or_insert_track<N, U>(
@@ -143,22 +161,73 @@ impl DatabaseConnection<'_> {
     };
     let db_tracks: Vec<Track> = time!("get_or_create_track.select_track", select_query.load::<Track>(&self.connection)?);
     let db_tracks_len = db_tracks.len();
-    if db_tracks_len == 0 {
+    Ok(if db_tracks_len == 0 {
       // No track with the same name was found: insert it.
       let new_track = new_track_fn(input_album_id, input_title.clone());
-      Ok(self.insert_track(new_track)?)
+      self.insert_track(new_track)?
     } else if db_tracks_len == 1 {
       // One track with the same name was found: return it.
       let mut db_track = db_tracks.into_iter().next().unwrap();
       if update_track_fn(&mut db_track) {
         event!(Level::DEBUG, ?db_track, "Track has changed, updating the database");
-        db_track.save_changes::<Track>(&*self.connection)?;
+        db_track.save_changes::<Track>(&*self.connection)?
+      } else {
+        db_track
       }
-      Ok(db_track)
     } else {
       // Multiple tracks with the same name were found: for now, we error out.
-      Err(MultipleTracksSameName(db_tracks))
-    }
+      return Err(MultipleTracksSameName(db_tracks));
+    })
   }
 }
 
+#[derive(Debug, Error)]
+pub enum SelectOrInsertArtistError {
+  #[error("Failed to query database")]
+  DatabaseQueryFail(#[from] diesel::result::Error, Backtrace),
+  #[error("Found multiple artists with the same name, which is currently not supported: {0:#?}")]
+  MultipleArtistsSameName(Vec<Artist>),
+}
+
+impl DatabaseConnection<'_> {
+  pub(crate) fn select_artist_by_id(&self, input_id: i32) -> Result<Artist, diesel::result::Error> {
+    use schema::artist::dsl::*;
+    Ok(artist.find(input_id).first::<Artist>(&self.connection)?)
+  }
+
+  pub(crate) fn select_artist_by_name(&self, input_name: &String) -> Result<Artist, diesel::result::Error> {
+    use schema::artist::dsl::*;
+    Ok(artist.filter(name.eq(input_name)).first::<Artist>(&self.connection)?)
+  }
+
+  pub(crate) fn insert_artist(&self, input_name: &String) -> Result<Artist, diesel::result::Error> {
+    use schema::artist::dsl::*;
+    let new_artist = NewArtist { name: input_name.clone() };
+    event!(Level::DEBUG, ?new_artist, "Inserting artist");
+    time!("insert_artist.insert_artist", diesel::insert_into(artist).values(new_artist).execute(&self.connection)?);
+    // NOTE: must be executed in a transaction for consistency
+    Ok(time!("insert_artist.select_inserted_artist", artist.order(id.desc()).first::<Artist>(&self.connection)?))
+  }
+
+  pub(crate) fn select_or_insert_artist(&self, input_name: &String) -> Result<Artist, SelectOrInsertArtistError> {
+    use SelectOrInsertArtistError::*;
+    let select_query = {
+      use schema::artist::dsl::*;
+      artist.filter(name.eq(input_name))
+    };
+    let db_artists: Vec<Artist> = time!("get_or_create_artist.select_artist", select_query.load::<Artist>(&self.connection)?);
+    let db_artists_len = db_artists.len();
+    Ok(if db_artists_len == 0 {
+      // No artist with the same name was found: insert it.
+      self.insert_artist(input_name)?
+    } else if db_artists_len == 1 {
+      // One artist with the same name was found: return it.
+      let db_artist = db_artists.into_iter().next().unwrap();
+      // TODO: update artist columns when they are added.
+      db_artist
+    } else {
+      // Multiple artists with the same name were found: for now, we error out.
+      return Err(MultipleArtistsSameName(db_artists));
+    })
+  }
+}
