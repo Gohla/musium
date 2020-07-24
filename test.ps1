@@ -1,4 +1,5 @@
 param(
+  [parameter(Position=0, Mandatory=$true)][String]$Command,
   [switch]$RestartServer = $false,
   [switch]$StopServer = $false
 )
@@ -15,18 +16,26 @@ function Start-Server {
 }
 
 # Start server if it is not running, or restart it if requested
-$ServerIsRunning = (Get-Process | Where-Object { $_.Path -like $ServerExePath }).Count -gt 0
-if($ServerIsRunning -eq $true -and $RestartServer) {
-  Stop-Servers
-  Start-Server
-} elseif($ServerIsRunning -eq $false) {
-  Start-Server
+Function Test-Start {
+  $ServerIsRunning = (Get-Process | Where-Object { $_.Path -like $ServerExePath }).Count -gt 0
+  if($ServerIsRunning -eq $true -and $RestartServer) {
+    Stop-Servers
+    Start-Server
+  } elseif($ServerIsRunning -eq $false) {
+    Start-Server
+  }
 }
 
-# Run CLI
-Start-Process -FilePath $CliExePath -WorkingDirectory $PSScriptRoot -ArgumentList "sync" -NoNewWindow -Wait
+function Test-Sync {
+  Test-Start
+  Start-Process -FilePath $CliExePath -WorkingDirectory $PSScriptRoot -ArgumentList "sync" -NoNewWindow -Wait
+  if($StopServer -eq $true) {
+    Stop-Servers
+  }
+}
 
-# Stop server if requested
-if($StopServer -eq $true) {
+function Test-Stop {
   Stop-Servers
 }
+
+Invoke-Expression "Test-$Command"
