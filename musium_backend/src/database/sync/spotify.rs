@@ -9,7 +9,7 @@ use musium_core::model::{Album, Artist, NewSpotifyAlbum, NewSpotifyArtist, NewSp
 use musium_core::schema;
 
 use crate::database::{DatabaseConnection, DatabaseQueryError};
-use crate::database::sync::{SelectOrInsertAlbumError, SelectOrInsertArtistError, SelectOrInsertTrackError};
+use crate::database::sync::{SelectAlbumError, SelectArtistError, SelectTrackError};
 use crate::model::{SpotifySourceEx, UpdateFrom};
 
 #[derive(Debug, Error)]
@@ -19,11 +19,11 @@ pub enum SpotifySyncError {
   #[error("Call to Spotify API failed")]
   SpotifyApiFail(#[from] musium_spotify_sync::ApiError, Backtrace),
   #[error(transparent)]
-  GetOrCreateAlbumFail(#[from] SelectOrInsertAlbumError),
+  SelectAlbumFail(#[from] SelectAlbumError),
   #[error(transparent)]
-  GetOrCreateTrackFail(#[from] SelectOrInsertTrackError),
+  SelectTrackFail(#[from] SelectTrackError),
   #[error(transparent)]
-  GetOrCreateArtistFail(#[from] SelectOrInsertArtistError),
+  SelectArtistFail(#[from] SelectArtistError),
 }
 
 impl From<DatabaseQueryError> for SpotifySyncError {
@@ -41,7 +41,7 @@ impl DatabaseConnection<'_> {
       let mut authorization = spotify_source.to_spotify_authorization();
       let spotify_albums = self.database.spotify_sync.get_albums_of_followed_artists(&mut authorization).await?;
       for spotify_album in spotify_albums {
-        let db_album = self.sync_spotify_album(&spotify_album)?;
+        let db_album = self.sync_spotify_album(&spotify_album, spotify_source.id)?;
         let db_album_artists: Result<HashSet<_>, _> = spotify_album.artists.iter()
           .map(|spotify_artist| self.sync_spotify_artist(spotify_artist))
           .collect();
@@ -65,7 +65,7 @@ impl DatabaseConnection<'_> {
     Ok(())
   }
 
-  fn sync_spotify_album(&self, spotify_album: &musium_spotify_sync::Album) -> Result<Album, SpotifySyncError> {
+  fn sync_spotify_album(&self, spotify_album: &musium_spotify_sync::Album, _spotify_source_id: i32) -> Result<Album, SpotifySyncError> {
     event!(Level::TRACE, ?spotify_album, "Synchronizing Spotify album");
     let spotify_album_id = &spotify_album.id;
     let select_query = {
@@ -73,15 +73,23 @@ impl DatabaseConnection<'_> {
       spotify_album.filter(spotify_id.eq(spotify_album_id))
     };
     let db_spotify_album: Option<SpotifyAlbum> = time!("sync_spotify_album.select_spotify_album", select_query.first(&self.connection).optional()?);
-    Ok(if let Some(db_spotify_album) = db_spotify_album {
+    let db_album = if let Some(db_spotify_album) = db_spotify_album {
       // A Spotify album was found for the Spotify album ID: update it.
       // TODO: update Spotify album columns when they are added.
+      // TODO: Select or insert a Spotify album source.
+      // let select_query = {
+      //   use schema::spotify_album_source::dsl::*;
+      //   spotify_album_source
+      //     .filter(album_id.eq(db_spotify_album.album_id))
+      //     .filter(spotify_source_id.eq(spotify_source_id))
+      // };
+      // Select the album and return it.
+      let db_album = self.select_album_by_id(db_spotify_album.album_id)?;
       // TODO: select album with a join on the previous query?
-      let db_album = self.get_album_by_id(db_spotify_album.album_id)?.unwrap();
       // TODO: update album columns when they are added.
       db_album
     } else {
-      // No Spotify album was found for the Spotify album ID: get or create an album, then create a Spotify album.
+      // No Spotify album was found for the Spotify album ID: select or insert an album, then create a Spotify album and Spotify album source.
       let db_album = self.select_or_insert_album(&spotify_album.name)?;
       let new_spotify_album = NewSpotifyAlbum { album_id: db_album.id, spotify_id: spotify_album_id.clone() };
       event!(Level::DEBUG, ?new_spotify_album, "Inserting Spotify album");
@@ -91,7 +99,8 @@ impl DatabaseConnection<'_> {
       };
       time!("sync_spotify_album.insert_spotify_album", insert_spotify_album_query.execute(&self.connection)?);
       db_album
-    })
+    };
+    Ok(db_album)
   }
 
   fn sync_spotify_track(&self, spotify_track: &musium_spotify_sync::TrackSimple, album: &Album) -> Result<Track, SpotifySyncError> {
@@ -102,7 +111,7 @@ impl DatabaseConnection<'_> {
       spotify_track.filter(spotify_id.eq(spotify_track_id))
     };
     let db_spotify_track: Option<SpotifyTrack> = time!("sync_spotify_track.select_spotify_track", select_query.first(&self.connection).optional()?);
-    if let Some(db_spotify_track) = db_spotify_track {
+    let db_track = if let Some(db_spotify_track) = db_spotify_track {
       // A Spotify track was found for the Spotify track ID: update it.
       // TODO: update Spotify album columns when they are added.
       // TODO: select track with a join on the previous query?
@@ -110,7 +119,7 @@ impl DatabaseConnection<'_> {
       if db_track.update_from(album, spotify_track) {
         db_track.save_changes::<Track>(&*self.connection)?;
       }
-      Ok(db_track)
+      db_track
     } else {
       // No Spotify track was found for the Spotify track ID: get or create an track, then create a Spotify track.
       let db_track = self.select_or_insert_track(
@@ -135,8 +144,9 @@ impl DatabaseConnection<'_> {
         diesel::insert_into(spotify_track).values(new_spotify_track)
       };
       time!("sync_spotify_track.insert_spotify_track", insert_spotify_track_query.execute(&self.connection)?);
-      Ok(db_track)
-    }
+      db_track
+    };
+    Ok(db_track)
   }
 
   fn sync_spotify_artist(&self, spotify_artist: &musium_spotify_sync::ArtistSimple) -> Result<Artist, SpotifySyncError> {
@@ -147,7 +157,7 @@ impl DatabaseConnection<'_> {
       spotify_artist.filter(spotify_id.eq(spotify_artist_id))
     };
     let db_spotify_artist: Option<SpotifyArtist> = time!("sync_spotify_artist.select_spotify_artist", select_query.first(&self.connection).optional()?);
-    Ok(if let Some(db_spotify_artist) = db_spotify_artist {
+    let db_artist = if let Some(db_spotify_artist) = db_spotify_artist {
       // A Spotify artist was found for the Spotify artist ID: update it.
       // TODO: update Spotify artist columns when they are added.
       // TODO: select artist with a join on the previous query?
@@ -165,6 +175,7 @@ impl DatabaseConnection<'_> {
       };
       time!("sync_spotify_artist.insert_spotify_artist", insert_spotify_artist_query.execute(&self.connection)?);
       db_artist
-    })
+    };
+    Ok(db_artist)
   }
 }
