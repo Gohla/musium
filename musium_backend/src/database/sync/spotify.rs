@@ -5,7 +5,7 @@ use diesel::prelude::*;
 use thiserror::Error;
 use tracing::{event, instrument, Level};
 
-use musium_core::model::{Album, Artist, NewSpotifyAlbum, NewSpotifyArtist, NewSpotifyTrack, NewTrack, SpotifyAlbum, SpotifyArtist, SpotifySource, SpotifyTrack, Track};
+use musium_core::model::{Album, Artist, NewSpotifyAlbum, NewSpotifyAlbumSource, NewSpotifyArtist, NewSpotifyTrack, NewTrack, SpotifyAlbum, SpotifyAlbumSource, SpotifyArtist, SpotifySource, SpotifyTrack, Track};
 use musium_core::schema;
 
 use crate::database::{DatabaseConnection, DatabaseQueryError};
@@ -65,40 +65,20 @@ impl DatabaseConnection<'_> {
     Ok(())
   }
 
-  fn sync_spotify_album(&self, spotify_album: &musium_spotify_sync::Album, _spotify_source_id: i32) -> Result<Album, SpotifySyncError> {
+  fn sync_spotify_album(&self, spotify_album: &musium_spotify_sync::Album, spotify_source_id: i32) -> Result<Album, SpotifySyncError> {
     event!(Level::TRACE, ?spotify_album, "Synchronizing Spotify album");
-    let spotify_album_id = &spotify_album.id;
-    let select_query = {
-      use schema::spotify_album::dsl::*;
-      spotify_album.filter(spotify_id.eq(spotify_album_id))
-    };
-    let db_spotify_album: Option<SpotifyAlbum> = time!("sync_spotify_album.select_spotify_album", select_query.first(&self.connection).optional()?);
-    let db_album = if let Some(db_spotify_album) = db_spotify_album {
-      // A Spotify album was found for the Spotify album ID: update it.
-      // TODO: update Spotify album columns when they are added.
-      // TODO: Select or insert a Spotify album source.
-      // let select_query = {
-      //   use schema::spotify_album_source::dsl::*;
-      //   spotify_album_source
-      //     .filter(album_id.eq(db_spotify_album.album_id))
-      //     .filter(spotify_source_id.eq(spotify_source_id))
-      // };
-      // Select the album and return it.
-      let db_album = self.select_album_by_id(db_spotify_album.album_id)?;
-      // TODO: select album with a join on the previous query?
-      // TODO: update album columns when they are added.
-      db_album
-    } else {
-      // No Spotify album was found for the Spotify album ID: select or insert an album, then create a Spotify album and Spotify album source.
-      let db_album = self.select_or_insert_album(&spotify_album.name)?;
-      let new_spotify_album = NewSpotifyAlbum { album_id: db_album.id, spotify_id: spotify_album_id.clone() };
-      event!(Level::DEBUG, ?new_spotify_album, "Inserting Spotify album");
-      let insert_spotify_album_query = {
-        use schema::spotify_album::dsl::*;
-        diesel::insert_into(spotify_album).values(new_spotify_album)
-      };
-      time!("sync_spotify_album.insert_spotify_album", insert_spotify_album_query.execute(&self.connection)?);
-      db_album
+    let db_album = match self.select_spotify_album(&spotify_album.id)? {
+      Some(db_spotify_album) => {
+        self.ensure_spotify_album_source_exists(db_spotify_album.album_id, spotify_source_id)?;
+        self.select_album_by_id(db_spotify_album.album_id)?
+      }
+      None => {
+        // No Spotify album was found for the Spotify album ID: select or insert an album, then create a Spotify album and Spotify album source.
+        let db_album = self.select_or_insert_album(&spotify_album.name)?;
+        self.insert_spotify_album(db_album.id, &spotify_album.id)?;
+        self.insert_spotify_album_source(db_album.id, spotify_source_id)?;
+        db_album
+      }
     };
     Ok(db_album)
   }
@@ -177,5 +157,52 @@ impl DatabaseConnection<'_> {
       db_artist
     };
     Ok(db_artist)
+  }
+}
+
+// Helpers
+
+// Spotify Album (source)
+
+impl DatabaseConnection<'_> {
+  fn select_spotify_album(&self, input_spotify_id: &String) -> Result<Option<SpotifyAlbum>, diesel::result::Error> {
+    use schema::spotify_album::dsl::*;
+    Ok(spotify_album.filter(spotify_id.eq(input_spotify_id)).first::<SpotifyAlbum>(&self.connection).optional()?)
+  }
+
+  fn insert_spotify_album(&self, input_album_id: i32, input_spotify_id: &String) -> Result<SpotifyAlbum, diesel::result::Error> {
+    use schema::spotify_album::dsl::*;
+    let new_spotify_album = NewSpotifyAlbum { album_id: input_album_id, spotify_id: input_spotify_id.clone() };
+    event!(Level::DEBUG, ?new_spotify_album, "Inserting Spotify album");
+    time!("insert_spotify_album.insert", diesel::insert_into(spotify_album).values(new_spotify_album).execute(&self.connection)?);
+    // NOTE: must be executed in a transaction for consistency
+    Ok(time!("insert_spotify_album.select_inserted", spotify_album.filter(album_id.eq(input_album_id)).filter(spotify_id.eq(input_spotify_id)).first::<SpotifyAlbum>(&self.connection)?))
+  }
+
+
+  fn select_spotify_album_source(&self, input_album_id: i32, input_spotify_source_id: i32) -> Result<Option<SpotifyAlbumSource>, diesel::result::Error> {
+    use schema::spotify_album_source::dsl::*;
+    Ok(spotify_album_source
+      .filter(album_id.eq(input_album_id))
+      .filter(spotify_source_id.eq(input_spotify_source_id))
+      .first::<SpotifyAlbumSource>(&self.connection)
+      .optional()?)
+  }
+
+  fn insert_spotify_album_source(&self, input_album_id: i32, input_spotify_source_id: i32) -> Result<SpotifyAlbumSource, diesel::result::Error> {
+    use schema::spotify_album_source::dsl::*;
+    let new_spotify_album_source = NewSpotifyAlbumSource { album_id: input_album_id, spotify_source_id: input_spotify_source_id };
+    event!(Level::DEBUG, ?new_spotify_album_source, "Inserting Spotify album source");
+    time!("insert_spotify_album_source.insert", diesel::insert_into(spotify_album_source).values(new_spotify_album_source).execute(&self.connection)?);
+    // NOTE: must be executed in a transaction for consistency
+    Ok(time!("insert_spotify_album_source.select_inserted", spotify_album_source.filter(album_id.eq(input_album_id)).filter(spotify_source_id.eq(input_spotify_source_id)).first::<SpotifyAlbumSource>(&self.connection)?))
+  }
+
+  fn ensure_spotify_album_source_exists(&self, input_album_id: i32, input_spotify_source_id: i32) -> Result<SpotifyAlbumSource, diesel::result::Error> {
+    let db_spotify_album_source = match self.select_spotify_album_source(input_album_id, input_spotify_source_id)? {
+      Some(db_spotify_album_source) => db_spotify_album_source,
+      None => self.insert_spotify_album_source(input_album_id, input_spotify_source_id)?,
+    };
+    Ok(db_spotify_album_source)
   }
 }
