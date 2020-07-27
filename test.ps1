@@ -1,7 +1,8 @@
 param(
   [parameter(Position=0, Mandatory=$true)][String]$Command,
   [switch]$RestartServer = $false,
-  [switch]$StopServer = $false
+  [switch]$StopServer = $false,
+  [Parameter(Position=1, ValueFromRemainingArguments)][String]$RemainingArgs
 )
 
 $FastDevPath = Join-Path $PSScriptRoot "target\fastdev"
@@ -13,6 +14,9 @@ function Stop-Servers {
 }
 function Start-Server {
   Start-Process -FilePath $ServerExePath -WorkingDirectory $PSScriptRoot -NoNewWindow
+}
+function Start-Cli {
+  Start-Process -FilePath $CliExePath -WorkingDirectory $PSScriptRoot -ArgumentList $args -NoNewWindow -Wait
 }
 
 # Start server if it is not running, or restart it if requested
@@ -28,10 +32,15 @@ Function Test-Start {
 
 function Test-Sync {
   Test-Start
-  Start-Process -FilePath $CliExePath -WorkingDirectory $PSScriptRoot -ArgumentList "sync" -NoNewWindow -Wait
+  Start-Cli sync
   if($StopServer -eq $true) {
     Stop-Servers
   }
+}
+
+function Test-Play {
+  Test-Start
+  Start-Cli "play-track" $RemainingArgs
 }
 
 function Test-Stop {

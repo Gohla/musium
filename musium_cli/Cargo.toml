@@ -12,6 +12,7 @@ musium_audio = {path = "../musium_audio"}
 structopt = "0.3"
 dotenv = "0.15"
 open = "1.4"
+tokio = {version = "0.2", features = ["rt-core"], default-features = false}
 anyhow = "1"
 thiserror = "1"
 metrics-core = "0.5"

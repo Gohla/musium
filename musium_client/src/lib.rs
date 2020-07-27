@@ -1,9 +1,10 @@
-use std::io::Read;
-
-use reqwest::blocking::{Client as HttpClient, Response};
-use reqwest::header::ToStrError;
-use reqwest::redirect;
-use reqwest::StatusCode;
+use reqwest::{
+  Client as HttpClient,
+  header::ToStrError,
+  redirect,
+  Response,
+  StatusCode,
+};
 pub use reqwest::Url;
 use thiserror::Error;
 
@@ -51,12 +52,12 @@ pub enum ClientError {
 // Login
 
 impl Client {
-  pub fn login(&self, user_login: &UserLogin) -> Result<User, ClientError> {
+  pub async fn login(&self, user_login: &UserLogin) -> Result<User, ClientError> {
     let url = self.url.join("login")?;
     let user = self.client.post(url)
       .json(user_login)
-      .send()?
-      .json()?;
+      .send().await?
+      .json().await?;
     Ok(user)
   }
 }
@@ -64,35 +65,35 @@ impl Client {
 // Local source
 
 impl Client {
-  pub fn list_local_sources(&self) -> Result<Vec<LocalSource>, ClientError> {
+  pub async fn list_local_sources(&self) -> Result<Vec<LocalSource>, ClientError> {
     let local_sources = self.client.get(self.url.join("source/local")?)
-      .send()?
-      .json()?;
+      .send().await?
+      .json().await?;
     Ok(local_sources)
   }
 
-  pub fn get_local_source_by_id(&self, id: i32) -> Result<Option<LocalSource>, ClientError> {
+  pub async fn get_local_source_by_id(&self, id: i32) -> Result<Option<LocalSource>, ClientError> {
     let response = self.client.get(self.url.join(&format!("source/local/{}", id))?)
-      .send()?;
+      .send().await?;
     match response.status() {
-      StatusCode::OK => Ok(Some(response.json()?)),
+      StatusCode::OK => Ok(Some(response.json().await?)),
       _ => Ok(None)
     }
   }
 
-  pub fn create_or_enable_local_source(&self, new_local_source: &NewLocalSource) -> Result<LocalSource, ClientError> {
+  pub async fn create_or_enable_local_source(&self, new_local_source: &NewLocalSource) -> Result<LocalSource, ClientError> {
     let local_source = self.client.post(self.url.join("source/local")?)
       .json(new_local_source)
-      .send()?
-      .json()?;
+      .send().await?
+      .json().await?;
     Ok(local_source)
   }
 
-  pub fn set_local_source_enabled_by_id(&self, id: i32, enabled: bool) -> Result<Option<LocalSource>, ClientError> {
+  pub async fn set_local_source_enabled_by_id(&self, id: i32, enabled: bool) -> Result<Option<LocalSource>, ClientError> {
     let local_source = self.client.post(self.url.join(&format!("source/local/set_enabled/{}", id))?)
       .json(&enabled)
-      .send()?
-      .json()?;
+      .send().await?
+      .json().await?;
     Ok(local_source)
   }
 }
@@ -100,10 +101,10 @@ impl Client {
 // Spotify source
 
 impl Client {
-  pub fn create_spotify_source_authorization_url(&self) -> Result<String, ClientError> {
+  pub async fn create_spotify_source_authorization_url(&self) -> Result<String, ClientError> {
     use ClientError::*;
     let response = self.client.get(self.url.join("source/spotify/request_authorization")?)
-      .send()?
+      .send().await?
       .error_for_status()?;
     if let Some(url) = response.headers().get(reqwest::header::LOCATION) {
       Ok(url.to_str()?.to_owned())
@@ -112,10 +113,10 @@ impl Client {
     }
   }
 
-  pub fn show_spotify_me(&self) -> Result<SpotifyMeInfo, ClientError> {
+  pub async fn show_spotify_me(&self) -> Result<SpotifyMeInfo, ClientError> {
     let me_info: SpotifyMeInfo = self.client.get(self.url.join("source/spotify/me")?)
-      .send()?
-      .json()?;
+      .send().await?
+      .json().await?;
     Ok(me_info)
   }
 }
@@ -123,18 +124,18 @@ impl Client {
 // Album
 
 impl Client {
-  pub fn list_albums(&self) -> Result<Albums, ClientError> {
+  pub async fn list_albums(&self) -> Result<Albums, ClientError> {
     let albums_raw: AlbumsRaw = self.client.get(self.url.join("album")?)
-      .send()?
-      .json()?;
+      .send().await?
+      .json().await?;
     Ok(albums_raw.into())
   }
 
-  pub fn get_album_by_id(&self, id: i32) -> Result<Option<LocalAlbum>, ClientError> {
+  pub async fn get_album_by_id(&self, id: i32) -> Result<Option<LocalAlbum>, ClientError> {
     let response = self.client.get(self.url.join(&format!("album/{}", id))?)
-      .send()?;
+      .send().await?;
     match response.status() {
-      StatusCode::OK => Ok(Some(response.json()?)),
+      StatusCode::OK => Ok(Some(response.json().await?)),
       _ => Ok(None)
     }
   }
@@ -143,27 +144,27 @@ impl Client {
 // Track
 
 impl Client {
-  pub fn list_tracks(&self) -> Result<Tracks, ClientError> {
+  pub async fn list_tracks(&self) -> Result<Tracks, ClientError> {
     let tracks_raw: TracksRaw = self.client.get(self.url.join("track")?)
-      .send()?
-      .json()?;
+      .send().await?
+      .json().await?;
     Ok(tracks_raw.into())
   }
 
-  pub fn get_track_by_id(&self, id: i32) -> Result<Option<LocalTrack>, ClientError> {
+  pub async fn get_track_by_id(&self, id: i32) -> Result<Option<LocalTrack>, ClientError> {
     let response = self.client.get(self.url.join(&format!("track/{}", id))?)
-      .send()?;
+      .send().await?;
     match response.status() {
-      StatusCode::OK => Ok(Some(response.json()?)),
+      StatusCode::OK => Ok(Some(response.json().await?)),
       _ => Ok(None)
     }
   }
 
-  pub fn download_track_by_id(&self, id: i32) -> Result<Option<impl Read>, ClientError> {
+  pub async fn download_track_by_id(&self, id: i32) -> Result<Option<Vec<u8>>, ClientError> {
     let response = self.client.get(self.url.join(&format!("track/download/{}", id))?)
-      .send()?;
+      .send().await?;
     match response.status() {
-      StatusCode::OK => Ok(Some(response)),
+      StatusCode::OK => Ok(Some(response.bytes().await?.to_vec())),
       _ => Ok(None)
     }
   }
@@ -172,18 +173,18 @@ impl Client {
 // Artist
 
 impl Client {
-  pub fn list_artists(&self) -> Result<Vec<LocalArtist>, ClientError> {
+  pub async fn list_artists(&self) -> Result<Vec<LocalArtist>, ClientError> {
     let scan_directories = self.client.get(self.url.join("artist")?)
-      .send()?
-      .json()?;
+      .send().await?
+      .json().await?;
     Ok(scan_directories)
   }
 
-  pub fn get_artist_by_id(&self, id: i32) -> Result<Option<LocalArtist>, ClientError> {
+  pub async fn get_artist_by_id(&self, id: i32) -> Result<Option<LocalArtist>, ClientError> {
     let response = self.client.get(self.url.join(&format!("artist/{}", id))?)
-      .send()?;
+      .send().await?;
     match response.status() {
-      StatusCode::OK => Ok(Some(response.json()?)),
+      StatusCode::OK => Ok(Some(response.json().await?)),
       _ => Ok(None)
     }
   }
@@ -192,48 +193,48 @@ impl Client {
 // User
 
 impl Client {
-  pub fn list_users(&self) -> Result<Vec<User>, ClientError> {
+  pub async fn list_users(&self) -> Result<Vec<User>, ClientError> {
     let users = self.client.get(self.url.join("user")?)
-      .send()?
-      .json()?;
+      .send().await?
+      .json().await?;
     Ok(users)
   }
 
-  pub fn get_my_user(&self) -> Result<User, ClientError> {
+  pub async fn get_my_user(&self) -> Result<User, ClientError> {
     let user = self.client.get(self.url.join("user/me")?)
-      .send()?
-      .json()?;
+      .send().await?
+      .json().await?;
     Ok(user)
   }
 
-  pub fn get_user_by_id(&self, id: i32) -> Result<Option<User>, ClientError> {
+  pub async fn get_user_by_id(&self, id: i32) -> Result<Option<User>, ClientError> {
     let response = self.client.get(self.url.join(&format!("user/{}", id))?)
-      .send()?;
+      .send().await?;
     match response.status() {
-      StatusCode::OK => Ok(Some(response.json()?)),
+      StatusCode::OK => Ok(Some(response.json().await?)),
       _ => Ok(None)
     }
   }
 
-  pub fn create_user(&self, new_user: &NewUser) -> Result<User, ClientError> {
+  pub async fn create_user(&self, new_user: &NewUser) -> Result<User, ClientError> {
     let user = self.client.post(self.url.join("user")?)
       .json(new_user)
-      .send()?
-      .json()?;
+      .send().await?
+      .json().await?;
     Ok(user)
   }
 
-  pub fn delete_user_by_name(&self, name: &String) -> Result<(), ClientError> {
+  pub async fn delete_user_by_name(&self, name: &String) -> Result<(), ClientError> {
     self.client.delete(self.url.join("user")?)
       .json(name)
-      .send()?
+      .send().await?
       .error_for_status()?;
     Ok(())
   }
 
-  pub fn delete_user_by_id(&self, id: i32) -> Result<(), ClientError> {
+  pub async fn delete_user_by_id(&self, id: i32) -> Result<(), ClientError> {
     self.client.delete(self.url.join(&format!("user/{}", id))?)
-      .send()?
+      .send().await?
       .error_for_status()?;
     Ok(())
   }
@@ -242,24 +243,24 @@ impl Client {
 // User data
 
 impl Client {
-  pub fn set_user_album_rating(&self, album_id: i32, rating: i32) -> Result<UserAlbumRating, ClientError> {
+  pub async fn set_user_album_rating(&self, album_id: i32, rating: i32) -> Result<UserAlbumRating, ClientError> {
     let rating = self.client.put(self.url.join(&format!("user/data/album/{}/rating/{}", album_id, rating))?)
-      .send()?
-      .json()?;
+      .send().await?
+      .json().await?;
     Ok(rating)
   }
 
-  pub fn set_user_track_rating(&self, track_id: i32, rating: i32) -> Result<UserTrackRating, ClientError> {
+  pub async fn set_user_track_rating(&self, track_id: i32, rating: i32) -> Result<UserTrackRating, ClientError> {
     let rating = self.client.put(self.url.join(&format!("user/data/album/{}/rating/{}", track_id, rating))?)
-      .send()?
-      .json()?;
+      .send().await?
+      .json().await?;
     Ok(rating)
   }
 
-  pub fn set_user_artist_rating(&self, artist_id: i32, rating: i32) -> Result<UserArtistRating, ClientError> {
+  pub async fn set_user_artist_rating(&self, artist_id: i32, rating: i32) -> Result<UserArtistRating, ClientError> {
     let rating = self.client.put(self.url.join(&format!("user/data/album/{}/rating/{}", artist_id, rating))?)
-      .send()?
-      .json()?;
+      .send().await?
+      .json().await?;
     Ok(rating)
   }
 }
@@ -267,10 +268,10 @@ impl Client {
 // Sync
 
 impl Client {
-  pub fn sync(&self) -> Result<bool, ClientError> {
+  pub async fn sync(&self) -> Result<bool, ClientError> {
     use ClientError::*;
     let response: Response = self.client.get(self.url.join("sync")?)
-      .send()?;
+      .send().await?;
     match response.status() {
       StatusCode::ACCEPTED => Ok(true),
       StatusCode::OK => Ok(false),
