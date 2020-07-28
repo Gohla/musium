@@ -46,7 +46,7 @@ impl DatabaseConnection<'_> {
     // Local source sync
     let local_sync_errors = self.connection.transaction::<_, SyncError, _>(|| {
       event!(Level::INFO, "Starting local filesystem synchronization...");
-      let local_sources: Vec<LocalSource> = time!("sync.list_local_sources", self.list_local_sources()?);
+      let local_sources: Vec<LocalSource> = self.list_local_sources()?;
       let local_sync_errors = self.local_sync(local_sources)?;
       Ok(local_sync_errors)
     })?;
@@ -55,7 +55,7 @@ impl DatabaseConnection<'_> {
     // Spotify source sync
     self.connection.transaction::<_, SyncError, _>(|| {
       event!(Level::INFO, "Starting Spotify synchronization...");
-      let spotify_sources: Vec<SpotifySource> = time!("sync.list_spotify_sources", self.list_spotify_sources()?);
+      let spotify_sources: Vec<SpotifySource> = self.list_spotify_sources()?;
       let mut rt = tokio::runtime::Runtime::new().unwrap();
       rt.block_on(self.spotify_sync(spotify_sources))?;
       Ok(())

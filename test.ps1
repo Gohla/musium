@@ -38,6 +38,11 @@ function Test-Sync {
   }
 }
 
+function Test-CreateSpotifySource {
+  Test-Start
+  Start-Cli "create-spotify-source"
+}
+
 function Test-Play {
   Test-Start
   Start-Cli "play-track" $RemainingArgs

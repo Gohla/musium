@@ -10,7 +10,7 @@ use crate::model::LocalSourceEx;
 use super::{DatabaseConnection, DatabaseQueryError};
 
 impl DatabaseConnection<'_> {
-  pub fn get_local_track_path_by_id(&self, input_track_id: i32) -> Result<Option<PathBuf>, DatabaseQueryError> {
+  pub fn get_local_track_path_by_track_id(&self, input_track_id: i32) -> Result<Option<PathBuf>, DatabaseQueryError> {
     let data: Option<(LocalTrack, LocalSource)> = {
       use schema::local_track::dsl::*;
       local_track

@@ -1,10 +1,14 @@
+use std::path::PathBuf;
+
 use diesel::prelude::*;
+use thiserror::Error;
 
 use musium_core::model::{Album, AlbumArtist, Artist, Track, TrackArtist};
 use musium_core::model::collection::TracksRaw;
 use musium_core::schema;
 
 use super::{DatabaseConnection, DatabaseQueryError};
+use crate::database::spotify_track::SpotifyPlayError;
 
 impl DatabaseConnection<'_> {
   pub fn list_tracks(&self) -> Result<TracksRaw, DatabaseQueryError> {
@@ -19,5 +23,31 @@ impl DatabaseConnection<'_> {
   pub fn get_track_by_id(&self, input_id: i32) -> Result<Option<Track>, DatabaseQueryError> {
     use schema::track::dsl::*;
     Ok(track.find(input_id).first::<Track>(&self.connection).optional()?)
+  }
+}
+
+pub enum PlaySource {
+  AudioData(PathBuf),
+  ExternallyPlayed,
+}
+
+#[derive(Debug, Error)]
+pub enum PlayError {
+  #[error(transparent)]
+  DatabaseQueryFail(#[from] DatabaseQueryError),
+  #[error(transparent)]
+  SpotifyPlayFail(#[from] SpotifyPlayError),
+}
+
+impl DatabaseConnection<'_> {
+  pub async fn play_track(&self, input_id: i32, user_id: i32) -> Result<Option<PlaySource>, PlayError> {
+    let source = if let Some(path) = self.get_local_track_path_by_track_id(input_id)? { // TODO: fix blocking code in async
+      Some(PlaySource::AudioData(path))
+    } else if let true = self.play_spotify_track(input_id, user_id).await? {
+      Some(PlaySource::ExternallyPlayed)
+    } else {
+      None
+    };
+    Ok(source)
   }
 }

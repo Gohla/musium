@@ -46,7 +46,7 @@ pub async fn serve<A: net::ToSocketAddrs, C: Into<Vec<u8>>>(database: Database, 
       // Track
       .route("/track", web::get().to(list_tracks))
       .route("/track/{id}", web::get().to(show_track_by_id))
-      .route("/track/download/{id}", web::get().to(download_track_by_id))
+      .route("/track/play/{id}", web::get().to(play_track_by_id))
       // Artist
       .route("/artist", web::get().to(list_artists))
       .route("/artist/{id}", web::get().to(show_artist_by_id))

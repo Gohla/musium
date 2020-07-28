@@ -2,7 +2,7 @@ use std::num::ParseIntError;
 use std::str::FromStr;
 
 use actix_files::NamedFile;
-use actix_web::{http, HttpRequest, HttpResponse, ResponseError, web};
+use actix_web::{http, HttpRequest, HttpResponse, ResponseError, web, Either};
 use actix_web::error::UrlGenerationError;
 use actix_web::http::StatusCode;
 use actix_web::web::Query;
@@ -12,6 +12,7 @@ use tracing::{event, Level};
 
 use musium_backend::database::{Database, DatabaseConnectError, DatabaseQueryError, sync::SyncError, user::UserAddVerifyError};
 use musium_backend::database::source::spotify;
+use musium_backend::database::track::{PlayError, PlaySource};
 use musium_core::model::{NewLocalSource, NewUser};
 
 use crate::auth::LoggedInUser;
@@ -144,14 +145,21 @@ pub async fn show_track_by_id(
   Ok(HttpResponse::Ok().json(track))
 }
 
-pub async fn download_track_by_id(
+pub async fn play_track_by_id(
   id: web::Path<i32>,
   database: web::Data<Database>,
-  _logged_in_user: LoggedInUser,
-) -> Result<NamedFile, ApiError> {
+  logged_in_user: LoggedInUser,
+) -> Result<Either<NamedFile, HttpResponse>, ApiError> {
   use ApiError::*;
-  let path = database.connect()?.get_local_track_path_by_id(*id)?.ok_or(NotFoundFail)?;
-  Ok(NamedFile::open(path)?)
+  if let Some(play_source) = database.connect()?.play_track(*id, logged_in_user.user.id).await? {
+    let response = match play_source {
+      PlaySource::AudioData(path) => Either::A(NamedFile::open(path)?),
+      PlaySource::ExternallyPlayed => Either::B(HttpResponse::Accepted().finish()),
+    };
+    Ok(response)
+  } else {
+    Err(NotFoundFail)
+  }
 }
 
 // Artist
@@ -313,6 +321,8 @@ pub enum ApiError {
   IoFail(#[from] std::io::Error),
   #[error(transparent)]
   SyncFail(#[from] SyncError),
+  #[error(transparent)]
+  PlayFail(#[from] PlayError),
   #[error("Thread pool is gone")]
   ThreadPoolGoneFail,
 }

@@ -143,6 +143,11 @@ impl Client {
 
 // Track
 
+pub enum PlaySource {
+  AudioData(Vec<u8>),
+  ExternallyPlayed,
+}
+
 impl Client {
   pub async fn list_tracks(&self) -> Result<Tracks, ClientError> {
     let tracks_raw: TracksRaw = self.client.get(self.url.join("track")?)
@@ -160,13 +165,15 @@ impl Client {
     }
   }
 
-  pub async fn download_track_by_id(&self, id: i32) -> Result<Option<Vec<u8>>, ClientError> {
-    let response = self.client.get(self.url.join(&format!("track/download/{}", id))?)
+  pub async fn play_track_by_id(&self, id: i32) -> Result<Option<PlaySource>, ClientError> {
+    let response = self.client.get(self.url.join(&format!("track/play/{}", id))?)
       .send().await?;
-    match response.status() {
-      StatusCode::OK => Ok(Some(response.bytes().await?.to_vec())),
-      _ => Ok(None)
-    }
+    let play_source = match response.status() {
+      StatusCode::OK => Some(PlaySource::AudioData(response.bytes().await?.to_vec())),
+      StatusCode::ACCEPTED => Some(PlaySource::ExternallyPlayed),
+      _ => None
+    };
+    Ok(play_source)
   }
 }
 

@@ -8,7 +8,7 @@ use tracing::trace;
 use tracing_subscriber::{EnvFilter, fmt};
 use tracing_subscriber::prelude::*;
 
-use musium_client::{Client, Url};
+use musium_client::{Client, PlaySource, Url};
 use musium_core::model::*;
 
 #[derive(Debug, StructOpt)]
@@ -246,11 +246,18 @@ async fn run(command: Command, client: &Client) -> Result<()> {
       println!("{:?}", track);
     }
     Command::PlayTrack { id, volume } => {
-      if let Some(audio_data) = client.download_track_by_id(id).await? {
-        let player = musium_audio::Player::new()
-          .with_context(|| "Failed to create audio player")?;
-        player.play(audio_data, volume)
-          .with_context(|| "Failed to play audio track")?;
+      if let Some(play_source) = client.play_track_by_id(id).await? {
+        match play_source {
+          PlaySource::AudioData(audio_data) => {
+            let player = musium_audio::Player::new()
+              .with_context(|| "Failed to create audio player")?;
+            player.play(audio_data, volume)
+              .with_context(|| "Failed to play audio track")?;
+          }
+          PlaySource::ExternallyPlayed => {
+            println!("Track has been played externally");
+          }
+        }
       } else {
         eprintln!("Could not play track, no track with ID '{}' was found", id);
       }

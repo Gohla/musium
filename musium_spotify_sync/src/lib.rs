@@ -391,6 +391,26 @@ pub struct TrackSimple {
   pub disc_number: i32,
 }
 
+// Player
+
+impl SpotifySync {
+  #[instrument(level = "trace", skip(self, authorization), err)]
+  pub async fn play_track(&self, track_id: &String, authorization: &mut Authorization) -> Result<(), ApiError> {
+    let url = self.api_base_url.join("me/player/play")?;
+    #[derive(Serialize, Debug)]
+    struct Body {
+      uris: Vec<String>,
+    }
+    let body = Body { uris: vec![format!("spotify:track:{}", track_id)] };
+    let request = self.http_client
+      .put(url)
+      .json(&body)
+      ;
+    self.send_request_with_access_token(request, authorization).await?.error_for_status()?;
+    Ok(())
+  }
+}
+
 // Cursor-based paging
 
 #[derive(Deserialize, Debug)]
