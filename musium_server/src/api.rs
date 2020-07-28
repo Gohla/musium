@@ -150,7 +150,7 @@ pub async fn download_track_by_id(
   _logged_in_user: LoggedInUser,
 ) -> Result<NamedFile, ApiError> {
   use ApiError::*;
-  let path = database.connect()?.get_track_path_by_id(*id)?.ok_or(NotFoundFail)?;
+  let path = database.connect()?.get_local_track_path_by_id(*id)?.ok_or(NotFoundFail)?;
   Ok(NamedFile::open(path)?)
 }
 

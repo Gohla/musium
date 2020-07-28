@@ -240,23 +240,32 @@ impl SpotifySync {
   }
 }
 
-// Sync
+// Paging
+
+#[derive(Deserialize, Debug)]
+pub struct Paging<T> {
+  pub items: Vec<T>,
+  pub offset: usize,
+  pub total: usize,
+}
+
+// Artist
+
+#[derive(Deserialize, Debug)]
+pub struct Artist {
+  pub id: String,
+  pub name: String,
+}
+
+#[derive(Deserialize, Debug)]
+pub struct ArtistSimple {
+  pub id: String,
+  pub name: String,
+}
 
 impl SpotifySync {
   #[instrument(level = "trace", skip(self, authorization), err)]
-  pub async fn get_albums_of_followed_artists(&self, authorization: &mut Authorization) -> Result<impl Iterator<Item=Album>, ApiError> {
-    let mut all_albums = Vec::new();
-    let followed_artist = self.get_followed_artist(authorization).await?;
-    for artist in followed_artist {
-      let artist_albums_simple = self.get_artist_albums_simple(artist.id, authorization).await?;
-      let albums = self.get_albums(artist_albums_simple.into_iter().map(|a| a.id), authorization).await?;
-      all_albums.extend(albums)
-    }
-    Ok(all_albums.into_iter())
-  }
-
-  #[instrument(level = "trace", skip(self, authorization), err)]
-  pub async fn get_followed_artist(&self, authorization: &mut Authorization) -> Result<Vec<Artist>, ApiError> {
+  pub async fn get_followed_artists(&self, authorization: &mut Authorization) -> Result<Vec<Artist>, ApiError> {
     let mut all_artists = Vec::new();
     let mut after = None;
     loop {
@@ -288,96 +297,9 @@ impl SpotifySync {
       .json().await?;
     Ok(artists.artists)
   }
-
-  #[instrument(level = "trace", skip(self, authorization), err)]
-  pub async fn get_artist_albums_simple(&self, artist_id: String, authorization: &mut Authorization) -> Result<Vec<AlbumSimple>, ApiError> {
-    let mut all_albums = Vec::new();
-    let mut offset = 0;
-    loop {
-      let albums = self.get_artist_albums_simple_raw(&artist_id, offset, authorization).await?;
-      let len = albums.items.len();
-      all_albums.extend(albums.items);
-      offset += len;
-      if offset >= albums.total { break; }
-    }
-    Ok(all_albums)
-  }
-
-  #[instrument(level = "trace", skip(self, authorization), err)]
-  pub async fn get_artist_albums_simple_raw(&self, artist_id: &String, offset: usize, authorization: &mut Authorization) -> Result<Paging<AlbumSimple>, ApiError> {
-    let url = self.api_base_url.join(&format!("artists/{}/albums", artist_id))?;
-    let request = self.http_client
-      .get(url)
-      .query(&[("include_groups", "album,single"), ("country", "from_token"), ("limit", "50"), ("offset", &offset.to_string())])
-      ;
-    let albums: Paging<AlbumSimple> = self
-      .send_request_with_access_token(request, authorization).await?
-      .error_for_status()?
-      .json().await?;
-    Ok(albums)
-  }
-
-  #[instrument(level = "trace", skip(self, album_ids, authorization), err)]
-  pub async fn get_albums(&self, album_ids: impl IntoIterator<Item=String>, authorization: &mut Authorization) -> Result<impl Iterator<Item=Album>, ApiError> {
-    let url = self.api_base_url.join("albums")?;
-    let mut all_albums = Vec::new();
-    for mut album_ids_per_20 in &album_ids.into_iter().chunks(20) {
-      let request = self.http_client
-        .get(url.clone())
-        .query(&[("ids", album_ids_per_20.join(","))])
-        ;
-      let albums: Albums = self
-        .send_request_with_access_token(request, authorization).await?
-        .error_for_status()?
-        .json().await?;
-      all_albums.extend(albums.albums)
-    }
-    Ok(all_albums.into_iter())
-  }
 }
 
-// Paging
-
-#[derive(Deserialize, Debug)]
-pub struct Paging<T> {
-  pub items: Vec<T>,
-  pub offset: usize,
-  pub total: usize,
-}
-
-// Cursor-based paging
-
-#[derive(Deserialize, Debug)]
-pub struct Cursor {
-  pub after: Option<String>,
-}
-
-#[derive(Deserialize, Debug)]
-pub struct CursorBasedPaging<T> {
-  pub items: Vec<T>,
-  pub cursors: Cursor,
-}
-
-// Artists
-
-#[derive(Deserialize, Debug)]
-pub struct Artist {
-  pub id: String,
-  pub name: String,
-}
-
-#[derive(Deserialize, Debug)]
-pub struct ArtistSimple {
-  pub id: String,
-  pub name: String,
-}
-
-// Albums
-
-#[derive(Deserialize, Debug)]
-pub struct Albums {
-  pub albums: Vec<Album>
-}
+// Album
 
 #[derive(Deserialize, Debug)]
 pub struct Album {
@@ -394,7 +316,71 @@ pub struct AlbumSimple {
   pub artists: Vec<ArtistSimple>,
 }
 
-// Tracks
+impl SpotifySync {
+  #[instrument(level = "trace", skip(self, authorization), err)]
+  pub async fn get_albums_of_followed_artists(&self, authorization: &mut Authorization) -> Result<impl Iterator<Item=Album>, ApiError> {
+    let mut all_albums = Vec::new();
+    let followed_artist = self.get_followed_artists(authorization).await?;
+    for artist in followed_artist {
+      let artist_albums_simple = self.get_artist_albums_simple(artist.id, authorization).await?;
+      let albums = self.get_albums(artist_albums_simple.into_iter().map(|a| a.id), authorization).await?;
+      all_albums.extend(albums)
+    }
+    Ok(all_albums.into_iter())
+  }
+
+  #[instrument(level = "trace", skip(self, authorization), err)]
+  pub async fn get_artist_albums_simple(&self, artist_id: String, authorization: &mut Authorization) -> Result<Vec<AlbumSimple>, ApiError> {
+    let mut all_albums = Vec::new();
+    let mut offset = 0;
+    loop {
+      let albums = self.get_artist_albums_simple_raw(&artist_id, offset, authorization).await?;
+      let len = albums.items.len();
+      all_albums.extend(albums.items);
+      offset += len;
+      if offset >= albums.total { break; }
+    }
+    Ok(all_albums)
+  }
+
+  #[instrument(level = "trace", skip(self, authorization), err)]
+  async fn get_artist_albums_simple_raw(&self, artist_id: &String, offset: usize, authorization: &mut Authorization) -> Result<Paging<AlbumSimple>, ApiError> {
+    let url = self.api_base_url.join(&format!("artists/{}/albums", artist_id))?;
+    let request = self.http_client
+      .get(url)
+      .query(&[("include_groups", "album,single"), ("country", "from_token"), ("limit", "50"), ("offset", &offset.to_string())])
+      ;
+    let albums: Paging<AlbumSimple> = self
+      .send_request_with_access_token(request, authorization).await?
+      .error_for_status()?
+      .json().await?;
+    Ok(albums)
+  }
+
+  #[instrument(level = "trace", skip(self, album_ids, authorization), err)]
+  pub async fn get_albums(&self, album_ids: impl IntoIterator<Item=String>, authorization: &mut Authorization) -> Result<Vec<Album>, ApiError> {
+    let url = self.api_base_url.join("albums")?;
+    let mut all_albums = Vec::new();
+    for mut album_ids_per_20 in &album_ids.into_iter().chunks(20) {
+      let request = self.http_client
+        .get(url.clone())
+        .query(&[("ids", album_ids_per_20.join(","))])
+        ;
+      #[derive(Deserialize, Debug)]
+      struct Albums {
+        pub albums: Vec<Album>
+      }
+      let albums: Albums = self
+        .send_request_with_access_token(request, authorization).await?
+        .error_for_status()?
+        .json().await?;
+      all_albums.extend(albums.albums)
+    }
+    Ok(all_albums)
+  }
+}
+
+// Track
 
 #[derive(Deserialize, Debug)]
 pub struct TrackSimple {
@@ -403,4 +389,17 @@ pub struct TrackSimple {
   pub artists: Vec<ArtistSimple>,
   pub track_number: i32,
   pub disc_number: i32,
+}
+
+// Cursor-based paging
+
+#[derive(Deserialize, Debug)]
+struct Cursor {
+  pub after: Option<String>,
+}
+
+#[derive(Deserialize, Debug)]
+struct CursorBasedPaging<T> {
+  pub items: Vec<T>,
+  pub cursors: Cursor,
 }

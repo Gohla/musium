@@ -22,6 +22,7 @@ macro_rules! time {
 pub mod source;
 pub mod album;
 pub mod track;
+pub mod local_track;
 pub mod artist;
 pub mod user;
 pub mod sync;
