@@ -103,8 +103,6 @@ pub enum ApiError {
   UrlJoinFail(#[from] url::ParseError, Backtrace),
   #[error("HTTP request failed")]
   HttpRequestFail(#[from] reqwest::Error, Backtrace),
-  #[error("Invalid response {0:?} from the server")]
-  InvalidResponseFail(StatusCode, Backtrace),
   #[error("Request was met with a 401 Unauthorized response, but a retry with a new access token was not possible due to the request builder not being cloneable")]
   UnauthorizedAndCannotCloneRequestBuilderFail,
 }
@@ -165,7 +163,7 @@ pub struct RefreshInfo {
 }
 
 impl SpotifySync {
-  #[instrument(level = "trace", skip(self, refresh_token), err)]
+  #[instrument(level = "trace", skip(self, refresh_token))]
   async fn refresh_access_token(&self, refresh_token: impl Into<String>) -> Result<RefreshInfo, ApiError> {
     let url = self.accounts_api_base_url.join("api/token")?;
     let request = self.http_client
@@ -185,7 +183,7 @@ impl SpotifySync {
 // Keeping authorization info up-to-date
 
 impl SpotifySync {
-  #[instrument(level = "trace", skip(self, authorization), err)]
+  #[instrument(level = "trace", skip(self, authorization))]
   async fn update_authorization_info(&self, authorization: &mut Authorization) -> Result<String, ApiError> {
     let refresh_info = self.refresh_access_token(authorization.refresh_token.clone()).await?;
     event!(Level::DEBUG, ?refresh_info, "Updating Spotify authorization with new access token");
@@ -194,7 +192,7 @@ impl SpotifySync {
     Ok(authorization.access_token.clone())
   }
 
-  #[instrument(level = "trace", skip(self, authorization), err)]
+  #[instrument(level = "trace", skip(self, authorization))]
   async fn update_authorization_info_if_needed(&self, authorization: &mut Authorization) -> Result<String, ApiError> {
     if Utc::now().naive_utc() >= authorization.expiry_date {
       self.update_authorization_info(authorization).await
@@ -203,7 +201,7 @@ impl SpotifySync {
     }
   }
 
-  #[instrument(level = "trace", skip(self, request_builder, authorization), err)]
+  #[instrument(level = "trace", skip(self, request_builder, authorization))]
   async fn send_request_with_access_token(&self, request_builder: RequestBuilder, authorization: &mut Authorization) -> Result<Response, ApiError> {
     let access_token = self.update_authorization_info_if_needed(authorization).await?;
     let request_builder = request_builder.bearer_auth(access_token);
@@ -264,7 +262,7 @@ pub struct ArtistSimple {
 }
 
 impl SpotifySync {
-  #[instrument(level = "trace", skip(self, authorization), err)]
+  #[instrument(level = "trace", skip(self, authorization))]
   pub async fn get_followed_artists(&self, authorization: &mut Authorization) -> Result<Vec<Artist>, ApiError> {
     let mut all_artists = Vec::new();
     let mut after = None;
@@ -277,7 +275,7 @@ impl SpotifySync {
     Ok(all_artists)
   }
 
-  #[instrument(level = "trace", skip(self, authorization), err)]
+  #[instrument(level = "trace", skip(self, authorization))]
   async fn get_followed_artist_raw(&self, after: Option<String>, authorization: &mut Authorization) -> Result<CursorBasedPaging<Artist>, ApiError> {
     let url = self.api_base_url.join("me/following")?;
     let mut request = self.http_client
@@ -317,7 +315,7 @@ pub struct AlbumSimple {
 }
 
 impl SpotifySync {
-  #[instrument(level = "trace", skip(self, authorization), err)]
+  #[instrument(level = "trace", skip(self, authorization))]
   pub async fn get_albums_of_followed_artists(&self, authorization: &mut Authorization) -> Result<impl Iterator<Item=Album>, ApiError> {
     let mut all_albums = Vec::new();
     let followed_artist = self.get_followed_artists(authorization).await?;
@@ -329,7 +327,7 @@ impl SpotifySync {
     Ok(all_albums.into_iter())
   }
 
-  #[instrument(level = "trace", skip(self, authorization), err)]
+  #[instrument(level = "trace", skip(self, authorization))]
   pub async fn get_artist_albums_simple(&self, artist_id: String, authorization: &mut Authorization) -> Result<Vec<AlbumSimple>, ApiError> {
     let mut all_albums = Vec::new();
     let mut offset = 0;
@@ -343,7 +341,7 @@ impl SpotifySync {
     Ok(all_albums)
   }
 
-  #[instrument(level = "trace", skip(self, authorization), err)]
+  #[instrument(level = "trace", skip(self, authorization))]
   async fn get_artist_albums_simple_raw(&self, artist_id: &String, offset: usize, authorization: &mut Authorization) -> Result<Paging<AlbumSimple>, ApiError> {
     let url = self.api_base_url.join(&format!("artists/{}/albums", artist_id))?;
     let request = self.http_client
@@ -357,7 +355,7 @@ impl SpotifySync {
     Ok(albums)
   }
 
-  #[instrument(level = "trace", skip(self, album_ids, authorization), err)]
+  #[instrument(level = "trace", skip(self, album_ids, authorization))]
   pub async fn get_albums(&self, album_ids: impl IntoIterator<Item=String>, authorization: &mut Authorization) -> Result<Vec<Album>, ApiError> {
     let url = self.api_base_url.join("albums")?;
     let mut all_albums = Vec::new();
@@ -394,7 +392,7 @@ pub struct TrackSimple {
 // Player
 
 impl SpotifySync {
-  #[instrument(level = "trace", skip(self, authorization), err)]
+  #[instrument(level = "trace", skip(self, authorization))]
   pub async fn play_track(&self, track_id: &String, authorization: &mut Authorization) -> Result<(), ApiError> {
     let url = self.api_base_url.join("me/player/play")?;
     #[derive(Serialize, Debug)]

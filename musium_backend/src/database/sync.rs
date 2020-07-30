@@ -35,7 +35,7 @@ pub enum SyncError {
 }
 
 impl DatabaseConnection<'_> {
-  #[instrument(skip(self), err)]
+  #[instrument(skip(self))]
   /// Synchronize with all sources, adding/removing/changing tracks/albums/artists in the database. When a LocalSyncFail
   /// error is returned, the database has already received a partial update.
   pub fn sync(&self) -> Result<(), SyncError> {

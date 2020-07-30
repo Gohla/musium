@@ -1,3 +1,4 @@
+use std::backtrace::Backtrace;
 use std::sync::{Arc, Mutex};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::thread::{JoinHandle, spawn};
@@ -5,10 +6,8 @@ use std::thread::{JoinHandle, spawn};
 use scopeguard::defer;
 use thiserror::Error;
 use tracing::{event, instrument, Level};
-use std::error::Error;
 
 use musium_backend::database::{Database, DatabaseConnectError, sync::SyncError as DatabaseSyncError};
-use std::backtrace::Backtrace;
 
 pub struct Sync {
   thread_handle: Mutex<Option<JoinHandle<Result<(), SyncError>>>>,
@@ -45,7 +44,8 @@ impl Sync {
         // Set is_working to false when this scope ends (normally, erroneously, or when panicking)
         defer!(is_working_clone.store(false, Ordering::Relaxed));
         if let Err(e) = (|| -> Result<(), SyncError> { Ok(database.connect()?.sync()?) })() {
-          event!(Level::ERROR, "Synchronization failed: {}.\nError:\n\t{:?}\nBacktrace:\n{}", e, e, e.backtrace().unwrap());
+          let error_report = anyhow::Error::new(e);
+          event!(Level::ERROR, "{:?}", error_report);
         }
         Ok(())
       }));

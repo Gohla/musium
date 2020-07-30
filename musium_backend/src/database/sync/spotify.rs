@@ -35,7 +35,7 @@ impl From<DatabaseQueryError> for SpotifySyncError {
 }
 
 impl DatabaseConnection<'_> {
-  #[instrument(skip(self, spotify_sources), err)]
+  #[instrument(skip(self, spotify_sources))]
   pub(crate) async fn spotify_sync(&self, spotify_sources: Vec<SpotifySource>) -> Result<(), SpotifySyncError> {
     for mut spotify_source in spotify_sources {
       let mut authorization = spotify_source.to_spotify_authorization();

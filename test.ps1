@@ -1,13 +1,20 @@
 param(
   [parameter(Position=0, Mandatory=$true)][String]$Command,
+  [switch]$DebugExe = $false,
   [switch]$RestartServer = $false,
   [switch]$StopServer = $false,
   [Parameter(Position=1, ValueFromRemainingArguments)][String]$RemainingArgs
 )
 
 $FastDevPath = Join-Path $PSScriptRoot "target\fastdev"
-$ServerExePath = [System.IO.Path]::GetFullPath((Join-Path $FastDevPath "musium_server.exe"))
-$CliExePath = [System.IO.Path]::GetFullPath((Join-Path $FastDevPath "musium_cli.exe"))
+$DebugPath = Join-Path $PSScriptRoot "target\debug"
+if($DebugExe -eq $true) {
+  $ExeDir = $DebugPath
+} else {
+  $ExeDir = $FastDevPath
+}
+$ServerExePath = [System.IO.Path]::GetFullPath((Join-Path $ExeDir "musium_server.exe"))
+$CliExePath = [System.IO.Path]::GetFullPath((Join-Path $ExeDir "musium_cli.exe"))
 
 function Stop-Servers {
   Get-Process | Where-Object { $_.Path -like $ServerExePath } | Stop-Process
