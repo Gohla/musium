@@ -1,8 +1,9 @@
+use std::backtrace::Backtrace;
 use std::num::ParseIntError;
 use std::str::FromStr;
 
 use actix_files::NamedFile;
-use actix_web::{http, HttpRequest, HttpResponse, ResponseError, web, Either};
+use actix_web::{Either, http, HttpRequest, HttpResponse, ResponseError, web};
 use actix_web::error::UrlGenerationError;
 use actix_web::http::StatusCode;
 use actix_web::web::Query;
@@ -297,32 +298,32 @@ pub async fn sync(
 
 #[derive(Debug, Error)]
 pub enum ApiError {
-  #[error(transparent)]
-  BackendConnectFail(#[from] DatabaseConnectError),
-  #[error(transparent)]
-  DatabaseQueryFail(#[from] DatabaseQueryError),
+  #[error("Failed to connect to the database")]
+  BackendConnectFail(#[from] DatabaseConnectError, Backtrace),
+  #[error("Failed to execute a database query")]
+  DatabaseQueryFail(#[from] DatabaseQueryError, Backtrace),
   #[error("Resource was not found")]
   NotFoundFail,
   #[error("Cannot delete logged-in user")]
   CannotDeleteLoggedInUserFail,
   #[error("URL generation failed: {0:?}")]
   UrlGenerationFail(UrlGenerationError),
-  #[error(transparent)]
-  SpotifySourceCreateAuthorizationUrlFail(#[from] spotify::CreateAuthorizationUrlError),
-  #[error(transparent)]
-  SpotifySourceCreateFail(#[from] spotify::CreateError),
-  #[error(transparent)]
-  SpotifyMeInfoError(#[from] spotify::MeInfoError),
+  #[error("Failed to create a Spotify authorization URL")]
+  SpotifySourceCreateAuthorizationUrlFail(#[from] spotify::CreateAuthorizationUrlError, Backtrace),
+  #[error("Failed to create a Spotify source")]
+  SpotifySourceCreateFail(#[from] spotify::CreateError, Backtrace),
+  #[error("Failed to request Spotify user info")]
+  SpotifyMeInfoError(#[from] spotify::MeInfoError, Backtrace),
   #[error(transparent)]
   ParseUserIdFail(#[from] ParseIntError),
-  #[error(transparent)]
-  UserAddFail(#[from] UserAddVerifyError),
-  #[error(transparent)]
-  IoFail(#[from] std::io::Error),
-  #[error(transparent)]
-  SyncFail(#[from] SyncError),
-  #[error(transparent)]
-  PlayFail(#[from] PlayError),
+  #[error("Failed to add a user")]
+  UserAddFail(#[from] UserAddVerifyError, Backtrace),
+  #[error("I/O failure")]
+  IoFail(#[from] std::io::Error, Backtrace),
+  #[error("Failed to synchronize")]
+  SyncFail(#[from] SyncError, Backtrace),
+  #[error("Failed to play track")]
+  PlayFail(#[from] PlayError, Backtrace),
   #[error("Thread pool is gone")]
   ThreadPoolGoneFail,
 }

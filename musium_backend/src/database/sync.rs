@@ -26,11 +26,11 @@ pub enum SyncError {
   ListSourcesFail(#[from] DatabaseQueryError, Backtrace),
   #[error("Failed to query database")]
   DatabaseQueryFail(#[from] diesel::result::Error, Backtrace),
-  #[error(transparent)]
-  LocalSyncFail(#[from] LocalSyncError),
+  #[error("Local filesystem synchronization failed")]
+  LocalSyncFail(#[from] LocalSyncError, Backtrace),
   #[error("One or more errors occurred during local filesystem synchronization, but the database has already received a partial update")]
   LocalSyncNonFatalFail(Vec<FilesystemSyncError>),
-  #[error("Spotify sync failed")]
+  #[error("Spotify synchronization failed")]
   SpotifySyncFail(#[from] SpotifySyncError, Backtrace),
 }
 

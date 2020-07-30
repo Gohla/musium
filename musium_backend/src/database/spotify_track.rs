@@ -15,8 +15,8 @@ use super::DatabaseConnection;
 pub enum SpotifyPlayError {
   #[error("Failed to execute a database query")]
   DatabaseQueryFail(#[from] diesel::result::Error, Backtrace),
-  #[error(transparent)]
-  SpotifyApiFail(#[from] musium_spotify_sync::ApiError),
+  #[error("Failed to execute Spotify API")]
+  SpotifyApiFail(#[from] musium_spotify_sync::ApiError, Backtrace),
 }
 
 impl DatabaseConnection<'_> {

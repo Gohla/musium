@@ -63,8 +63,8 @@ impl DatabaseConnection<'_> {
 
 #[derive(Debug, Error)]
 pub enum CreateError {
-  #[error(transparent)]
-  SpotifyAuthorizationFail(#[from] musium_spotify_sync::ApiError),
+  #[error("Failed to authorize with Spotify")]
+  SpotifyAuthorizationFail(#[from] musium_spotify_sync::ApiError, Backtrace),
   #[error("Failed to execute a database query")]
   DatabaseQueryFail(#[from] diesel::result::Error, Backtrace),
 }
@@ -108,8 +108,8 @@ impl DatabaseConnection<'_> {
 pub enum MeInfoError {
   #[error("User {0:?} does not have a spotify source")]
   NoSpotifySource(User),
-  #[error(transparent)]
-  SpotifyApiFail(#[from] musium_spotify_sync::ApiError),
+  #[error("Failed to execute Spotify API")]
+  SpotifyApiFail(#[from] musium_spotify_sync::ApiError, Backtrace),
   #[error("Failed to execute a database query")]
   DatabaseQueryFail(#[from] diesel::result::Error, Backtrace),
 }

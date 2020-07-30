@@ -18,10 +18,10 @@ use crate::model::{LocalTrackEx, TrackEx, UpdateFrom};
 pub enum LocalSyncError {
   #[error("Failed to query database")]
   DatabaseQueryFail(#[from] diesel::result::Error, Backtrace),
-  #[error(transparent)]
-  SelectAlbumFail(#[from] SelectAlbumError),
-  #[error(transparent)]
-  SelectArtistFail(#[from] SelectArtistError),
+  #[error("Failed to select an album")]
+  SelectAlbumFail(#[from] SelectAlbumError, Backtrace),
+  #[error("Failed to select an artist")]
+  SelectArtistFail(#[from] SelectArtistError, Backtrace),
   #[error("Attempted to update possibly moved locally synchronized track {0:#?}, but found multiple local tracks in the database with the same source and hash: {1:#?}")]
   HashCollisionFail(FilesystemSyncTrack, Vec<LocalTrack>),
 }

@@ -1,3 +1,4 @@
+use std::backtrace::Backtrace;
 use std::path::PathBuf;
 
 use diesel::prelude::*;
@@ -7,8 +8,9 @@ use musium_core::model::{Album, AlbumArtist, Artist, Track, TrackArtist};
 use musium_core::model::collection::TracksRaw;
 use musium_core::schema;
 
-use super::{DatabaseConnection, DatabaseQueryError};
 use crate::database::spotify_track::SpotifyPlayError;
+
+use super::{DatabaseConnection, DatabaseQueryError};
 
 impl DatabaseConnection<'_> {
   pub fn list_tracks(&self) -> Result<TracksRaw, DatabaseQueryError> {
@@ -33,10 +35,10 @@ pub enum PlaySource {
 
 #[derive(Debug, Error)]
 pub enum PlayError {
-  #[error(transparent)]
-  DatabaseQueryFail(#[from] DatabaseQueryError),
-  #[error(transparent)]
-  SpotifyPlayFail(#[from] SpotifyPlayError),
+  #[error("Failed to execute a database query")]
+  DatabaseQueryFail(#[from] DatabaseQueryError, Backtrace),
+  #[error("Failed to play Spotify track")]
+  SpotifyPlayFail(#[from] SpotifyPlayError, Backtrace),
 }
 
 impl DatabaseConnection<'_> {
