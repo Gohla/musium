@@ -19,11 +19,12 @@ use musium_spotify_sync::SpotifySync;
 
 use crate::serve::serve;
 
+#[macro_use]
+pub mod util;
 pub mod serve;
 pub mod auth;
 pub mod api;
 pub mod sync;
-pub mod util;
 
 #[derive(Debug, StructOpt)]
 #[structopt(name = "server", about = "Musium server")]

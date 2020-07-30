@@ -9,4 +9,5 @@ publish = false
 musium_core = {path = "../musium_core"}
 reqwest = { version = "0.10", features = ["cookies", "json", "gzip"] }
 url = "2"
+serde = { version = "1", features = ["derive"] }
 thiserror = "1"

@@ -1365,12 +1365,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "indenter"
-version = "0.3.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e0bd112d44d9d870a6819eb505d04dd92b5e4d94bb8c304924a0872ae7016fb5"
-
-[[package]]
 name = "indexmap"
 version = "1.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1787,6 +1781,7 @@ version = "0.1.0"
 dependencies = [
  "musium_core",
  "reqwest",
+ "serde",
  "thiserror",
  "url 2.1.1",
 ]
@@ -1795,13 +1790,12 @@ dependencies = [
 name = "musium_core"
 version = "0.1.0"
 dependencies = [
- "ansi_term 0.11.0",
  "chrono",
  "diesel",
- "indenter",
  "itertools",
  "serde",
  "serde_json",
+ "thiserror",
 ]
 
 [[package]]

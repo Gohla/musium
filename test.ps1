@@ -19,6 +19,11 @@ $CliExePath = [System.IO.Path]::GetFullPath((Join-Path $ExeDir "musium_cli.exe")
 function Stop-Servers {
   Get-Process | Where-Object { $_.Path -like $ServerExePath } | Stop-Process
 }
+function Stop-Servers-If-Requested {
+  if($StopServer -eq $true) {
+    Stop-Servers
+  }
+}
 function Start-Server {
   Start-Process -FilePath $ServerExePath -WorkingDirectory $PSScriptRoot -NoNewWindow
 }
@@ -40,19 +45,24 @@ Function Test-Start {
 function Test-Sync {
   Test-Start
   Start-Cli sync
-  if($StopServer -eq $true) {
-    Stop-Servers
-  }
+}
+
+function Test-ListLocalSources {
+  Test-Start
+  Start-Cli "list-local-sources"
+  Stop-Servers-If-Requested
 }
 
 function Test-CreateSpotifySource {
   Test-Start
   Start-Cli "create-spotify-source"
+  Stop-Servers-If-Requested
 }
 
 function Test-Play {
   Test-Start
   Start-Cli "play-track" $RemainingArgs
+  Stop-Servers-If-Requested
 }
 
 function Test-Stop {

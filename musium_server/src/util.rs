@@ -1,20 +1,40 @@
-pub trait ErrorExt {
-  fn into_internal_err(self) -> actix_web::Error;
-}
-
-impl<E: std::error::Error + 'static> ErrorExt for E {
-  fn into_internal_err(self) -> actix_web::Error {
-    actix_web::error::ErrorInternalServerError(self)
-  }
-}
+// use tracing::{event, Level};
 
 
-pub trait ResultExt<T> {
-  fn map_internal_err(self) -> actix_web::Result<T>;
-}
+// pub trait ResultExt<T, E> {
+//   fn report_if_error(self) -> Result<T, E>;
+// }
+//
+// impl<T, E: std::error::Error + 'static> ResultExt<T, E> for Result<T, E> {
+//   fn report_if_error(self) -> Result<T, E> {
+//     match &self {
+//       Err(e) => {
+//         let format_error = FormatError::new(e);
+//         event!(Level::ERROR, "{:?}", format_error);
+//       }
+//       _ => {}
+//     }
+//     self
+//   }
+// }
 
-impl<T, E: std::error::Error + 'static> ResultExt<T> for Result<T, E> {
-  fn map_internal_err(self) -> actix_web::Result<T> {
-    self.map_err(|e| e.into_internal_err())
-  }
-}
+// #[inline]
+// pub fn report_if_error<T, E>(f: impl FnOnce() -> Result<T, E>) -> Result<T, E> {
+//   let result = f();
+//   if let Err(e) = &result {
+//     let format_error = musium_core::format_error::FormatError::new(e);
+//     event!(Level::ERROR, "{:?}", format_error);
+//   }
+//   result
+// }
+
+// macro_rules! report_if_error {
+//   (|| -> $t:ty $e:expr) => {{
+//     let result = (|| -> Result<_, $t> { $e })();
+//     if let Err(e) = &result {
+//       let format_error = musium_core::format_error::FormatError::new(e);
+//       event!(Level::ERROR, "{:?}", format_error);
+//     }
+//     result
+//   }}
+// }

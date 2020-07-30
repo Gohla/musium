@@ -8,9 +8,14 @@ use reqwest::{
 pub use reqwest::Url;
 use thiserror::Error;
 
-use musium_core::api::SpotifyMeInfo;
-use musium_core::model::*;
-use musium_core::model::collection::{Albums, AlbumsRaw, Tracks, TracksRaw};
+use musium_core::{
+  api::{InternalServerError, SpotifyMeInfo},
+  model::{
+    *,
+    collection::{Albums, AlbumsRaw, Tracks, TracksRaw},
+  },
+  untagged_result::UResult,
+};
 
 pub struct Client {
   client: HttpClient,
@@ -44,6 +49,8 @@ pub enum ClientError {
   #[error(transparent)]
   HttpRequestFail(#[from] reqwest::Error),
   #[error(transparent)]
+  InternalServerFail(#[from] InternalServerError),
+  #[error(transparent)]
   HeaderValueToStringFail(#[from] ToStrError),
   #[error("Invalid response {0:?} from the server")]
   InvalidResponse(StatusCode),
@@ -66,19 +73,17 @@ impl Client {
 
 impl Client {
   pub async fn list_local_sources(&self) -> Result<Vec<LocalSource>, ClientError> {
-    let local_sources = self.client.get(self.url.join("source/local")?)
+    let local_sources: UResult<_, InternalServerError> = self.client.get(self.url.join("source/local")?)
       .send().await?
       .json().await?;
-    Ok(local_sources)
+    Ok(local_sources?)
   }
 
   pub async fn get_local_source_by_id(&self, id: i32) -> Result<Option<LocalSource>, ClientError> {
-    let response = self.client.get(self.url.join(&format!("source/local/{}", id))?)
-      .send().await?;
-    match response.status() {
-      StatusCode::OK => Ok(Some(response.json().await?)),
-      _ => Ok(None)
-    }
+    let local_source = self.client.get(self.url.join(&format!("source/local/{}", id))?)
+      .send().await?
+      .json().await?;
+    Ok(local_source)
   }
 
   pub async fn create_or_enable_local_source(&self, new_local_source: &NewLocalSource) -> Result<LocalSource, ClientError> {
@@ -132,12 +137,10 @@ impl Client {
   }
 
   pub async fn get_album_by_id(&self, id: i32) -> Result<Option<LocalAlbum>, ClientError> {
-    let response = self.client.get(self.url.join(&format!("album/{}", id))?)
-      .send().await?;
-    match response.status() {
-      StatusCode::OK => Ok(Some(response.json().await?)),
-      _ => Ok(None)
-    }
+    let local_album = self.client.get(self.url.join(&format!("album/{}", id))?)
+      .send().await?
+      .json().await?;
+    Ok(local_album)
   }
 }
 
@@ -157,12 +160,10 @@ impl Client {
   }
 
   pub async fn get_track_by_id(&self, id: i32) -> Result<Option<LocalTrack>, ClientError> {
-    let response = self.client.get(self.url.join(&format!("track/{}", id))?)
-      .send().await?;
-    match response.status() {
-      StatusCode::OK => Ok(Some(response.json().await?)),
-      _ => Ok(None)
-    }
+    let track = self.client.get(self.url.join(&format!("track/{}", id))?)
+      .send().await?
+      .json().await?;
+    Ok(track)
   }
 
   pub async fn play_track_by_id(&self, id: i32) -> Result<Option<PlaySource>, ClientError> {
@@ -171,7 +172,8 @@ impl Client {
     let play_source = match response.status() {
       StatusCode::OK => Some(PlaySource::AudioData(response.bytes().await?.to_vec())),
       StatusCode::ACCEPTED => Some(PlaySource::ExternallyPlayed),
-      _ => None
+      StatusCode::NOT_FOUND => None,
+      c => return Err(ClientError::InvalidResponse(c)),
     };
     Ok(play_source)
   }
@@ -188,12 +190,10 @@ impl Client {
   }
 
   pub async fn get_artist_by_id(&self, id: i32) -> Result<Option<LocalArtist>, ClientError> {
-    let response = self.client.get(self.url.join(&format!("artist/{}", id))?)
-      .send().await?;
-    match response.status() {
-      StatusCode::OK => Ok(Some(response.json().await?)),
-      _ => Ok(None)
-    }
+    let artist = self.client.get(self.url.join(&format!("artist/{}", id))?)
+      .send().await?
+      .json().await?;
+    Ok(artist)
   }
 }
 
@@ -215,12 +215,10 @@ impl Client {
   }
 
   pub async fn get_user_by_id(&self, id: i32) -> Result<Option<User>, ClientError> {
-    let response = self.client.get(self.url.join(&format!("user/{}", id))?)
-      .send().await?;
-    match response.status() {
-      StatusCode::OK => Ok(Some(response.json().await?)),
-      _ => Ok(None)
-    }
+    let user = self.client.get(self.url.join(&format!("user/{}", id))?)
+      .send().await?
+      .json().await?;
+    Ok(user)
   }
 
   pub async fn create_user(&self, new_user: &NewUser) -> Result<User, ClientError> {
