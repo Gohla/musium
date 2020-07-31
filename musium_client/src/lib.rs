@@ -52,8 +52,8 @@ pub enum ClientError {
   InternalServerFail(#[from] InternalServerError),
   #[error(transparent)]
   HeaderValueToStringFail(#[from] ToStrError),
-  #[error("Invalid response {0:?} from the server")]
-  InvalidResponse(StatusCode),
+  #[error("Unexpected response {0:?} from the server")]
+  UnexpectedResponseFail(StatusCode),
 }
 
 // Login
@@ -114,7 +114,7 @@ impl Client {
     if let Some(url) = response.headers().get(reqwest::header::LOCATION) {
       Ok(url.to_str()?.to_owned())
     } else {
-      Err(InvalidResponse(response.status()))
+      Err(UnexpectedResponseFail(response.status()))
     }
   }
 
@@ -173,7 +173,7 @@ impl Client {
       StatusCode::OK => Some(PlaySource::AudioData(response.bytes().await?.to_vec())),
       StatusCode::ACCEPTED => Some(PlaySource::ExternallyPlayed),
       StatusCode::NOT_FOUND => None,
-      c => return Err(ClientError::InvalidResponse(c)),
+      c => return Err(ClientError::UnexpectedResponseFail(c)),
     };
     Ok(play_source)
   }
@@ -280,7 +280,7 @@ impl Client {
     match response.status() {
       StatusCode::ACCEPTED => Ok(true),
       StatusCode::OK => Ok(false),
-      c => Err(InvalidResponse(c))
+      c => Err(UnexpectedResponseFail(c))
     }
   }
 }

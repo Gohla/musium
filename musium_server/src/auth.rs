@@ -1,3 +1,4 @@
+use std::backtrace::Backtrace;
 use std::future::Future;
 use std::pin::Pin;
 
@@ -8,37 +9,53 @@ use actix_web::error::BlockingError;
 use actix_web::http::StatusCode;
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
+use tracing::{event, Level};
 
 use musium_backend::database::{Database, DatabaseConnectError, user::UserAddVerifyError};
+use musium_core::api::InternalServerError;
 use musium_core::model::{User, UserLogin};
 
-// Handlers
+// Logged-in user
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct LoggedInUser {
+  pub user: User,
+}
+
+// Login
 
 #[derive(Debug, Error)]
-pub enum LoginError {
-  #[error(transparent)]
-  BackendConnectFail(#[from] DatabaseConnectError),
-  #[error(transparent)]
-  UserVerifyFail(#[from] UserAddVerifyError),
+pub enum InternalLoginError {
+  #[error("Failed to connect to the database")]
+  BackendConnectFail(#[from] DatabaseConnectError, Backtrace),
+  #[error("Failed to verify user")]
+  UserVerifyFail(#[from] UserAddVerifyError, Backtrace),
   #[error("Thread pool is gone")]
   ThreadPoolGoneFail,
-  #[error(transparent)]
+  #[error("Failed to serialize identity")]
   SerializeIdentityFail(#[from] serde_json::Error),
 }
 
-impl ResponseError for LoginError {
+impl ResponseError for InternalLoginError {
   fn status_code(&self) -> StatusCode {
     match self {
-      LoginError::UserVerifyFail(_) => StatusCode::UNAUTHORIZED,
       _ => StatusCode::INTERNAL_SERVER_ERROR
     }
   }
+
+  fn error_response(&self) -> HttpResponse {
+    let format_error = musium_core::format_error::FormatError::new(self);
+    event!(Level::ERROR, "{:?}", format_error);
+    HttpResponse::build(self.status_code()).json(InternalServerError {
+      message: self.to_string()
+    })
+  }
 }
 
-pub async fn login(user_login: web::Json<UserLogin>, identity: Identity, database: web::Data<Database>) -> Result<HttpResponse, LoginError> {
-  use LoginError::*;
+pub async fn login(user_login: web::Json<UserLogin>, identity: Identity, database: web::Data<Database>) -> Result<HttpResponse, InternalLoginError> {
+  use InternalLoginError::*;
 
-  let user: Result<Option<User>, BlockingError<LoginError>> = web::block(move || {
+  let user: Result<Option<User>, BlockingError<InternalLoginError>> = web::block(move || {
     let backend_connected = database.connect()?;
     Ok(backend_connected.verify_user(&*user_login)?)
   }).await;
@@ -60,44 +77,54 @@ pub async fn login(user_login: web::Json<UserLogin>, identity: Identity, databas
   }
 }
 
+// Logout
+
 pub async fn logout(identity: Identity) -> HttpResponse {
   identity.forget();
   HttpResponse::Ok().finish()
 }
 
-// Logged-in user wrapper, required for FromRequest implementation.
-
-#[derive(Debug, Serialize, Deserialize)]
-pub struct LoggedInUser {
-  pub user: User,
-}
+// Logged-in user extractor
 
 #[derive(Debug, Error)]
-pub enum LoggedInUserExtractError {
-  #[error(transparent)]
-  JsonSerDeIdentityFail(#[from] serde_json::Error),
-  #[error(transparent)]
+pub enum LoggedInUserExtractInternalError {
+  #[error("Failed to extract the identity from the request")]
   IdentityExtractFail(#[from] actix_web::Error),
+  #[error("Failed to serialize the identity")]
+  DeserializeIdentityFail(#[from] serde_json::Error),
   #[error("Not logged in")]
   NotLoggedInFail,
 }
 
-impl ResponseError for LoggedInUserExtractError {
+impl ResponseError for LoggedInUserExtractInternalError {
   fn status_code(&self) -> StatusCode {
     match self {
-      LoggedInUserExtractError::NotLoggedInFail => StatusCode::UNAUTHORIZED,
+      Self::NotLoggedInFail => StatusCode::UNAUTHORIZED,
       _ => StatusCode::INTERNAL_SERVER_ERROR
+    }
+  }
+
+  fn error_response(&self) -> HttpResponse {
+    match self {
+      Self::NotLoggedInFail => HttpResponse::build(self.status_code()).finish(),
+      _ => {
+        let format_error = musium_core::format_error::FormatError::new(self);
+        event!(Level::ERROR, "{:?}", format_error);
+        HttpResponse::build(self.status_code()).json(InternalServerError {
+          message: self.to_string()
+        })
+      }
     }
   }
 }
 
 impl FromRequest for LoggedInUser {
-  type Error = LoggedInUserExtractError;
-  type Future = Pin<Box<dyn Future<Output=Result<LoggedInUser, LoggedInUserExtractError>>>>;
+  type Error = LoggedInUserExtractInternalError;
+  type Future = Pin<Box<dyn Future<Output=Result<LoggedInUser, LoggedInUserExtractInternalError>>>>;
   type Config = ();
 
   fn from_request(req: &HttpRequest, payload: &mut Payload<PayloadStream>) -> Self::Future {
-    use LoggedInUserExtractError::*;
+    use LoggedInUserExtractInternalError::*;
     let identity = Identity::from_request(req, payload);
     Box::pin(async move {
       if let Some(serialized_identity) = identity.await?.identity() {
