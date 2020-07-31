@@ -8,6 +8,7 @@ use thiserror::Error;
 use tracing::{event, instrument, Level};
 
 use musium_backend::database::{Database, DatabaseConnectError, sync::SyncError as DatabaseSyncError};
+use musium_core::format_error::FormatError;
 
 pub struct Sync {
   thread_handle: Mutex<Option<JoinHandle<Result<(), SyncError>>>>,
@@ -34,7 +35,7 @@ impl Sync {
 impl Sync {
   #[instrument(skip(self, database), level = "trace")]
   pub fn sync(&self, database: Arc<Database>) -> bool {
-    let is_working = self.is_working.swap(true, Ordering::Relaxed);
+    let is_working = self.is_working.swap(true, Ordering::SeqCst);
     if is_working {
       false
     } else {
@@ -42,10 +43,10 @@ impl Sync {
       let mut thread_handle_guard = self.thread_handle.lock().unwrap();
       *thread_handle_guard = Some(spawn(move || {
         // Set is_working to false when this scope ends (normally, erroneously, or when panicking)
-        defer!(is_working_clone.store(false, Ordering::Relaxed));
+        defer!(is_working_clone.store(false, Ordering::SeqCst));
         if let Err(e) = (|| -> Result<(), SyncError> { Ok(database.connect()?.sync()?) })() {
-          let error_report = anyhow::Error::new(e);
-          event!(Level::ERROR, "{:?}", error_report);
+          let format_error = FormatError::new(&e);
+          event!(Level::ERROR, "{:?}", format_error);
         }
         Ok(())
       }));

@@ -13,6 +13,7 @@ use tracing::{event, Level};
 
 use musium_backend::database::{Database, DatabaseConnectError, user::UserAddVerifyError};
 use musium_core::api::InternalServerError;
+use musium_core::format_error::FormatError;
 use musium_core::model::{User, UserLogin};
 
 // Logged-in user
@@ -44,7 +45,7 @@ impl ResponseError for InternalLoginError {
   }
 
   fn error_response(&self) -> HttpResponse {
-    let format_error = musium_core::format_error::FormatError::new(self);
+    let format_error = FormatError::new(self);
     event!(Level::ERROR, "{:?}", format_error);
     HttpResponse::build(self.status_code()).json(InternalServerError {
       message: self.to_string()
@@ -108,7 +109,7 @@ impl ResponseError for LoggedInUserExtractInternalError {
     match self {
       Self::NotLoggedInFail => HttpResponse::build(self.status_code()).finish(),
       _ => {
-        let format_error = musium_core::format_error::FormatError::new(self);
+        let format_error = FormatError::new(self);
         event!(Level::ERROR, "{:?}", format_error);
         HttpResponse::build(self.status_code()).json(InternalServerError {
           message: self.to_string()
