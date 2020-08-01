@@ -1780,7 +1780,6 @@ name = "musium_client"
 version = "0.1.0"
 dependencies = [
  "musium_core",
- "musium_reqwest_util",
  "reqwest",
  "serde",
  "thiserror",
@@ -1808,17 +1807,6 @@ dependencies = [
  "thiserror",
  "tracing",
  "walkdir",
-]
-
-[[package]]
-name = "musium_reqwest_util"
-version = "0.1.0"
-dependencies = [
- "musium_core",
- "reqwest",
- "serde",
- "thiserror",
- "url 2.1.1",
 ]
 
 [[package]]
