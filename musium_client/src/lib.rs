@@ -48,7 +48,7 @@ pub enum HttpRequestError {
   RequestFail(#[from] reqwest::Error),
   #[error("Server responded with an internal error")]
   InternalServerFail(#[from] InternalServerError, Backtrace),
-  #[error("Server responded with unexpected status code {0}")]
+  #[error("Server responded with unexpected status code: {0}")]
   UnexpectedStatusCode(StatusCode, Backtrace),
 }
 
@@ -65,7 +65,7 @@ impl Client {
 
 impl Client {
   pub async fn list_local_sources(&self) -> Result<Vec<LocalSource>, HttpRequestError> {
-    let response = self.get_simple("source/localz").await?;
+    let response = self.get_simple("source/local").await?;
     Ok(response.json().await?)
   }
 
