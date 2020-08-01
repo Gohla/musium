@@ -3,6 +3,7 @@ cargo-features = ["named-profiles", "profile-overrides"]
 [workspace]
 members = [
   "musium_core",
+  "musium_reqwest_util",
   "musium_spotify_sync",
   "musium_filesystem_sync",
   "musium_backend",
@@ -25,7 +26,7 @@ incremental = true
 [profile.dev.package.backtrace] # Fully optimize backtrace crate to speed up backtrace collection
 opt-level = 3
 
-# Fast development profile: no debug information, more optimisations.
+# Fast development profile: more optimisations.
 [profile.fastdev]
 inherits = 'dev'
 opt-level = 2
@@ -34,6 +35,8 @@ debug = true
 [profile.fastdev.package."*"]
 opt-level = 3
 [profile.fastdev.package."musium_core"]
+opt-level = 2
+[profile.fastdev.package."musium_reqwest_util"]
 opt-level = 2
 [profile.fastdev.package."musium_spotify_sync"]
 opt-level = 2

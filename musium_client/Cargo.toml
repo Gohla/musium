@@ -7,6 +7,7 @@ publish = false
 
 [dependencies]
 musium_core = {path = "../musium_core"}
+musium_reqwest_util = {path = "../musium_reqwest_util"}
 reqwest = { version = "0.10", features = ["cookies", "json", "gzip"] }
 url = "2"
 serde = { version = "1", features = ["derive"] }
