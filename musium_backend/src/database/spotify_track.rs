@@ -16,7 +16,7 @@ pub enum SpotifyPlayError {
   #[error("Failed to execute a database query")]
   DatabaseQueryFail(#[from] diesel::result::Error, Backtrace),
   #[error("Failed to execute Spotify API")]
-  SpotifyApiFail(#[from] musium_spotify_sync::ApiError, Backtrace),
+  SpotifyApiFail(#[from] musium_spotify_sync::HttpRequestError, Backtrace),
 }
 
 impl DatabaseConnection<'_> {

@@ -6,7 +6,7 @@ use diesel::r2d2::{self, ConnectionManager, Pool, PooledConnection};
 use thiserror::Error;
 use tracing::{event, Level};
 
-use musium_spotify_sync::SpotifySync;
+use musium_spotify_sync::SpotifyClient;
 
 use crate::password::PasswordHasher;
 
@@ -32,7 +32,7 @@ pub mod sync;
 #[derive(Clone)]
 pub struct Database {
   connection_pool: Pool<ConnectionManager<SqliteConnection>>,
-  spotify_sync: SpotifySync,
+  spotify_sync: SpotifyClient,
   password_hasher: PasswordHasher,
 }
 
@@ -48,7 +48,7 @@ pub enum DatabaseCreateError {
 impl Database {
   pub fn new<D: AsRef<str>>(
     database_url: D,
-    spotify_sync: SpotifySync,
+    spotify_sync: SpotifyClient,
     password_hasher: PasswordHasher,
   ) -> Result<Database, DatabaseCreateError> {
     let connection_pool = Pool::builder()

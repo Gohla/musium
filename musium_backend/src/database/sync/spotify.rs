@@ -17,7 +17,7 @@ pub enum SpotifySyncError {
   #[error("Failed to query database")]
   DatabaseQueryFail(#[from] diesel::result::Error, Backtrace),
   #[error("Call to Spotify API failed")]
-  SpotifyApiFail(#[from] musium_spotify_sync::ApiError, Backtrace),
+  SpotifyApiFail(#[from] musium_spotify_sync::HttpRequestError, Backtrace),
   #[error(transparent)]
   SelectAlbumFail(#[from] SelectAlbumError),
   #[error(transparent)]
@@ -87,7 +87,7 @@ impl DatabaseConnection<'_> {
       None => {
         let db_album = self.select_or_insert_album(&spotify_album.name)?;
         self.insert_spotify_album(db_album.id, &spotify_album.id)?;
-        self.insert_spotify_album_source(db_album.id, spotify_source_id)?;
+        self.ensure_spotify_album_source_exists(db_album.id, spotify_source_id)?;
         db_album
       }
     };
@@ -123,7 +123,7 @@ impl DatabaseConnection<'_> {
           |track| track.update_from(album, spotify_track),
         )?;
         self.insert_spotify_track(db_track.id, &spotify_track.id)?;
-        self.insert_spotify_track_source(db_track.id, spotify_source_id)?;
+        self.ensure_spotify_track_source_exists(db_track.id, spotify_source_id)?;
         db_track
       }
     };
@@ -140,7 +140,7 @@ impl DatabaseConnection<'_> {
       None => {
         let db_artist = self.select_or_insert_artist(&spotify_artist.name)?;
         self.insert_spotify_artist(db_artist.id, &spotify_artist.id)?;
-        self.insert_spotify_artist_source(db_artist.id, spotify_source_id)?;
+        self.ensure_spotify_artist_source_exists(db_artist.id, spotify_source_id)?;
         db_artist
       }
     };

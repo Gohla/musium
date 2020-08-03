@@ -2,21 +2,24 @@
 
 use std::backtrace::Backtrace;
 use std::collections::HashMap;
+use std::future::Future;
+use std::pin::Pin;
 
 use chrono::{Duration, NaiveDateTime, Utc};
 use itertools::Itertools;
-use reqwest::{Client, IntoUrl, RequestBuilder, Response, StatusCode, Url};
+use reqwest::{Client, header, IntoUrl, RequestBuilder, Response, StatusCode, Url};
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 use tracing::{event, instrument, Level};
 
 #[derive(Clone)]
-pub struct SpotifySync {
+pub struct SpotifyClient {
   http_client: Client,
   accounts_api_base_url: Url,
   api_base_url: Url,
   client_id: String,
   client_secret: String,
+  max_retries: u8,
 }
 
 // Creation
@@ -29,13 +32,14 @@ pub enum CreateError {
   HttpClientCreateFail(#[from] reqwest::Error),
 }
 
-impl SpotifySync {
+impl SpotifyClient {
   pub fn new<U1: IntoUrl, U2: IntoUrl>(
     http_client: Client,
     accounts_api_base_url: U1,
     api_base_url: U2,
     client_id: String,
     client_secret: String,
+    max_retries: u8,
   ) -> Result<Self, CreateError> {
     let accounts_api_base_url = accounts_api_base_url.into_url()?;
     let api_base_url = api_base_url.into_url()?;
@@ -45,6 +49,7 @@ impl SpotifySync {
       api_base_url,
       client_id,
       client_secret,
+      max_retries,
     })
   }
 
@@ -55,7 +60,8 @@ impl SpotifySync {
     let http_client = Client::builder().build()?;
     let accounts_api_base_url = "https://accounts.spotify.com/";
     let api_base_url = "https://api.spotify.com/v1/";
-    Self::new(http_client, accounts_api_base_url, api_base_url, client_id, client_secret)
+    let max_retries = 2;
+    Self::new(http_client, accounts_api_base_url, api_base_url, client_id, client_secret, max_retries)
   }
 }
 
@@ -69,7 +75,7 @@ pub enum CreateAuthorizationUrlError {
   HttpRequestBuildFail(#[from] reqwest::Error),
 }
 
-impl SpotifySync {
+impl SpotifyClient {
   pub fn create_authorization_url(
     &self,
     redirect_uri: impl Into<String>,
@@ -95,18 +101,6 @@ impl SpotifySync {
   }
 }
 
-// API errors
-
-#[derive(Debug, Error)]
-pub enum ApiError {
-  #[error("Failed to join URLs")]
-  UrlJoinFail(#[from] url::ParseError, Backtrace),
-  #[error("HTTP request failed")]
-  HttpRequestFail(#[from] reqwest::Error, Backtrace),
-  #[error("Request was met with a 401 Unauthorized response, but a retry with a new access token was not possible due to the request builder not being cloneable")]
-  UnauthorizedAndCannotCloneRequestBuilderFail,
-}
-
 // Authorization callback
 
 #[derive(Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord, Clone, Debug)]
@@ -116,13 +110,13 @@ pub struct Authorization {
   pub refresh_token: String,
 }
 
-impl SpotifySync {
+impl SpotifyClient {
   pub async fn authorization_callback(
     &self,
     code: impl Into<String>,
     redirect_uri: impl Into<String>,
     _state: Option<impl Into<String>>, // TODO: verify
-  ) -> Result<Authorization, ApiError> {
+  ) -> Result<Authorization, HttpRequestError> {
     let url = self.accounts_api_base_url.join("api/token")?;
     let request = self.http_client
       .post(url)
@@ -162,9 +156,9 @@ pub struct RefreshInfo {
   pub expires_in: i32,
 }
 
-impl SpotifySync {
+impl SpotifyClient {
   #[instrument(level = "trace", skip(self, refresh_token))]
-  async fn refresh_access_token(&self, refresh_token: impl Into<String>) -> Result<RefreshInfo, ApiError> {
+  async fn refresh_access_token(&self, refresh_token: impl Into<String>) -> Result<RefreshInfo, HttpRequestError> {
     let url = self.accounts_api_base_url.join("api/token")?;
     let request = self.http_client
       .post(url)
@@ -182,9 +176,9 @@ impl SpotifySync {
 
 // Keeping authorization info up-to-date
 
-impl SpotifySync {
+impl SpotifyClient {
   #[instrument(level = "trace", skip(self, authorization))]
-  async fn update_authorization_info(&self, authorization: &mut Authorization) -> Result<String, ApiError> {
+  async fn update_authorization_info(&self, authorization: &mut Authorization) -> Result<String, HttpRequestError> {
     let refresh_info = self.refresh_access_token(authorization.refresh_token.clone()).await?;
     event!(Level::DEBUG, ?refresh_info, "Updating Spotify authorization with new access token");
     authorization.access_token = refresh_info.access_token.clone();
@@ -193,32 +187,121 @@ impl SpotifySync {
   }
 
   #[instrument(level = "trace", skip(self, authorization))]
-  async fn update_authorization_info_if_needed(&self, authorization: &mut Authorization) -> Result<String, ApiError> {
+  async fn update_authorization_info_if_needed(&self, authorization: &mut Authorization) -> Result<String, HttpRequestError> {
     if Utc::now().naive_utc() >= authorization.expiry_date {
       self.update_authorization_info(authorization).await
     } else {
       Ok(authorization.access_token.clone())
     }
   }
+}
+
+// Sending a request, taking care of authorization, 401 Unauthorized errors, 429 Too Many Requests errors, and retries.
+
+#[derive(Debug, Error)]
+pub enum SpotifyError {
+  #[error("status code '{0}' and error message '{1}'")]
+  Error(StatusCode, String),
+  #[error("status code '{0}'")]
+  ErrorWithoutMessage(StatusCode),
+}
+
+#[derive(Debug, Error)]
+pub enum HttpRequestError {
+  #[error("Failed to join URLs")]
+  UrlJoinFail(#[from] url::ParseError, Backtrace),
+  #[error("HTTP request failed")]
+  HttpRequestFail(#[from] reqwest::Error, Backtrace),
+  #[error("Server responded with {0}")]
+  UnexpectedStatusCodeFail(SpotifyError),
+  #[error("Server responded with {0}, even after {1} retries")]
+  RetryFail(SpotifyError, u8),
+  #[error("Server responded with {0}, but a retry was not possible due to the request builder not being cloneable")]
+  CannotRetryFail(SpotifyError),
+}
+
+impl SpotifyClient {
+  async fn send_request(&self, request_builder: RequestBuilder, authorization: &mut Authorization) -> Result<Response, HttpRequestError> {
+    self.send_request_with_retry(request_builder, authorization, 0).await
+  }
 
   #[instrument(level = "trace", skip(self, request_builder, authorization))]
-  async fn send_request_with_access_token(&self, request_builder: RequestBuilder, authorization: &mut Authorization) -> Result<Response, ApiError> {
-    let access_token = self.update_authorization_info_if_needed(authorization).await?;
-    let request_builder = request_builder.bearer_auth(access_token);
-    let request_builder_clone = request_builder.try_clone();
-    let response = request_builder.send().await?;
-    if response.status() == StatusCode::UNAUTHORIZED {
-      match request_builder_clone {
-        Some(request_builder_clone) => {
-          // When the request was unauthorized, request a new access token and retry once.
-          event!(Level::TRACE, ?request_builder_clone, "Request was met with 401 Unauthorized response; retrying with new access token");
+  fn send_request_with_retry<'a>(&'a self, request_builder: RequestBuilder, authorization: &'a mut Authorization, retry: u8) -> Pin<Box<dyn 'a + Future<Output=Result<Response, HttpRequestError>>>> {
+    use HttpRequestError::*;
+    Box::pin(async move { // Pin box future because this is a recursive async method.
+      let access_token = self.update_authorization_info_if_needed(authorization).await?;
+      let request_builder = request_builder.bearer_auth(access_token);
+      let request_builder_clone = request_builder.try_clone();
+      let response = request_builder.send().await?;
+      match response.status() {
+        StatusCode::UNAUTHORIZED => {
+          let error = Self::response_to_error(response).await;
+          if retry >= self.max_retries {
+            return Err(RetryFail(error, retry));
+          }
+
+          // When the request was unauthorized, request a new access token and then retry.
+          event!(Level::TRACE, ?request_builder_clone, "Server responded with {}; retrying with new access token", error);
           let access_token = self.update_authorization_info_if_needed(authorization).await?;
-          Ok(request_builder_clone.bearer_auth(access_token).send().await?)
+          let request_builder = request_builder_clone.ok_or(CannotRetryFail(error))?.bearer_auth(access_token);
+          Ok(self.send_request_with_retry(request_builder, authorization, retry + 1).await?)
         }
-        None => Err(ApiError::UnauthorizedAndCannotCloneRequestBuilderFail) // If request cannot be cloned, we cannot retry when unauthorized.
+        StatusCode::TOO_MANY_REQUESTS => {
+          let default_duration = tokio::time::Duration::from_secs(5);
+          let retry_after = if let Some(retry_after) = response.headers().get(header::RETRY_AFTER) {
+            if let Ok(retry_after) = retry_after.to_str() {
+              if let Ok(retry_after_seconds) = retry_after.parse::<u32>() {
+                tokio::time::Duration::from_secs((retry_after_seconds + 1 + retry as u32) as u64)
+              } else {
+                default_duration
+              }
+            } else {
+              default_duration
+            }
+          } else {
+            default_duration
+          };
+
+          let error = Self::response_to_error(response).await;
+          if retry >= self.max_retries {
+            return Err(RetryFail(error, retry));
+          }
+
+          // When the request was rate limited, delay for some time and then retry.
+          event!(Level::TRACE, ?request_builder_clone, "Server responded with {}; retrying after {:?}", error, retry_after);
+          tokio::time::delay_for(retry_after).await;
+          let request_builder = request_builder_clone.ok_or(CannotRetryFail(error))?;
+          Ok(self.send_request_with_retry(request_builder, authorization, retry + 1).await?)
+        }
+        StatusCode::BAD_REQUEST |
+        StatusCode::FORBIDDEN |
+        StatusCode::NOT_FOUND |
+        StatusCode::INTERNAL_SERVER_ERROR |
+        StatusCode::BAD_GATEWAY |
+        StatusCode::SERVICE_UNAVAILABLE => {
+          let error = Self::response_to_error(response).await;
+          Err(UnexpectedStatusCodeFail(error))
+        }
+        _ => Ok(response)
       }
+    })
+  }
+
+  async fn response_to_error(response: Response) -> SpotifyError {
+    #[derive(Deserialize)]
+    struct RegularError {
+      error: Error
+    }
+    #[derive(Deserialize)]
+    struct Error {
+      message: String
+    }
+    let status_code = response.status();
+    let regular_error: Option<RegularError> = response.json().await.ok();
+    if let Some(regular_error) = regular_error {
+      SpotifyError::Error(status_code, regular_error.error.message)
     } else {
-      Ok(response)
+      SpotifyError::ErrorWithoutMessage(status_code)
     }
   }
 }
@@ -230,11 +313,11 @@ pub struct MeInfo {
   pub display_name: String,
 }
 
-impl SpotifySync {
-  pub async fn me(&self, authorization: &mut Authorization) -> Result<MeInfo, ApiError> {
+impl SpotifyClient {
+  pub async fn me(&self, authorization: &mut Authorization) -> Result<MeInfo, HttpRequestError> {
     let url = self.api_base_url.join("me")?;
     let request = self.http_client.get(url);
-    Ok(self.send_request_with_access_token(request, authorization).await?.error_for_status()?.json().await?)
+    Ok(self.send_request(request, authorization).await?.error_for_status()?.json().await?)
   }
 }
 
@@ -261,9 +344,9 @@ pub struct ArtistSimple {
   pub name: String,
 }
 
-impl SpotifySync {
+impl SpotifyClient {
   #[instrument(level = "trace", skip(self, authorization))]
-  pub async fn get_followed_artists(&self, authorization: &mut Authorization) -> Result<Vec<Artist>, ApiError> {
+  pub async fn get_followed_artists(&self, authorization: &mut Authorization) -> Result<Vec<Artist>, HttpRequestError> {
     let mut all_artists = Vec::new();
     let mut after = None;
     loop {
@@ -276,7 +359,7 @@ impl SpotifySync {
   }
 
   #[instrument(level = "trace", skip(self, authorization))]
-  async fn get_followed_artist_raw(&self, after: Option<String>, authorization: &mut Authorization) -> Result<CursorBasedPaging<Artist>, ApiError> {
+  async fn get_followed_artist_raw(&self, after: Option<String>, authorization: &mut Authorization) -> Result<CursorBasedPaging<Artist>, HttpRequestError> {
     let url = self.api_base_url.join("me/following")?;
     let mut request = self.http_client
       .get(url)
@@ -290,7 +373,7 @@ impl SpotifySync {
       pub artists: CursorBasedPaging<Artist>,
     }
     let artists: CursorBasedPagingArtists = self
-      .send_request_with_access_token(request, authorization).await?
+      .send_request(request, authorization).await?
       .error_for_status()?
       .json().await?;
     Ok(artists.artists)
@@ -314,9 +397,9 @@ pub struct AlbumSimple {
   pub artists: Vec<ArtistSimple>,
 }
 
-impl SpotifySync {
+impl SpotifyClient {
   #[instrument(level = "trace", skip(self, authorization))]
-  pub async fn get_albums_of_followed_artists(&self, authorization: &mut Authorization) -> Result<impl Iterator<Item=Album>, ApiError> {
+  pub async fn get_albums_of_followed_artists(&self, authorization: &mut Authorization) -> Result<impl Iterator<Item=Album>, HttpRequestError> {
     let mut all_albums = Vec::new();
     let followed_artist = self.get_followed_artists(authorization).await?;
     for artist in followed_artist {
@@ -328,7 +411,7 @@ impl SpotifySync {
   }
 
   #[instrument(level = "trace", skip(self, authorization))]
-  pub async fn get_artist_albums_simple(&self, artist_id: String, authorization: &mut Authorization) -> Result<Vec<AlbumSimple>, ApiError> {
+  pub async fn get_artist_albums_simple(&self, artist_id: String, authorization: &mut Authorization) -> Result<Vec<AlbumSimple>, HttpRequestError> {
     let mut all_albums = Vec::new();
     let mut offset = 0;
     loop {
@@ -342,21 +425,21 @@ impl SpotifySync {
   }
 
   #[instrument(level = "trace", skip(self, authorization))]
-  async fn get_artist_albums_simple_raw(&self, artist_id: &String, offset: usize, authorization: &mut Authorization) -> Result<Paging<AlbumSimple>, ApiError> {
+  async fn get_artist_albums_simple_raw(&self, artist_id: &String, offset: usize, authorization: &mut Authorization) -> Result<Paging<AlbumSimple>, HttpRequestError> {
     let url = self.api_base_url.join(&format!("artists/{}/albums", artist_id))?;
     let request = self.http_client
       .get(url)
       .query(&[("include_groups", "album,single"), ("country", "from_token"), ("limit", "50"), ("offset", &offset.to_string())])
       ;
     let albums: Paging<AlbumSimple> = self
-      .send_request_with_access_token(request, authorization).await?
+      .send_request(request, authorization).await?
       .error_for_status()?
       .json().await?;
     Ok(albums)
   }
 
   #[instrument(level = "trace", skip(self, album_ids, authorization))]
-  pub async fn get_albums(&self, album_ids: impl IntoIterator<Item=String>, authorization: &mut Authorization) -> Result<Vec<Album>, ApiError> {
+  pub async fn get_albums(&self, album_ids: impl IntoIterator<Item=String>, authorization: &mut Authorization) -> Result<Vec<Album>, HttpRequestError> {
     let url = self.api_base_url.join("albums")?;
     let mut all_albums = Vec::new();
     for mut album_ids_per_20 in &album_ids.into_iter().chunks(20) {
@@ -369,7 +452,7 @@ impl SpotifySync {
         pub albums: Vec<Album>
       }
       let albums: Albums = self
-        .send_request_with_access_token(request, authorization).await?
+        .send_request(request, authorization).await?
         .error_for_status()?
         .json().await?;
       all_albums.extend(albums.albums)
@@ -391,9 +474,9 @@ pub struct TrackSimple {
 
 // Player
 
-impl SpotifySync {
+impl SpotifyClient {
   #[instrument(level = "trace", skip(self, authorization))]
-  pub async fn play_track(&self, track_id: &String, authorization: &mut Authorization) -> Result<(), ApiError> {
+  pub async fn play_track(&self, track_id: &String, authorization: &mut Authorization) -> Result<(), HttpRequestError> {
     let url = self.api_base_url.join("me/player/play")?;
     #[derive(Serialize, Debug)]
     struct Body {
@@ -404,7 +487,7 @@ impl SpotifySync {
       .put(url)
       .json(&body)
       ;
-    self.send_request_with_access_token(request, authorization).await?.error_for_status()?;
+    self.send_request(request, authorization).await?.error_for_status()?;
     Ok(())
   }
 }
