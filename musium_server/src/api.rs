@@ -354,5 +354,13 @@ impl ResponseError for ApiError {
       _ => StatusCode::INTERNAL_SERVER_ERROR,
     }
   }
+
+  fn error_response(&self) -> HttpResponse {
+    let format_error = musium_core::format_error::FormatError::new(self);
+    event!(Level::ERROR, "{:?}", format_error);
+    HttpResponse::build(self.status_code()).json(InternalServerError {
+      message: self.to_string()
+    })
+  }
 }
 

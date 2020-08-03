@@ -64,7 +64,7 @@ impl DatabaseConnection<'_> {
 #[derive(Debug, Error)]
 pub enum CreateError {
   #[error("Failed to authorize with Spotify")]
-  SpotifyAuthorizationFail(#[from] musium_spotify_sync::HttpRequestError, Backtrace),
+  SpotifyAuthorizationFail(#[from] musium_spotify_sync::AuthorizationHttpRequestError, Backtrace),
   #[error("Failed to execute a database query")]
   DatabaseQueryFail(#[from] diesel::result::Error, Backtrace),
 }
