@@ -39,18 +39,18 @@ impl DatabaseConnection<'_> {
         .insert(local_sync_track.file_path.clone());
 
       let album = self.sync_local_album(local_source_id, &local_sync_track)?;
-      let db_album_artists: Result<HashSet<_>, _> = local_sync_track.album_artists.iter()
-        .map(|album_artist_name| self.sync_local_artist(local_source_id, album_artist_name.clone()))
+      let artist_ids: Result<HashSet<_>, _> = local_sync_track.album_artists.iter()
+        .map(|album_artist_name| self.sync_local_artist(local_source_id, album_artist_name.clone()).map(|artist| artist.id))
         .collect();
-      let db_album_artists = db_album_artists?;
-      self.sync_album_artists(&album, db_album_artists)?;
+      let artist_ids = artist_ids?;
+      self.sync_album_artists(&album, artist_ids)?;
 
       let track = self.sync_local_track(local_source_id, &album, &local_sync_track)?;
-      let db_track_artists: Result<HashSet<_>, _> = local_sync_track.track_artists.iter()
-        .map(|track_artist_name| self.sync_local_artist(local_source_id, track_artist_name.clone()))
+      let artist_ids: Result<HashSet<_>, _> = local_sync_track.track_artists.iter()
+        .map(|track_artist_name| self.sync_local_artist(local_source_id, track_artist_name.clone()).map(|artist| artist.id))
         .collect();
-      let db_track_artists = db_track_artists?;
-      self.sync_track_artists(&track, db_track_artists)?;
+      let artist_ids = artist_ids?;
+      self.sync_track_artists(&track, artist_ids)?;
     }
     self.sync_local_removed_tracks(synced_file_paths)?;
     Ok(filesystem_sync_errors)

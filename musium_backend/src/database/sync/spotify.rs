@@ -47,22 +47,22 @@ impl DatabaseConnection<'_> {
       for spotify_album in spotify_albums {
         let db_album = self.sync_spotify_album(&spotify_album, spotify_source.id)?;
         synced_album_ids.insert(db_album.id);
-        let db_album_artists: Result<HashSet<_>, _> = spotify_album.artists.iter()
-          .map(|spotify_artist| self.sync_spotify_artist(spotify_artist, spotify_source.id))
+        let artist_ids: Result<HashSet<_>, _> = spotify_album.artists.iter()
+          .map(|spotify_artist| self.sync_spotify_artist(spotify_artist, spotify_source.id).map(|artist| artist.id))
           .collect();
-        let db_album_artists = db_album_artists?;
-        synced_artist_ids.extend(db_album_artists.iter().map(|a| a.id));
-        self.sync_album_artists(&db_album, db_album_artists)?;
+        let artist_ids = artist_ids?;
+        synced_artist_ids.extend(artist_ids.iter());
+        self.sync_album_artists(&db_album, artist_ids)?;
 
         for spotify_track in &spotify_album.tracks.items {
           let db_track = self.sync_spotify_track(spotify_track, &db_album, spotify_source.id)?;
           synced_track_ids.insert(db_track.id);
-          let db_track_artists: Result<HashSet<_>, _> = spotify_track.artists.iter()
-            .map(|spotify_artist| self.sync_spotify_artist(spotify_artist, spotify_source.id))
+          let artist_ids: Result<HashSet<_>, _> = spotify_track.artists.iter()
+            .map(|spotify_artist| self.sync_spotify_artist(spotify_artist, spotify_source.id).map(|artist| artist.id))
             .collect();
-          let db_track_artists = db_track_artists?;
-          synced_artist_ids.extend(db_track_artists.iter().map(|a| a.id));
-          self.sync_track_artists(&db_track, db_track_artists)?;
+          let artist_ids = artist_ids?;
+          synced_artist_ids.extend(artist_ids.iter());
+          self.sync_track_artists(&db_track, artist_ids)?;
         }
       }
       self.cleanup_spotify_album_sources(synced_album_ids, spotify_source.id)?;

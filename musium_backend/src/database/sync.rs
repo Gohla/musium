@@ -223,7 +223,7 @@ impl DatabaseConnection<'_> {
 // Album and track artist associations.
 
 impl DatabaseConnection<'_> {
-  fn sync_album_artists(&self, album: &Album, mut db_artists: HashSet<Artist>) -> Result<(), diesel::result::Error> {
+  fn sync_album_artists(&self, album: &Album, mut artist_ids: HashSet<i32>) -> Result<(), diesel::result::Error> {
     let select_query = {
       use schema::album_artist::dsl::*;
       album_artist
@@ -232,16 +232,20 @@ impl DatabaseConnection<'_> {
     };
     let db_album_artists: Vec<(AlbumArtist, Artist)> = time!("sync_album_artists.select", select_query.load(&self.connection)?);
     for (db_album_artist, db_artist) in db_album_artists {
-      if db_artists.contains(&db_artist) {
+      // Album-artist already database.
+      if artist_ids.contains(&db_artist.id) {
+        // Album-artist was found in the set of artists to set as album-artists (artist_ids): keep it by doing nothing.
         // TODO: update album artist columns if they are added.
       } else {
+        // Album-artist was not found in the set of artists to set as album-artists (artist_ids): delete it.
         event!(Level::DEBUG, ?db_album_artist, "Deleting album artist");
         time!("sync_album_artists.delete", diesel::delete(&db_album_artist).execute(&self.connection)?);
+        // Remove from artist_ids set, so db_artists contains exactly what we want to insert after this loop.
+        artist_ids.remove(&db_artist.id);
       }
-      db_artists.remove(&db_artist); // Remove from set, so we know what to insert afterwards.
     }
-    for artist in db_artists {
-      let new_album_artist = NewAlbumArtist { album_id: album.id, artist_id: artist.id };
+    for artist_id in artist_ids {
+      let new_album_artist = NewAlbumArtist { album_id: album.id, artist_id };
       event!(Level::DEBUG, ?new_album_artist, "Inserting album artist");
       let insert_query = {
         use schema::album_artist::dsl::*;
@@ -252,7 +256,7 @@ impl DatabaseConnection<'_> {
     Ok(())
   }
 
-  fn sync_track_artists(&self, track: &Track, mut db_artists: HashSet<Artist>) -> Result<(), diesel::result::Error> {
+  fn sync_track_artists(&self, track: &Track, mut artist_ids: HashSet<i32>) -> Result<(), diesel::result::Error> {
     let select_query = {
       use schema::track_artist::dsl::*;
       track_artist
@@ -261,16 +265,20 @@ impl DatabaseConnection<'_> {
     };
     let db_track_artists: Vec<(TrackArtist, Artist)> = time!("sync_track_artists.select", select_query.load(&self.connection)?);
     for (db_track_artist, db_artist) in db_track_artists {
-      if db_artists.contains(&db_artist) {
+      // Track-artist already database.
+      if artist_ids.contains(&db_artist.id) {
+        // Track-artist was found in the set of artists to set as track-artists (artist_ids): keep it by doing nothing.
         // TODO: update track artist columns if they are added.
       } else {
+        // Track-artist was not found in the set of artists to set as track-artists (artist_ids): delete it.
         event!(Level::DEBUG, ?db_track_artist, "Deleting track artist");
         time!("sync_track_artists.delete", diesel::delete(&db_track_artist).execute(&self.connection)?);
+        // Remove from artist_ids set, so db_artists contains exactly what we want to insert after this loop.
+        artist_ids.remove(&db_artist.id);
       }
-      db_artists.remove(&db_artist); // Remove from set, so we know what to insert afterwards.
     }
-    for artist in db_artists {
-      let new_track_artist = NewTrackArtist { track_id: track.id, artist_id: artist.id };
+    for artist_id in artist_ids {
+      let new_track_artist = NewTrackArtist { track_id: track.id, artist_id };
       event!(Level::DEBUG, ?new_track_artist, "Inserting track artist");
       let insert_query = {
         use schema::track_artist::dsl::*;

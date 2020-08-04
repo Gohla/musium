@@ -106,12 +106,13 @@ impl ResponseError for LoggedInUserExtractInternalError {
   }
 
   fn error_response(&self) -> HttpResponse {
+    let status_code = self.status_code();
     match self {
-      Self::NotLoggedInFail => HttpResponse::build(self.status_code()).finish(),
+      Self::NotLoggedInFail => HttpResponse::build(status_code).finish(),
       _ => {
         let format_error = FormatError::new(self);
         event!(Level::ERROR, "{:?}", format_error);
-        HttpResponse::build(self.status_code()).json(InternalServerError {
+        HttpResponse::build(status_code).json(InternalServerError {
           message: self.to_string()
         })
       }

@@ -19,8 +19,6 @@ use musium_spotify_sync::SpotifyClient;
 
 use crate::serve::serve;
 
-#[macro_use]
-pub mod util;
 pub mod serve;
 pub mod auth;
 pub mod api;

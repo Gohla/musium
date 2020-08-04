@@ -540,7 +540,6 @@ pub enum PlayError {
   PlayFail(String, StatusCode, String, String),
 }
 
-
 impl SpotifyClient {
   #[instrument(level = "trace", skip(self, authorization))]
   pub async fn play_track(&self, track_id: &String, authorization: &mut Authorization) -> Result<(), PlayError> {
