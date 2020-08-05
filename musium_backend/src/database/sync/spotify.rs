@@ -18,12 +18,12 @@ pub enum SpotifySyncError {
   DatabaseQueryFail(#[from] diesel::result::Error, Backtrace),
   #[error("Call to Spotify API failed")]
   SpotifyApiFail(#[from] musium_spotify_sync::HttpRequestError, Backtrace),
-  #[error(transparent)]
-  SelectAlbumFail(#[from] SelectAlbumError),
-  #[error(transparent)]
-  SelectTrackFail(#[from] SelectTrackError),
-  #[error(transparent)]
-  SelectArtistFail(#[from] SelectArtistError),
+  #[error("Selecting an album failed")]
+  SelectAlbumFail(#[from] SelectAlbumError, Backtrace),
+  #[error("Selecting a track failed")]
+  SelectTrackFail(#[from] SelectTrackError, Backtrace),
+  #[error("Selecting an artist failed")]
+  SelectArtistFail(#[from] SelectArtistError, Backtrace),
 }
 
 impl From<DatabaseQueryError> for SpotifySyncError {
@@ -79,16 +79,35 @@ impl DatabaseConnection<'_> {
 
   fn sync_spotify_album(&self, spotify_album: &musium_spotify_sync::Album, spotify_source_id: i32) -> Result<Album, SpotifySyncError> {
     event!(Level::TRACE, ?spotify_album, "Synchronizing Spotify album");
-    let db_album = match self.select_spotify_album(&spotify_album.id)? {
+    let db_album = match self.select_spotify_album_by_spotify_id(&spotify_album.id)? {
       Some(db_spotify_album) => {
         self.ensure_spotify_album_source_exists(db_spotify_album.album_id, spotify_source_id)?;
         self.select_album_by_id(db_spotify_album.album_id)?
       }
       None => {
-        let db_album = self.select_or_insert_album(&spotify_album.name)?;
-        self.insert_spotify_album(db_album.id, &spotify_album.id)?;
-        self.ensure_spotify_album_source_exists(db_album.id, spotify_source_id)?;
-        db_album
+        // Spotify album with given Spotify album ID does not exist.
+        let (db_album, db_album_inserted) = self.select_or_insert_album(&spotify_album.name)?;
+        if db_album_inserted {
+          // New album was inserted -> a Spotify album and its source cannot exist yet; just insert them.
+          self.insert_spotify_album(db_album.id, &spotify_album.id)?;
+          self.insert_spotify_album_source(db_album.id, spotify_source_id)?;
+          db_album
+        } else {
+          // Album with same name already exists.
+          if let Some(_) = self.select_spotify_album_by_album_id(db_album.id)? {
+            // Spotify album (with a different Spotify album ID) already exists for the album: insert a new album,
+            // along with a new Spotify album and source.
+            let db_album = self.insert_album(&spotify_album.name)?;
+            self.insert_spotify_album(db_album.id, &spotify_album.id)?;
+            self.insert_spotify_album_source(db_album.id, spotify_source_id)?;
+            db_album
+          } else {
+            // Spotify album does not exist for the album: insert Spotify album, and ensure a source for it.
+            self.insert_spotify_album(db_album.id, &spotify_album.id)?;
+            self.ensure_spotify_album_source_exists(db_album.id, spotify_source_id)?;
+            db_album
+          }
+        }
       }
     };
     Ok(db_album)
@@ -107,7 +126,7 @@ impl DatabaseConnection<'_> {
         }
       }
       None => {
-        let db_track = self.select_or_insert_track(
+        let (db_track, _db_track_inserted) = self.select_or_insert_track(
           album.id,
           &spotify_track.name,
           |album_id, title| {
@@ -122,6 +141,7 @@ impl DatabaseConnection<'_> {
           },
           |track| track.update_from(album, spotify_track),
         )?;
+        // TODO: use _db_track_inserted
         self.insert_spotify_track(db_track.id, &spotify_track.id)?;
         self.ensure_spotify_track_source_exists(db_track.id, spotify_source_id)?;
         db_track
@@ -132,20 +152,56 @@ impl DatabaseConnection<'_> {
 
   fn sync_spotify_artist(&self, spotify_artist: &musium_spotify_sync::ArtistSimple, spotify_source_id: i32) -> Result<Artist, SpotifySyncError> {
     event!(Level::TRACE, ?spotify_artist, "Synchronizing Spotify artist");
-    let db_artist = match self.select_spotify_artist(&spotify_artist.id)? {
+    let db_artist = match self.select_spotify_artist_by_spotify_id(&spotify_artist.id)? {
       Some(db_spotify_artist) => {
         self.ensure_spotify_artist_source_exists(db_spotify_artist.artist_id, spotify_source_id)?;
         self.select_artist_by_id(db_spotify_artist.artist_id)?
       }
       None => {
-        let db_artist = self.select_or_insert_artist(&spotify_artist.name)?;
-        self.insert_spotify_artist(db_artist.id, &spotify_artist.id)?;
-        self.ensure_spotify_artist_source_exists(db_artist.id, spotify_source_id)?;
-        db_artist
+        // Spotify artist with given Spotify artist ID does not exist.
+        let (db_artist, db_artist_inserted) = self.select_or_insert_artist(&spotify_artist.name)?;
+        if db_artist_inserted {
+          // New artist was inserted -> a Spotify artist and its source cannot exist yet; just insert them.
+          self.insert_spotify_artist(db_artist.id, &spotify_artist.id)?;
+          self.insert_spotify_artist_source(db_artist.id, spotify_source_id)?;
+          db_artist
+        } else {
+          // Artist with same name already exists.
+          if let Some(_) = self.select_spotify_artist_by_artist_id(db_artist.id)? {
+            // Spotify artist (with a different Spotify artist ID) already exists for the artist: insert a new artist,
+            // along with a new Spotify artist and source.
+            let db_artist = self.insert_artist(&spotify_artist.name)?;
+            self.insert_spotify_artist(db_artist.id, &spotify_artist.id)?;
+            self.insert_spotify_artist_source(db_artist.id, spotify_source_id)?;
+            db_artist
+          } else {
+            // Spotify artist does not exist for the artist: insert Spotify artist, and ensure a source for it.
+            self.insert_spotify_artist(db_artist.id, &spotify_artist.id)?;
+            self.ensure_spotify_artist_source_exists(db_artist.id, spotify_source_id)?;
+            db_artist
+          }
+        }
       }
     };
     Ok(db_artist)
   }
+
+  // fn sync_spotify_artist(&self, spotify_artist: &musium_spotify_sync::ArtistSimple, spotify_source_id: i32) -> Result<Artist, SpotifySyncError> {
+  //   event!(Level::TRACE, ?spotify_artist, "Synchronizing Spotify artist");
+  //   let db_artist = match self.select_spotify_artist(&spotify_artist.id)? {
+  //     Some(db_spotify_artist) => {
+  //       self.ensure_spotify_artist_source_exists(db_spotify_artist.artist_id, spotify_source_id)?;
+  //       self.select_artist_by_id(db_spotify_artist.artist_id)?
+  //     }
+  //     None => {
+  //       let db_artist = self.select_or_insert_artist(&spotify_artist.name)?;
+  //       self.insert_spotify_artist(db_artist.id, &spotify_artist.id)?;
+  //       self.ensure_spotify_artist_source_exists(db_artist.id, spotify_source_id)?;
+  //       db_artist
+  //     }
+  //   };
+  //   Ok(db_artist)
+  // }
 
   fn cleanup_spotify_album_sources(&self, synced_album_ids: HashSet::<i32>, input_spotify_source_id: i32) -> Result<(), SpotifySyncError> {
     let db_spotify_album_data: Vec<i32> = {
@@ -222,7 +278,12 @@ impl DatabaseConnection<'_> {
 // Spotify Album (source)
 
 impl DatabaseConnection<'_> {
-  fn select_spotify_album(&self, input_spotify_id: &String) -> Result<Option<SpotifyAlbum>, diesel::result::Error> {
+  fn select_spotify_album_by_album_id(&self, input_album_id: i32) -> Result<Option<SpotifyAlbum>, diesel::result::Error> {
+    use schema::spotify_album::dsl::*;
+    Ok(spotify_album.filter(album_id.eq(input_album_id)).first::<SpotifyAlbum>(&self.connection).optional()?)
+  }
+
+  fn select_spotify_album_by_spotify_id(&self, input_spotify_id: &String) -> Result<Option<SpotifyAlbum>, diesel::result::Error> {
     use schema::spotify_album::dsl::*;
     Ok(spotify_album.filter(spotify_id.eq(input_spotify_id)).first::<SpotifyAlbum>(&self.connection).optional()?)
   }
@@ -312,9 +373,14 @@ impl DatabaseConnection<'_> {
 // Spotify Artist (source)
 
 impl DatabaseConnection<'_> {
-  fn select_spotify_artist(&self, input_spotify_id: &String) -> Result<Option<SpotifyArtist>, diesel::result::Error> {
+  fn select_spotify_artist_by_spotify_id(&self, input_spotify_id: &String) -> Result<Option<SpotifyArtist>, diesel::result::Error> {
     use schema::spotify_artist::dsl::*;
     Ok(spotify_artist.filter(spotify_id.eq(input_spotify_id)).first::<SpotifyArtist>(&self.connection).optional()?)
+  }
+
+  fn select_spotify_artist_by_artist_id(&self, input_artist_id: i32) -> Result<Option<SpotifyArtist>, diesel::result::Error> {
+    use schema::spotify_artist::dsl::*;
+    Ok(spotify_artist.filter(artist_id.eq(input_artist_id)).first::<SpotifyArtist>(&self.connection).optional()?)
   }
 
   fn insert_spotify_artist(&self, input_artist_id: i32, input_spotify_id: &String) -> Result<SpotifyArtist, diesel::result::Error> {

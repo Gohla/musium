@@ -80,7 +80,7 @@ pub enum SelectAlbumError {
   #[error("Failed to query database")]
   DatabaseQueryFail(#[from] diesel::result::Error, Backtrace),
   #[error("Found multiple albums with the same name, which is currently not supported: {0:#?}")]
-  MultipleAlbumsSameName(Vec<Album>),
+  MultipleAlbumsSameName(Vec<Album>, Backtrace),
 }
 
 impl DatabaseConnection<'_> {
@@ -89,13 +89,13 @@ impl DatabaseConnection<'_> {
     Ok(album.find(input_id).first::<Album>(&self.connection)?)
   }
 
-  pub(crate) fn select_one_album_by_name(&self, input_name: &String) -> Result<Option<Album>, SelectAlbumError> {
+  pub(crate) fn try_select_one_album_by_name(&self, input_name: &String) -> Result<Option<Album>, SelectAlbumError> {
     use schema::album::dsl::*;
     let db_albums: Vec<Album> = album.filter(name.eq(input_name)).load::<Album>(&self.connection)?;
     match db_albums.len() {
       0 => Ok(None),
       1 => Ok(Some(db_albums.into_iter().next().unwrap())),
-      _ => Err(SelectAlbumError::MultipleAlbumsSameName(db_albums)),
+      _ => Err(SelectAlbumError::MultipleAlbumsSameName(db_albums, Backtrace::capture())),
     }
   }
 
@@ -108,12 +108,12 @@ impl DatabaseConnection<'_> {
     Ok(time!("insert_album.select_inserted", album.order(id.desc()).first::<Album>(&self.connection)?))
   }
 
-  pub(crate) fn select_or_insert_album(&self, input_name: &String) -> Result<Album, SelectAlbumError> {
-    let db_album = match self.select_one_album_by_name(input_name)? {
-      Some(db_album) => db_album,
-      None => self.insert_album(input_name)?,
+  pub(crate) fn select_or_insert_album(&self, input_name: &String) -> Result<(Album, bool), SelectAlbumError> {
+    let result = match self.try_select_one_album_by_name(input_name)? {
+      Some(db_album) => (db_album, false),
+      None => (self.insert_album(input_name)?, true),
     };
-    Ok(db_album)
+    Ok(result)
   }
 }
 
@@ -124,7 +124,7 @@ pub enum SelectTrackError {
   #[error("Failed to query database")]
   DatabaseQueryFail(#[from] diesel::result::Error, Backtrace),
   #[error("Found multiple tracks with the same album and title, which is currently not supported: {0:#?}")]
-  MultipleTracksSameAlbumAndTitle(Vec<Track>),
+  MultipleTracksSameAlbumAndTitle(Vec<Track>, Backtrace),
 }
 
 impl DatabaseConnection<'_> {
@@ -133,13 +133,13 @@ impl DatabaseConnection<'_> {
     Ok(track.find(input_id).first::<Track>(&self.connection)?)
   }
 
-  pub(crate) fn select_one_track_by_album_and_title(&self, input_album_id: i32, input_title: &String) -> Result<Option<Track>, SelectTrackError> {
+  pub(crate) fn try_select_one_track_by_album_and_title(&self, input_album_id: i32, input_title: &String) -> Result<Option<Track>, SelectTrackError> {
     use schema::track::dsl::*;
     let db_tracks: Vec<Track> = track.filter(album_id.eq(input_album_id)).filter(title.eq(input_title)).load::<Track>(&self.connection)?;
     match db_tracks.len() {
       0 => Ok(None),
       1 => Ok(Some(db_tracks.into_iter().next().unwrap())),
-      _ => Err(SelectTrackError::MultipleTracksSameAlbumAndTitle(db_tracks)),
+      _ => Err(SelectTrackError::MultipleTracksSameAlbumAndTitle(db_tracks, Backtrace::capture())),
     }
   }
 
@@ -157,22 +157,23 @@ impl DatabaseConnection<'_> {
     input_title: &String,
     new_track_fn: N,
     update_track_fn: U,
-  ) -> Result<Track, SelectTrackError> where
+  ) -> Result<(Track, bool), SelectTrackError> where
     N: FnOnce(i32, String) -> NewTrack,
     U: FnOnce(&mut Track) -> bool,
   {
-    let db_track = match self.select_one_track_by_album_and_title(input_album_id, input_title)? {
+    let result = match self.try_select_one_track_by_album_and_title(input_album_id, input_title)? {
       Some(mut db_track) => {
-        if update_track_fn(&mut db_track) {
+        let db_track = if update_track_fn(&mut db_track) {
           event!(Level::DEBUG, ?db_track, "Track has changed, updating the database");
           db_track.save_changes::<Track>(&*self.connection)?
         } else {
           db_track
-        }
+        };
+        (db_track, false)
       }
-      None => self.insert_track(new_track_fn(input_album_id, input_title.clone()))?,
+      None => (self.insert_track(new_track_fn(input_album_id, input_title.clone()))?, true),
     };
-    Ok(db_track)
+    Ok(result)
   }
 }
 
@@ -183,7 +184,7 @@ pub enum SelectArtistError {
   #[error("Failed to query database")]
   DatabaseQueryFail(#[from] diesel::result::Error, Backtrace),
   #[error("Found multiple artists with the same name, which is currently not supported: {0:#?}")]
-  MultipleArtistsSameName(Vec<Artist>),
+  MultipleArtistsSameName(Vec<Artist>, Backtrace),
 }
 
 impl DatabaseConnection<'_> {
@@ -192,13 +193,13 @@ impl DatabaseConnection<'_> {
     Ok(artist.find(input_id).first::<Artist>(&self.connection)?)
   }
 
-  pub(crate) fn select_one_artist_by_name(&self, input_name: &String) -> Result<Option<Artist>, SelectArtistError> {
+  pub(crate) fn try_select_one_artist_by_name(&self, input_name: &String) -> Result<Option<Artist>, SelectArtistError> {
     use schema::artist::dsl::*;
     let db_artists: Vec<Artist> = artist.filter(name.eq(input_name)).load::<Artist>(&self.connection)?;
     match db_artists.len() {
       0 => Ok(None),
       1 => Ok(Some(db_artists.into_iter().next().unwrap())),
-      _ => Err(SelectArtistError::MultipleArtistsSameName(db_artists)),
+      _ => Err(SelectArtistError::MultipleArtistsSameName(db_artists, Backtrace::capture())),
     }
   }
 
@@ -211,12 +212,12 @@ impl DatabaseConnection<'_> {
     Ok(time!("insert_artist.select_inserted", artist.order(id.desc()).first::<Artist>(&self.connection)?))
   }
 
-  pub(crate) fn select_or_insert_artist(&self, input_name: &String) -> Result<Artist, SelectArtistError> {
-    let db_artist = match self.select_one_artist_by_name(input_name)? {
-      Some(db_artist) => db_artist,
-      None => self.insert_artist(input_name)?,
+  pub(crate) fn select_or_insert_artist(&self, input_name: &String) -> Result<(Artist, bool), SelectArtistError> {
+    let result = match self.try_select_one_artist_by_name(input_name)? {
+      Some(db_artist) => (db_artist, false),
+      None => (self.insert_artist(input_name)?, true),
     };
-    Ok(db_artist)
+    Ok(result)
   }
 }
 
@@ -228,21 +229,21 @@ impl DatabaseConnection<'_> {
       use schema::album_artist::dsl::*;
       album_artist
         .filter(album_id.eq(album.id))
-        .inner_join(schema::artist::table)
     };
-    let db_album_artists: Vec<(AlbumArtist, Artist)> = time!("sync_album_artists.select", select_query.load(&self.connection)?);
-    for (db_album_artist, db_artist) in db_album_artists {
+    let db_album_artists: Vec<AlbumArtist> = time!("sync_album_artists.select", select_query.load(&self.connection)?);
+    for db_album_artist in db_album_artists {
       // Album-artist already database.
-      if artist_ids.contains(&db_artist.id) {
+      let artist_id = db_album_artist.artist_id;
+      if artist_ids.contains(&artist_id) {
         // Album-artist was found in the set of artists to set as album-artists (artist_ids): keep it by doing nothing.
         // TODO: update album artist columns if they are added.
       } else {
         // Album-artist was not found in the set of artists to set as album-artists (artist_ids): delete it.
         event!(Level::DEBUG, ?db_album_artist, "Deleting album artist");
         time!("sync_album_artists.delete", diesel::delete(&db_album_artist).execute(&self.connection)?);
-        // Remove from artist_ids set, so db_artists contains exactly what we want to insert after this loop.
-        artist_ids.remove(&db_artist.id);
       }
+      // Remove from artist_ids set, so db_artists contains exactly what we want to insert after this loop.
+      artist_ids.remove(&artist_id);
     }
     for artist_id in artist_ids {
       let new_album_artist = NewAlbumArtist { album_id: album.id, artist_id };
@@ -261,21 +262,21 @@ impl DatabaseConnection<'_> {
       use schema::track_artist::dsl::*;
       track_artist
         .filter(track_id.eq(track.id))
-        .inner_join(schema::artist::table)
     };
-    let db_track_artists: Vec<(TrackArtist, Artist)> = time!("sync_track_artists.select", select_query.load(&self.connection)?);
-    for (db_track_artist, db_artist) in db_track_artists {
+    let db_track_artists: Vec<TrackArtist> = time!("sync_track_artists.select", select_query.load(&self.connection)?);
+    for db_track_artist in db_track_artists {
       // Track-artist already database.
-      if artist_ids.contains(&db_artist.id) {
+      let artist_id = db_track_artist.artist_id;
+      if artist_ids.contains(&artist_id) {
         // Track-artist was found in the set of artists to set as track-artists (artist_ids): keep it by doing nothing.
         // TODO: update track artist columns if they are added.
       } else {
         // Track-artist was not found in the set of artists to set as track-artists (artist_ids): delete it.
         event!(Level::DEBUG, ?db_track_artist, "Deleting track artist");
         time!("sync_track_artists.delete", diesel::delete(&db_track_artist).execute(&self.connection)?);
-        // Remove from artist_ids set, so db_artists contains exactly what we want to insert after this loop.
-        artist_ids.remove(&db_artist.id);
       }
+      // Remove from artist_ids set, so db_artists contains exactly what we want to insert after this loop.
+      artist_ids.remove(&artist_id);
     }
     for artist_id in artist_ids {
       let new_track_artist = NewTrackArtist { track_id: track.id, artist_id };
