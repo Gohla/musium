@@ -73,6 +73,26 @@ impl DatabaseConnection<'_> {
 
 // Shared sync API for specific sync implementations
 
+pub enum SelectOrInsert<T> {
+  Selected(Vec<T>),
+  Inserted(T),
+}
+
+pub enum SelectOrInsertOne<T> {
+  Selected(T),
+  Inserted(T),
+}
+
+impl<T> SelectOrInsertOne<T> {
+  fn into(self) -> T {
+    use SelectOrInsertOne::*;
+    match self {
+      Selected(t) => t,
+      Inserted(t) => t,
+    }
+  }
+}
+
 // Album
 
 #[derive(Debug, Error)]
@@ -89,9 +109,14 @@ impl DatabaseConnection<'_> {
     Ok(album.find(input_id).first::<Album>(&self.connection)?)
   }
 
-  pub(crate) fn try_select_one_album_by_name(&self, input_name: &String) -> Result<Option<Album>, SelectAlbumError> {
+  pub(crate) fn select_albums_by_name(&self, input_name: &String) -> Result<Vec<Album>, diesel::result::Error> {
     use schema::album::dsl::*;
-    let db_albums: Vec<Album> = album.filter(name.eq(input_name)).load::<Album>(&self.connection)?;
+    let db_albums: Vec<Album> = album.filter(name.eq(input_name)).load(&self.connection)?;
+    Ok(db_albums)
+  }
+
+  pub(crate) fn select_one_album_by_name(&self, input_name: &String) -> Result<Option<Album>, SelectAlbumError> {
+    let db_albums = self.select_albums_by_name(input_name)?;
     match db_albums.len() {
       0 => Ok(None),
       1 => Ok(Some(db_albums.into_iter().next().unwrap())),
@@ -108,10 +133,20 @@ impl DatabaseConnection<'_> {
     Ok(time!("insert_album.select_inserted", album.order(id.desc()).first::<Album>(&self.connection)?))
   }
 
-  pub(crate) fn select_or_insert_album(&self, input_name: &String) -> Result<(Album, bool), SelectAlbumError> {
-    let result = match self.try_select_one_album_by_name(input_name)? {
-      Some(db_album) => (db_album, false),
-      None => (self.insert_album(input_name)?, true),
+  pub(crate) fn select_or_insert_album(&self, input_name: &String) -> Result<SelectOrInsert<Album>, diesel::result::Error> {
+    let db_albums = self.select_albums_by_name(input_name)?;
+    let result = match db_albums.len() {
+      0 => SelectOrInsert::Inserted(self.insert_album(input_name)?),
+      _ => SelectOrInsert::Selected(db_albums),
+    };
+    Ok(result)
+  }
+
+  pub(crate) fn select_one_or_insert_album(&self, input_name: &String) -> Result<SelectOrInsertOne<Album>, SelectAlbumError> {
+    let result = match self.select_or_insert_album(input_name)? {
+      SelectOrInsert::Inserted(album) => SelectOrInsertOne::Inserted(album),
+      SelectOrInsert::Selected(db_albums) if db_albums.len() == 1 => SelectOrInsertOne::Inserted(db_albums.into_iter().next().unwrap()),
+      SelectOrInsert::Selected(db_albums) => return Err(SelectAlbumError::MultipleAlbumsSameName(db_albums, Backtrace::capture())),
     };
     Ok(result)
   }
@@ -193,9 +228,14 @@ impl DatabaseConnection<'_> {
     Ok(artist.find(input_id).first::<Artist>(&self.connection)?)
   }
 
-  pub(crate) fn try_select_one_artist_by_name(&self, input_name: &String) -> Result<Option<Artist>, SelectArtistError> {
+  pub(crate) fn select_artists_by_name(&self, input_name: &String) -> Result<Vec<Artist>, diesel::result::Error> {
     use schema::artist::dsl::*;
-    let db_artists: Vec<Artist> = artist.filter(name.eq(input_name)).load::<Artist>(&self.connection)?;
+    let db_artists: Vec<Artist> = artist.filter(name.eq(input_name)).load(&self.connection)?;
+    Ok(db_artists)
+  }
+
+  pub(crate) fn select_one_artist_by_name(&self, input_name: &String) -> Result<Option<Artist>, SelectArtistError> {
+    let db_artists = self.select_artists_by_name(input_name)?;
     match db_artists.len() {
       0 => Ok(None),
       1 => Ok(Some(db_artists.into_iter().next().unwrap())),
@@ -212,10 +252,20 @@ impl DatabaseConnection<'_> {
     Ok(time!("insert_artist.select_inserted", artist.order(id.desc()).first::<Artist>(&self.connection)?))
   }
 
-  pub(crate) fn select_or_insert_artist(&self, input_name: &String) -> Result<(Artist, bool), SelectArtistError> {
-    let result = match self.try_select_one_artist_by_name(input_name)? {
-      Some(db_artist) => (db_artist, false),
-      None => (self.insert_artist(input_name)?, true),
+  pub(crate) fn select_or_insert_artist(&self, input_name: &String) -> Result<SelectOrInsert<Artist>, diesel::result::Error> {
+    let db_artists = self.select_artists_by_name(input_name)?;
+    let result = match db_artists.len() {
+      0 => SelectOrInsert::Inserted(self.insert_artist(input_name)?),
+      _ => SelectOrInsert::Selected(db_artists),
+    };
+    Ok(result)
+  }
+
+  pub(crate) fn select_one_or_insert_artist(&self, input_name: &String) -> Result<SelectOrInsertOne<Artist>, SelectArtistError> {
+    let result = match self.select_or_insert_artist(input_name)? {
+      SelectOrInsert::Inserted(artist) => SelectOrInsertOne::Inserted(artist),
+      SelectOrInsert::Selected(db_artists) if db_artists.len() == 1 => SelectOrInsertOne::Inserted(db_artists.into_iter().next().unwrap()),
+      SelectOrInsert::Selected(db_artists) => return Err(SelectArtistError::MultipleArtistsSameName(db_artists, Backtrace::capture())),
     };
     Ok(result)
   }

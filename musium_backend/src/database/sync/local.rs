@@ -12,7 +12,7 @@ use musium_filesystem_sync::{FilesystemSyncError, FilesystemSyncTrack};
 
 use crate::database::DatabaseConnection;
 use crate::database::sync::{SelectAlbumError, SelectArtistError};
-use crate::model::{LocalTrackEx, TrackEx, UpdateFrom};
+use crate::model::{LocalTrackEx, TrackEx, UpdateTrackFrom};
 
 #[derive(Debug, Error)]
 pub enum LocalSyncError {
@@ -74,8 +74,7 @@ impl DatabaseConnection<'_> {
   }
 
   fn sync_local_album(&self, local_source_id: i32, filesystem_sync_track: &FilesystemSyncTrack) -> Result<Album, LocalSyncError> {
-    let (db_album, _db_artist_inserted) = self.select_or_insert_album(&filesystem_sync_track.album)?;
-    // TODO: use _db_artist_inserted
+    let db_album = self.select_one_or_insert_album(&filesystem_sync_track.album)?.into();
 
     let select_local_album_query = {
       use schema::local_album::dsl::*;
@@ -237,7 +236,7 @@ impl DatabaseConnection<'_> {
   }
 
   fn sync_local_artist(&self, local_source_id: i32, artist_name: String) -> Result<Artist, LocalSyncError> {
-    let db_artist = match self.try_select_one_artist_by_name(&artist_name)? {
+    let db_artist = match self.select_one_artist_by_name(&artist_name)? {
       None => {
         // No artist with the same name was found: insert it.
         let db_artist = self.insert_artist(&artist_name)?;

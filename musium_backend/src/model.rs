@@ -5,7 +5,7 @@ use musium_core::schema::*;
 use musium_filesystem_sync::FilesystemSyncTrack;
 use musium_spotify_sync::Authorization;
 
-// Helper macros
+// Helper macros and traits
 
 macro_rules! update {
   ($t:expr, $u:expr, $c:expr) => {
@@ -18,6 +18,10 @@ macro_rules! update {
 }
 
 pub trait UpdateFrom<T> {
+  fn update_from(&mut self, source: &T) -> bool;
+}
+
+pub trait UpdateTrackFrom<T> {
   fn update_from(&mut self, album: &Album, source: &T) -> bool;
 }
 
@@ -58,6 +62,16 @@ impl SpotifySourceEx for SpotifySource {
   }
 }
 
+// Album
+
+impl UpdateFrom<musium_spotify_sync::Album> for Album {
+  fn update_from(&mut self, source: &musium_spotify_sync::Album) -> bool {
+    let mut changed = false;
+    update!(self.name, source.name.clone(), changed);
+    changed
+  }
+}
+
 // Track
 
 pub trait TrackEx {
@@ -76,7 +90,7 @@ impl TrackEx for Track {
   }
 }
 
-impl UpdateFrom<FilesystemSyncTrack> for Track {
+impl UpdateTrackFrom<FilesystemSyncTrack> for Track {
   fn update_from(&mut self, album: &Album, source: &FilesystemSyncTrack) -> bool {
     let mut changed = false;
     update!(self.album_id, album.id, changed);
@@ -89,7 +103,7 @@ impl UpdateFrom<FilesystemSyncTrack> for Track {
   }
 }
 
-impl UpdateFrom<musium_spotify_sync::TrackSimple> for Track {
+impl UpdateTrackFrom<musium_spotify_sync::TrackSimple> for Track {
   fn update_from(&mut self, album: &Album, source: &musium_spotify_sync::TrackSimple) -> bool {
     let mut changed = false;
     update!(self.album_id, album.id, changed);
@@ -112,7 +126,6 @@ impl LocalTrackEx for LocalTrack {
     self.hash != filesystem_sync_track.hash as i64
   }
 
-
   fn update_from(&mut self, filesystem_sync_track: &FilesystemSyncTrack) -> bool {
     let mut changed = false;
     if let Some(file_path) = &mut self.file_path {
@@ -125,6 +138,24 @@ impl LocalTrackEx for LocalTrack {
       changed = true;
     }
     update!(self.hash, filesystem_sync_track.hash as i64, changed);
+    changed
+  }
+}
+
+// Artist
+
+impl UpdateFrom<musium_spotify_sync::Artist> for Artist {
+  fn update_from(&mut self, source: &musium_spotify_sync::Artist) -> bool {
+    let mut changed = false;
+    update!(self.name, source.name.clone(), changed);
+    changed
+  }
+}
+
+impl UpdateFrom<musium_spotify_sync::ArtistSimple> for Artist {
+  fn update_from(&mut self, source: &musium_spotify_sync::ArtistSimple) -> bool {
+    let mut changed = false;
+    update!(self.name, source.name.clone(), changed);
     changed
   }
 }
