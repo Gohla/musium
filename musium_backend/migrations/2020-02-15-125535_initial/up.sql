@@ -127,7 +127,8 @@ CREATE TABLE spotify_album
     spotify_id TEXT    NOT NULL,
 
     PRIMARY KEY (album_id, spotify_id),
-    FOREIGN KEY (album_id) REFERENCES album (id)
+    FOREIGN KEY (album_id) REFERENCES album (id),
+    UNIQUE (album_id)
 );
 
 CREATE TABLE spotify_track
@@ -136,7 +137,8 @@ CREATE TABLE spotify_track
     spotify_id TEXT    NOT NULL,
 
     PRIMARY KEY (track_id, spotify_id),
-    FOREIGN KEY (track_id) REFERENCES track (id)
+    FOREIGN KEY (track_id) REFERENCES track (id),
+    UNIQUE (track_id)
 );
 
 CREATE TABLE spotify_artist
@@ -145,7 +147,8 @@ CREATE TABLE spotify_artist
     spotify_id TEXT    NOT NULL,
 
     PRIMARY KEY (artist_id, spotify_id),
-    FOREIGN KEY (artist_id) REFERENCES artist (id)
+    FOREIGN KEY (artist_id) REFERENCES artist (id),
+    UNIQUE (artist_id)
 );
 
 -- Linking albums/tracks/artists to a Spotify source, which is linked to a specific user.

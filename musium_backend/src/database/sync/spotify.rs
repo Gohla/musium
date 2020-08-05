@@ -216,13 +216,15 @@ impl DatabaseConnection<'_> {
     Ok(db_artist)
   }
 
+  // Cleanup
+
   fn cleanup_spotify_album_sources(&self, synced_album_ids: HashSet::<i32>, input_spotify_source_id: i32) -> Result<(), SpotifySyncError> {
     let db_spotify_album_data: Vec<i32> = {
       use schema::spotify_album_source::dsl::*;
       spotify_album_source
         .select(album_id)
         .filter(spotify_source_id.eq(input_spotify_source_id))
-        .load::<i32>(&self.connection)?
+        .load(&self.connection)?
     };
     for db_album_id in db_spotify_album_data {
       if !synced_album_ids.contains(&db_album_id) {
@@ -245,7 +247,7 @@ impl DatabaseConnection<'_> {
       spotify_track_source
         .select(track_id)
         .filter(spotify_source_id.eq(input_spotify_source_id))
-        .load::<i32>(&self.connection)?
+        .load(&self.connection)?
     };
     for db_track_id in db_spotify_track_data {
       if !synced_track_ids.contains(&db_track_id) {
@@ -268,7 +270,7 @@ impl DatabaseConnection<'_> {
       spotify_artist_source
         .select(artist_id)
         .filter(spotify_source_id.eq(input_spotify_source_id))
-        .load::<i32>(&self.connection)?
+        .load(&self.connection)?
     };
     for db_artist_id in db_spotify_artist_data {
       if !synced_artist_ids.contains(&db_artist_id) {

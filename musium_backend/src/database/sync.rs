@@ -106,12 +106,15 @@ pub enum SelectAlbumError {
 impl DatabaseConnection<'_> {
   pub(crate) fn select_album_by_id(&self, input_id: i32) -> Result<Album, diesel::result::Error> {
     use schema::album::dsl::*;
-    Ok(album.find(input_id).first::<Album>(&self.connection)?)
+    Ok(album.find(input_id).first(&self.connection)?)
   }
 
   pub(crate) fn select_albums_by_name(&self, input_name: &String) -> Result<Vec<Album>, diesel::result::Error> {
     use schema::album::dsl::*;
-    let db_albums: Vec<Album> = album.filter(name.eq(input_name)).load(&self.connection)?;
+    let db_albums: Vec<Album> = album
+      .filter(name.eq(input_name))
+      .order(id.desc())
+      .load(&self.connection)?;
     Ok(db_albums)
   }
 
@@ -130,7 +133,7 @@ impl DatabaseConnection<'_> {
     event!(Level::DEBUG, ?new_album, "Inserting album");
     time!("insert_album.insert", diesel::insert_into(album).values(new_album).execute(&self.connection)?);
     // NOTE: must be executed in a transaction for consistency
-    Ok(time!("insert_album.select_inserted", album.order(id.desc()).first::<Album>(&self.connection)?))
+    Ok(time!("insert_album.select_inserted", album.order(id.desc()).first(&self.connection)?))
   }
 
   pub(crate) fn select_or_insert_album(&self, input_name: &String) -> Result<SelectOrInsert<Album>, diesel::result::Error> {
@@ -165,12 +168,15 @@ pub enum SelectTrackError {
 impl DatabaseConnection<'_> {
   pub(crate) fn select_track_by_id(&self, input_id: i32) -> Result<Track, diesel::result::Error> {
     use schema::track::dsl::*;
-    Ok(track.find(input_id).first::<Track>(&self.connection)?)
+    Ok(track.find(input_id).first(&self.connection)?)
   }
 
-  pub(crate) fn try_select_one_track_by_album_and_title(&self, input_album_id: i32, input_title: &String) -> Result<Option<Track>, SelectTrackError> {
+  pub(crate) fn select_one_track_by_album_and_title(&self, input_album_id: i32, input_title: &String) -> Result<Option<Track>, SelectTrackError> {
     use schema::track::dsl::*;
-    let db_tracks: Vec<Track> = track.filter(album_id.eq(input_album_id)).filter(title.eq(input_title)).load::<Track>(&self.connection)?;
+    let db_tracks: Vec<Track> = track
+      .filter(album_id.eq(input_album_id))
+      .filter(title.eq(input_title))
+      .load(&self.connection)?;
     match db_tracks.len() {
       0 => Ok(None),
       1 => Ok(Some(db_tracks.into_iter().next().unwrap())),
@@ -183,7 +189,7 @@ impl DatabaseConnection<'_> {
     event!(Level::DEBUG, ?new_track, "Inserting track");
     time!("insert_track.insert", diesel::insert_into(track).values(new_track).execute(&self.connection)?);
     // NOTE: must be executed in a transaction for consistency
-    Ok(time!("insert_track.select_inserted", track.order(id.desc()).first::<Track>(&self.connection)?))
+    Ok(time!("insert_track.select_inserted", track.order(id.desc()).first(&self.connection)?))
   }
 
   pub(crate) fn select_or_insert_track<N, U>(
@@ -196,7 +202,7 @@ impl DatabaseConnection<'_> {
     N: FnOnce(i32, String) -> NewTrack,
     U: FnOnce(&mut Track) -> bool,
   {
-    let result = match self.try_select_one_track_by_album_and_title(input_album_id, input_title)? {
+    let result = match self.select_one_track_by_album_and_title(input_album_id, input_title)? {
       Some(mut db_track) => {
         let db_track = if update_track_fn(&mut db_track) {
           event!(Level::DEBUG, ?db_track, "Track has changed, updating the database");
@@ -225,12 +231,15 @@ pub enum SelectArtistError {
 impl DatabaseConnection<'_> {
   pub(crate) fn select_artist_by_id(&self, input_id: i32) -> Result<Artist, diesel::result::Error> {
     use schema::artist::dsl::*;
-    Ok(artist.find(input_id).first::<Artist>(&self.connection)?)
+    Ok(artist.find(input_id).first(&self.connection)?)
   }
 
   pub(crate) fn select_artists_by_name(&self, input_name: &String) -> Result<Vec<Artist>, diesel::result::Error> {
     use schema::artist::dsl::*;
-    let db_artists: Vec<Artist> = artist.filter(name.eq(input_name)).load(&self.connection)?;
+    let db_artists: Vec<Artist> = artist
+      .filter(name.eq(input_name))
+      .order(id.desc())
+      .load(&self.connection)?;
     Ok(db_artists)
   }
 
@@ -249,7 +258,7 @@ impl DatabaseConnection<'_> {
     event!(Level::DEBUG, ?new_artist, "Inserting artist");
     time!("insert_artist.insert", diesel::insert_into(artist).values(new_artist).execute(&self.connection)?);
     // NOTE: must be executed in a transaction for consistency
-    Ok(time!("insert_artist.select_inserted", artist.order(id.desc()).first::<Artist>(&self.connection)?))
+    Ok(time!("insert_artist.select_inserted", artist.order(id.desc()).first(&self.connection)?))
   }
 
   pub(crate) fn select_or_insert_artist(&self, input_name: &String) -> Result<SelectOrInsert<Artist>, diesel::result::Error> {
@@ -279,6 +288,7 @@ impl DatabaseConnection<'_> {
       use schema::album_artist::dsl::*;
       album_artist
         .filter(album_id.eq(album.id))
+        .order(artist_id.desc())
     };
     let db_album_artists: Vec<AlbumArtist> = time!("sync_album_artists.select", select_query.load(&self.connection)?);
     for db_album_artist in db_album_artists {
@@ -289,7 +299,7 @@ impl DatabaseConnection<'_> {
         // TODO: update album artist columns if they are added.
       } else {
         // Album-artist was not found in the set of artists to set as album-artists (artist_ids): delete it.
-        event!(Level::DEBUG, ?db_album_artist, "Deleting album artist");
+        event!(Level::DEBUG, ?db_album_artist, "Deleting album-artist");
         time!("sync_album_artists.delete", diesel::delete(&db_album_artist).execute(&self.connection)?);
       }
       // Remove from artist_ids set, so db_artists contains exactly what we want to insert after this loop.
@@ -297,7 +307,7 @@ impl DatabaseConnection<'_> {
     }
     for artist_id in artist_ids {
       let new_album_artist = NewAlbumArtist { album_id: album.id, artist_id };
-      event!(Level::DEBUG, ?new_album_artist, "Inserting album artist");
+      event!(Level::DEBUG, ?new_album_artist, "Inserting album-artist");
       let insert_query = {
         use schema::album_artist::dsl::*;
         diesel::insert_into(album_artist).values(new_album_artist)
@@ -312,6 +322,7 @@ impl DatabaseConnection<'_> {
       use schema::track_artist::dsl::*;
       track_artist
         .filter(track_id.eq(track.id))
+        .order(artist_id.desc())
     };
     let db_track_artists: Vec<TrackArtist> = time!("sync_track_artists.select", select_query.load(&self.connection)?);
     for db_track_artist in db_track_artists {
@@ -322,7 +333,7 @@ impl DatabaseConnection<'_> {
         // TODO: update track artist columns if they are added.
       } else {
         // Track-artist was not found in the set of artists to set as track-artists (artist_ids): delete it.
-        event!(Level::DEBUG, ?db_track_artist, "Deleting track artist");
+        event!(Level::DEBUG, ?db_track_artist, "Deleting track-artist");
         time!("sync_track_artists.delete", diesel::delete(&db_track_artist).execute(&self.connection)?);
       }
       // Remove from artist_ids set, so db_artists contains exactly what we want to insert after this loop.
@@ -330,7 +341,7 @@ impl DatabaseConnection<'_> {
     }
     for artist_id in artist_ids {
       let new_track_artist = NewTrackArtist { track_id: track.id, artist_id };
-      event!(Level::DEBUG, ?new_track_artist, "Inserting track artist");
+      event!(Level::DEBUG, ?new_track_artist, "Inserting track-artist");
       let insert_query = {
         use schema::track_artist::dsl::*;
         diesel::insert_into(track_artist).values(new_track_artist)
