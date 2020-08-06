@@ -50,6 +50,9 @@ opt-level = 2
 [profile.fastdev.package."musium_cli"]
 opt-level = 2
 
+[profile.test]
+inherits = 'fastdev'
+
 # Release profile: full optimisations, including link-time optimisations.
 [profile.release]
 opt-level = 3

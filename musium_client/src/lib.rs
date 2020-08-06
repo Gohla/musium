@@ -100,7 +100,7 @@ pub enum CreateSpotifySourceAuthorizationUrlError {
 impl Client {
   pub async fn create_spotify_source_authorization_url(&self) -> Result<String, CreateSpotifySourceAuthorizationUrlError> {
     use CreateSpotifySourceAuthorizationUrlError::*;
-    let response = self.get_simple("source/spotify/request_authorization").await?;
+    let response = self.get("source/spotify/request_authorization", |r| r, &[StatusCode::TEMPORARY_REDIRECT]).await?;
     if let Some(url) = response.headers().get(reqwest::header::LOCATION) {
       Ok(url.to_str()?.to_owned())
     } else {

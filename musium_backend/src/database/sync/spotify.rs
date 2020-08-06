@@ -9,7 +9,7 @@ use musium_core::model::{Album, Artist, NewSpotifyAlbum, NewSpotifyAlbumSource, 
 use musium_core::schema;
 
 use crate::database::{DatabaseConnection, DatabaseQueryError};
-use crate::database::sync::{SelectAlbumError, SelectArtistError, SelectOrInsert, SelectTrackError};
+use crate::database::sync::{SelectAlbumError, SelectArtistError, SelectOrInsert, SelectTrackError, SelectOrInsertOne};
 use crate::model::{SpotifySourceEx, UpdateFrom, UpdateTrackFrom};
 
 #[derive(Debug, Error)]
@@ -94,13 +94,13 @@ impl DatabaseConnection<'_> {
       None => {
         // Spotify album with given Spotify album ID does not exist.
         match self.select_or_insert_album(&spotify_album.name)? {
+          SelectOrInsert::Selected(db_albums) => self.sync_spotify_album_with_existing_albums(db_albums, spotify_album, spotify_source_id)?,
           SelectOrInsert::Inserted(db_album) => {
             // New album was inserted -> a Spotify album and its source cannot exist yet; just insert them.
             self.insert_spotify_album(db_album.id, &spotify_album.id)?;
             self.insert_spotify_album_source(db_album.id, spotify_source_id)?;
             db_album
           }
-          SelectOrInsert::Selected(db_albums) => self.sync_spotify_album_with_existing_albums(db_albums, spotify_album, spotify_source_id)?,
         }
       }
     };
@@ -142,25 +142,33 @@ impl DatabaseConnection<'_> {
         }
       }
       None => {
-        let (db_track, _db_track_inserted) = self.select_or_insert_track(
+        let disc_number = Some(spotify_track.disc_number);
+        let track_number = Some(spotify_track.track_number);
+        match self.select_or_insert_track(
           album.id,
           &spotify_track.name,
-          |album_id, title| {
+          disc_number,
+          track_number,
+          |default_new_track| {
             NewTrack {
-              album_id,
-              disc_number: Some(spotify_track.disc_number),
-              disc_total: None,
-              track_number: Some(spotify_track.track_number),
-              track_total: None,
-              title,
+              ..default_new_track
             }
           },
           |track| track.update_from(album, spotify_track),
-        )?;
-        // TODO: use _db_track_inserted
-        self.insert_spotify_track(db_track.id, &spotify_track.id)?;
-        self.ensure_spotify_track_source_exists(db_track.id, spotify_source_id)?;
-        db_track
+        )? {
+          SelectOrInsertOne::Selected(db_track) => {
+            // TODO: although very unlikely, there could be an existing Spotify track for this track, which means we'd need to insert a new track first.
+            self.insert_spotify_track(db_track.id, &spotify_track.id)?;
+            self.ensure_spotify_track_source_exists(db_track.id, spotify_source_id)?;
+            db_track
+          }
+          SelectOrInsertOne::Inserted(db_track) => {
+            // New track was inserted -> a Spotify track and its source cannot exist yet; just insert them.
+            self.insert_spotify_track(db_track.id, &spotify_track.id)?;
+            self.insert_spotify_track_source(db_track.id, spotify_source_id)?;
+            db_track
+          }
+        }
       }
     };
     Ok(db_track)

@@ -51,14 +51,6 @@ table! {
 }
 
 table! {
-    source (id) {
-        id -> Integer,
-        enabled -> Bool,
-        data -> Text,
-    }
-}
-
-table! {
     spotify_album (album_id, spotify_id) {
         album_id -> Integer,
         spotify_id -> Text,
@@ -199,7 +191,6 @@ allow_tables_to_appear_in_same_query!(
     local_artist,
     local_source,
     local_track,
-    source,
     spotify_album,
     spotify_album_source,
     spotify_artist,

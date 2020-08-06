@@ -171,12 +171,28 @@ impl DatabaseConnection<'_> {
     Ok(track.find(input_id).first(&self.connection)?)
   }
 
-  pub(crate) fn select_one_track_by_album_and_title(&self, input_album_id: i32, input_title: &String) -> Result<Option<Track>, SelectTrackError> {
-    use schema::track::dsl::*;
-    let db_tracks: Vec<Track> = track
-      .filter(album_id.eq(input_album_id))
-      .filter(title.eq(input_title))
-      .load(&self.connection)?;
+  pub(crate) fn select_one_track(
+    &self,
+    input_album_id: i32,
+    input_title: &String,
+    input_disc_number: Option<i32>,
+    input_track_number: Option<i32>,
+  ) -> Result<Option<Track>, SelectTrackError> {
+    let select_query = {
+      use schema::track::dsl::*;
+      let mut query = track
+        .filter(album_id.eq(input_album_id))
+        .filter(title.eq(input_title))
+        .into_boxed();
+      if let Some(input_disc_number) = input_disc_number {
+        query = query.filter(disc_number.eq(input_disc_number))
+      }
+      if let Some(input_track_number) = input_track_number {
+        query = query.filter(track_number.eq(input_track_number))
+      }
+      query
+    };
+    let db_tracks: Vec<Track> = select_query.load(&self.connection)?;
     match db_tracks.len() {
       0 => Ok(None),
       1 => Ok(Some(db_tracks.into_iter().next().unwrap())),
@@ -194,15 +210,17 @@ impl DatabaseConnection<'_> {
 
   pub(crate) fn select_or_insert_track<N, U>(
     &self,
-    input_album_id: i32,
-    input_title: &String,
+    album_id: i32,
+    title: &String,
+    disc_number: Option<i32>,
+    track_number: Option<i32>,
     new_track_fn: N,
     update_track_fn: U,
-  ) -> Result<(Track, bool), SelectTrackError> where
-    N: FnOnce(i32, String) -> NewTrack,
+  ) -> Result<SelectOrInsertOne<Track>, SelectTrackError> where
+    N: FnOnce(NewTrack) -> NewTrack,
     U: FnOnce(&mut Track) -> bool,
   {
-    let result = match self.select_one_track_by_album_and_title(input_album_id, input_title)? {
+    let result = match self.select_one_track(album_id, title, track_number, disc_number)? {
       Some(mut db_track) => {
         let db_track = if update_track_fn(&mut db_track) {
           event!(Level::DEBUG, ?db_track, "Track has changed, updating the database");
@@ -210,9 +228,15 @@ impl DatabaseConnection<'_> {
         } else {
           db_track
         };
-        (db_track, false)
+        SelectOrInsertOne::Selected(db_track)
       }
-      None => (self.insert_track(new_track_fn(input_album_id, input_title.clone()))?, true),
+      None => SelectOrInsertOne::Inserted(self.insert_track(new_track_fn(NewTrack {
+        album_id,
+        title: title.clone(),
+        disc_number,
+        track_number,
+        ..NewTrack::default()
+      }))?),
     };
     Ok(result)
   }
