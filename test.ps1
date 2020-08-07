@@ -89,7 +89,7 @@ Function Test-Start {
   After
 }
 function Test-Stop {
-  Before
+  # No Before, as building is not required (and may fail because the server could be running)
   Stop-Servers
   After
 }
@@ -117,6 +117,12 @@ function Test-ListLocalSources {
 function Test-CreateSpotifySource {
   Before
   Start-Cli "create-spotify-source"
+  After
+}
+
+function Test-ListTracks {
+  Before
+  Start-Cli "list-tracks"
   After
 }
 
