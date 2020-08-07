@@ -9,7 +9,7 @@ use musium_core::model::{Album, Artist, NewSpotifyAlbum, NewSpotifyAlbumSource, 
 use musium_core::schema;
 
 use crate::database::{DatabaseConnection, DatabaseQueryError};
-use crate::database::sync::{SelectAlbumError, SelectArtistError, SelectOrInsert, SelectTrackError, SelectOrInsertOne};
+use crate::database::sync::{SelectAlbumError, SelectArtistError, SelectOrInsert, SelectOrInsertOne, SelectTrackError};
 use crate::model::{SpotifySourceEx, UpdateFrom, UpdateTrackFrom};
 
 #[derive(Debug, Error)]
