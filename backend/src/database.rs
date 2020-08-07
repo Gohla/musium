@@ -6,7 +6,7 @@ use diesel::r2d2::{self, ConnectionManager, Pool, PooledConnection};
 use thiserror::Error;
 use tracing::{event, Level};
 
-use musium_spotify_sync::SpotifyClient;
+use musium_spotify_client::SpotifyClient;
 
 use crate::password::PasswordHasher;
 

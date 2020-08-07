@@ -6,9 +6,9 @@ edition = "2018"
 publish = false
 
 [dependencies]
-musium_core = { path = "../musium_core" }
-musium_client = { path = "../musium_client" }
-musium_audio = { path = "../musium_audio" }
+musium_core = { path = "../core" }
+musium_client = { path = "../client" }
+musium_audio = { path = "../audio" }
 structopt = "0.3"
 dotenv = "0.15"
 open = "1.4"

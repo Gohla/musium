@@ -3,7 +3,7 @@ use std::path::PathBuf;
 use musium_core::model::*;
 use musium_core::schema::*;
 use musium_filesystem_sync::FilesystemSyncTrack;
-use musium_spotify_sync::Authorization;
+use musium_spotify_client::Authorization;
 
 // Helper macros and traits
 
@@ -64,8 +64,8 @@ impl SpotifySourceEx for SpotifySource {
 
 // Album
 
-impl UpdateFrom<musium_spotify_sync::Album> for Album {
-  fn update_from(&mut self, source: &musium_spotify_sync::Album) -> bool {
+impl UpdateFrom<musium_spotify_client::Album> for Album {
+  fn update_from(&mut self, source: &musium_spotify_client::Album) -> bool {
     let mut changed = false;
     update!(self.name, source.name.clone(), changed);
     changed
@@ -103,8 +103,8 @@ impl UpdateTrackFrom<FilesystemSyncTrack> for Track {
   }
 }
 
-impl UpdateTrackFrom<musium_spotify_sync::TrackSimple> for Track {
-  fn update_from(&mut self, album: &Album, source: &musium_spotify_sync::TrackSimple) -> bool {
+impl UpdateTrackFrom<musium_spotify_client::TrackSimple> for Track {
+  fn update_from(&mut self, album: &Album, source: &musium_spotify_client::TrackSimple) -> bool {
     let mut changed = false;
     update!(self.album_id, album.id, changed);
     update!(self.disc_number, Some(source.disc_number), changed);
@@ -144,16 +144,16 @@ impl LocalTrackEx for LocalTrack {
 
 // Artist
 
-impl UpdateFrom<musium_spotify_sync::Artist> for Artist {
-  fn update_from(&mut self, source: &musium_spotify_sync::Artist) -> bool {
+impl UpdateFrom<musium_spotify_client::Artist> for Artist {
+  fn update_from(&mut self, source: &musium_spotify_client::Artist) -> bool {
     let mut changed = false;
     update!(self.name, source.name.clone(), changed);
     changed
   }
 }
 
-impl UpdateFrom<musium_spotify_sync::ArtistSimple> for Artist {
-  fn update_from(&mut self, source: &musium_spotify_sync::ArtistSimple) -> bool {
+impl UpdateFrom<musium_spotify_client::ArtistSimple> for Artist {
+  fn update_from(&mut self, source: &musium_spotify_client::ArtistSimple) -> bool {
     let mut changed = false;
     update!(self.name, source.name.clone(), changed);
     changed

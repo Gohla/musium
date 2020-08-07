@@ -6,6 +6,6 @@ edition = "2018"
 publish = false
 
 [dependencies]
-musium_core = {path = "../musium_core"}
+musium_core = { path = "../core" }
 rodio = "0.10"
 thiserror = "1"

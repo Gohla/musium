@@ -6,7 +6,7 @@ edition = "2018"
 publish = false
 
 [dependencies]
-musium_core = {path = "../musium_core"}
+musium_core = { path = "../core" }
 reqwest = { version = "0.10", features = ["cookies", "json", "gzip"] }
 url = "2"
 serde = { version = "1", features = ["derive"] }

@@ -6,9 +6,9 @@ edition = "2018"
 publish = false
 
 [dependencies]
-musium_core = { path = "../musium_core" }
-musium_filesystem_sync = { path = "../musium_filesystem_sync" }
-musium_spotify_sync = { path = "../musium_spotify_sync" }
+musium_core = { path = "../core" }
+musium_filesystem_sync = { path = "../filesystem_sync" }
+musium_spotify_client = { path = "../spotify_client" }
 diesel = { version = "1", features = ["sqlite", "r2d2", "chrono"] }
 libsqlite3-sys = { version = ">=0.8.0, <0.18.0", features = ["bundled"] } # Make diesel use bundled sqlite.
 chrono = "0.4"

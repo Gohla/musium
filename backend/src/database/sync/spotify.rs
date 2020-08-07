@@ -17,7 +17,7 @@ pub enum SpotifySyncError {
   #[error("Failed to query database")]
   DatabaseQueryFail(#[from] diesel::result::Error, Backtrace),
   #[error("Call to Spotify API failed")]
-  SpotifyApiFail(#[from] musium_spotify_sync::HttpRequestError, Backtrace),
+  SpotifyApiFail(#[from] musium_spotify_client::HttpRequestError, Backtrace),
   #[error("Selecting an album failed")]
   SelectAlbumFail(#[from] SelectAlbumError, Backtrace),
   #[error("Selecting a track failed")]
@@ -79,7 +79,7 @@ impl DatabaseConnection<'_> {
 
   // Album
 
-  fn sync_spotify_album(&self, spotify_album: &musium_spotify_sync::Album, spotify_source_id: i32) -> Result<Album, SpotifySyncError> {
+  fn sync_spotify_album(&self, spotify_album: &musium_spotify_client::Album, spotify_source_id: i32) -> Result<Album, SpotifySyncError> {
     event!(Level::TRACE, ?spotify_album, "Synchronizing Spotify album");
     let db_album = match self.select_spotify_album_by_spotify_id(&spotify_album.id)? {
       Some(db_spotify_album) => {
@@ -107,7 +107,7 @@ impl DatabaseConnection<'_> {
     Ok(db_album)
   }
 
-  fn sync_spotify_album_with_existing_albums(&self, db_albums: Vec<Album>, spotify_album: &musium_spotify_sync::Album, spotify_source_id: i32) -> Result<Album, SpotifySyncError> {
+  fn sync_spotify_album_with_existing_albums(&self, db_albums: Vec<Album>, spotify_album: &musium_spotify_client::Album, spotify_source_id: i32) -> Result<Album, SpotifySyncError> {
     // Album(s) with same name already exist: find one without an associated Spotify album and associate it.
     for db_album in db_albums {
       // OPTO: select all relevant data in a single query.
@@ -129,7 +129,7 @@ impl DatabaseConnection<'_> {
 
   // Track
 
-  fn sync_spotify_track(&self, spotify_track: &musium_spotify_sync::TrackSimple, album: &Album, spotify_source_id: i32) -> Result<Track, SpotifySyncError> {
+  fn sync_spotify_track(&self, spotify_track: &musium_spotify_client::TrackSimple, album: &Album, spotify_source_id: i32) -> Result<Track, SpotifySyncError> {
     event!(Level::TRACE, ?spotify_track, "Synchronizing Spotify track");
     let db_track = match self.select_spotify_track(&spotify_track.id)? {
       Some(db_spotify_track) => {
@@ -176,7 +176,7 @@ impl DatabaseConnection<'_> {
 
   // Artist
 
-  fn sync_spotify_artist(&self, spotify_artist: &musium_spotify_sync::ArtistSimple, spotify_source_id: i32) -> Result<Artist, SpotifySyncError> {
+  fn sync_spotify_artist(&self, spotify_artist: &musium_spotify_client::ArtistSimple, spotify_source_id: i32) -> Result<Artist, SpotifySyncError> {
     event!(Level::TRACE, ?spotify_artist, "Synchronizing Spotify artist");
     let db_artist = match self.select_spotify_artist_by_spotify_id(&spotify_artist.id)? {
       Some(db_spotify_artist) => {
@@ -204,7 +204,7 @@ impl DatabaseConnection<'_> {
     Ok(db_artist)
   }
 
-  fn sync_spotify_artist_with_existing_artists(&self, db_artists: Vec<Artist>, spotify_artist: &musium_spotify_sync::ArtistSimple, spotify_source_id: i32) -> Result<Artist, SpotifySyncError> {
+  fn sync_spotify_artist_with_existing_artists(&self, db_artists: Vec<Artist>, spotify_artist: &musium_spotify_client::ArtistSimple, spotify_source_id: i32) -> Result<Artist, SpotifySyncError> {
     // Artist(s) with same name already exist: find one without an associated Spotify artist and associate it.
     for db_artist in db_artists {
       // OPTO: select all relevant data in a single query.

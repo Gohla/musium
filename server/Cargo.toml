@@ -6,9 +6,9 @@ edition = "2018"
 publish = false
 
 [dependencies]
-musium_core = { path = "../musium_core" }
-musium_spotify_sync = { path = "../musium_spotify_sync" }
-musium_backend = { path = "../musium_backend" }
+musium_core = { path = "../core" }
+musium_spotify_client = { path = "../spotify_client" }
+musium_backend = { path = "../backend" }
 actix-web = "2"
 actix-rt = "1"
 actix-identity = "0.2"

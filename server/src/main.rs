@@ -15,7 +15,7 @@ use tracing_subscriber::prelude::*;
 use musium_backend::database::Database;
 use musium_backend::password::PasswordHasher;
 use musium_core::model::NewUser;
-use musium_spotify_sync::SpotifyClient;
+use musium_spotify_client::SpotifyClient;
 
 use crate::serve::serve;
 
