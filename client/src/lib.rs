@@ -138,7 +138,7 @@ pub enum PlaySource {
 
 impl Client {
   pub async fn list_tracks(&self) -> Result<Tracks, HttpRequestError> {
-    let response = self.get_simple("album").await?;
+    let response = self.get_simple("track").await?;
     let tracks_raw: TracksRaw = response.json().await?;
     Ok(tracks_raw.into())
   }
