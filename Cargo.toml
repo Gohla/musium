@@ -9,7 +9,8 @@ members = [
   "server",
   "client",
   "audio",
-  "cli"
+  "cli",
+  "tui"
 ]
 
 # Development profile: full debug information, no optimisations.
@@ -29,7 +30,7 @@ opt-level = 3
 [profile.fastdev]
 inherits = 'dev'
 opt-level = 2
-debug = true
+debug = false
 # Fully optimize all dependencies, but not our own crates, to speed up compilation.
 [profile.fastdev.package."*"]
 opt-level = 3
@@ -48,6 +49,8 @@ opt-level = 2
 [profile.fastdev.package."musium_audio"]
 opt-level = 2
 [profile.fastdev.package."musium_cli"]
+opt-level = 2
+[profile.fastdev.package."musium_tui"]
 opt-level = 2
 
 [profile.test]
