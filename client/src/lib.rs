@@ -15,6 +15,7 @@ use musium_core::{
   },
 };
 
+#[derive(Clone)]
 pub struct Client {
   client: HttpClient,
   url: Url,
@@ -167,12 +168,12 @@ impl Client {
 // Artist
 
 impl Client {
-  pub async fn list_artists(&self) -> Result<Vec<LocalArtist>, HttpRequestError> {
+  pub async fn list_artists(&self) -> Result<Vec<Artist>, HttpRequestError> {
     let response = self.get_simple("artist").await?;
     Ok(response.json().await?)
   }
 
-  pub async fn get_artist_by_id(&self, id: i32) -> Result<Option<LocalArtist>, HttpRequestError> {
+  pub async fn get_artist_by_id(&self, id: i32) -> Result<Option<Artist>, HttpRequestError> {
     let response = self.get_simple(format!("artist/{}", id)).await?;
     Ok(response.json().await?)
   }

@@ -42,6 +42,10 @@ impl Albums {
       return Some((album, album_artists.into_iter()));
     })
   }
+
+  pub fn len(&self) -> usize {
+    self.albums.len()
+  }
 }
 
 impl From<AlbumsRaw> for Albums {
@@ -99,6 +103,10 @@ impl Tracks {
 
       return Some((track, track_artists.into_iter(), album, album_artists.into_iter()));
     })
+  }
+
+  pub fn len(&self) -> usize {
+    self.tracks.len()
   }
 }
 

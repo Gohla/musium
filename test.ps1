@@ -43,9 +43,9 @@ function Start-Build {
     [switch]$Tui
   )
   if($Build -eq $true) {
-    Stop-Servers # Need to stop the servers before building, otherwise we cannot write to the server executable.
     $Params = @("build")
     if($Server.IsPresent) {
+      Stop-Servers # Need to stop the servers before building, otherwise we cannot write to the server executable.
       $Params += "--package"
       $Params += "musium_server"
     }
@@ -157,9 +157,8 @@ function Test-Play {
 }
 
 function Test-Tui {
-  Before -Server -Tui
+  Start-Build -Tui
   Start-Tui
-  After
 }
 
 Invoke-Expression "Test-$Command"
