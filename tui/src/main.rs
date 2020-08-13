@@ -127,6 +127,7 @@ fn run(client: Client, user_login: UserLogin, mut app: App, tick_rate: Duration)
     RequestAlbums,
     RequestTracks,
     RequestArtists,
+    PlayTrack(i32),
   }
   let (client_tx, mut client_rx) = tokio::sync::mpsc::unbounded_channel();
   let client_runtime = tokio::runtime::Runtime::new()?;
@@ -167,6 +168,12 @@ fn run(client: Client, user_login: UserLogin, mut app: App, tick_rate: Duration)
               tx.send(TerminalMessage::ArtistsReceived(artists)).unwrap();
             });
           }
+          ClientMessage::PlayTrack(track_id) => {
+            let client = client.clone();
+            tokio::runtime::Handle::current().spawn(async move {
+              client.play_track_by_id(track_id).await.unwrap();
+            });
+          }
         }
       }
     }
@@ -202,6 +209,11 @@ fn run(client: Client, user_login: UserLogin, mut app: App, tick_rate: Duration)
           KeyCode::Down => app.down(1),
           KeyCode::PageDown => app.down(10),
           KeyCode::End => app.down(usize::MAX),
+          KeyCode::Enter => {
+            if let Some(track) = app.get_selected_track() {
+              client_tx.send(ClientMessage::PlayTrack(track.id))?;
+            }
+          }
           KeyCode::Char('r') => {
             client_tx.send(ClientMessage::RequestAlbums)?;
             client_tx.send(ClientMessage::RequestTracks)?;

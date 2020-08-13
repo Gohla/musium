@@ -528,12 +528,40 @@ pub struct TrackSimple {
 
 // Player
 
+#[derive(Deserialize, Debug)]
+pub struct Device {
+  pub id: String,
+  pub is_active: bool,
+  pub is_private_session: bool,
+  pub is_restricted: bool,
+  pub name: String,
+  pub r#type: String,
+  pub volume_percent: Option<u32>,
+}
+
+impl SpotifyClient {
+  #[instrument(level = "trace", skip(self, authorization))]
+  pub async fn get_devices(&self, authorization: &mut Authorization) -> Result<Vec<Device>, HttpRequestError> {
+    let url = self.api_base_url.join("me/player/devices")?;
+    let request = self.http_client
+      .get(url.clone())
+      ;
+    let response = self.send_request(request, [StatusCode::OK], authorization).await?;
+    #[derive(Deserialize, Debug)]
+    struct Devices {
+      pub devices: Vec<Device>
+    }
+    let devices: Devices = response.json().await?;
+    Ok(devices.devices)
+  }
+}
+
 #[derive(Debug, Error)]
 pub enum PlayError {
   #[error("Failed to join URLs")]
   UrlJoinFail(#[from] url::ParseError, Backtrace),
-  #[error(transparent)]
-  HttpRequestFail(#[from] HttpRequestError),
+  #[error("HTTP request failed")]
+  HttpRequestFail(#[from] HttpRequestError, Backtrace),
   #[error("Failed to deserialize play error")]
   JsonDeserializePlayErrorFail(#[from] reqwest::Error, Backtrace),
   #[error("Failed to play Spotify track with ID '{0}'; server responded with '{1}', error message '{2}', and reason '{3}'")]
@@ -542,7 +570,15 @@ pub enum PlayError {
 
 impl SpotifyClient {
   #[instrument(level = "trace", skip(self, authorization))]
-  pub async fn play_track(&self, track_id: &String, authorization: &mut Authorization) -> Result<(), PlayError> {
+  pub async fn play_track(&self, track_id: &String, device_id: Option<&String>, authorization: &mut Authorization) -> Result<(), PlayError> {
+    let device_id = {
+      let devices = self.get_devices(authorization).await?;
+      if let false = devices.iter().any(|d| d.is_active) {
+        devices.first().map(|d| d.id.clone())
+      } else {
+        None
+      }
+    };
     let url = self.api_base_url.join("me/player/play")?;
     #[derive(Serialize, Debug)]
     struct Body {
@@ -553,6 +589,11 @@ impl SpotifyClient {
       .put(url)
       .json(&body)
       ;
+    let request = if let Some(device_id) = device_id {
+      request.query(&[("device_id", device_id)])
+    } else {
+      request
+    };
     let response = self.send_request(request, [StatusCode::NO_CONTENT, StatusCode::NOT_FOUND, StatusCode::FORBIDDEN], authorization).await?;
     match response.status() {
       StatusCode::NO_CONTENT => Ok(()),

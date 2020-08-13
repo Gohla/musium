@@ -108,6 +108,10 @@ impl Tracks {
   pub fn len(&self) -> usize {
     self.tracks.len()
   }
+
+  pub fn get_track(&self, index: usize) -> Option<&Track> {
+    self.tracks.get(index)
+  }
 }
 
 impl From<TracksRaw> for Tracks {

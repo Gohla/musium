@@ -10,7 +10,7 @@ use tui::layout::{Alignment, Constraint, Layout, Rect};
 use tui::text::Span;
 use tui::widgets::{Paragraph, Row, Table, TableState, Wrap};
 
-use musium_core::model::Artist;
+use musium_core::model::{Artist, Track};
 use musium_core::model::collection::{Albums, Tracks};
 
 use crate::util::{TabsState, TabState};
@@ -157,7 +157,7 @@ impl App {
   }
 }
 
-// Interaction
+// System -> App interaction
 
 impl App {
   pub fn tick(&mut self) {}
@@ -181,6 +181,19 @@ impl App {
   pub fn set_albums(&mut self, albums: Albums) { self.albums = albums; }
   pub fn set_tracks(&mut self, tracks: Tracks) { self.tracks = tracks; }
   pub fn set_artists(&mut self, artists: Vec<Artist>) { self.artists = artists; }
+}
+
+// App -> System interaction
+
+impl App {
+  pub fn get_selected_track(&self) -> Option<&Track> {
+    if let MainTabs::Track = self.tabs.state() {
+      if let Some(selected_index) = self.tracks_state.selected() {
+        return self.tracks.get_track(selected_index)
+      }
+    }
+    None
+  }
 }
 
 // Enum boilerplate
