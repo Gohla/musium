@@ -37,7 +37,7 @@ impl DatabaseConnection<'_> {
     };
     if let (Some(spotify_track), Some(mut spotify_source)) = (spotify_track, spotify_source) {
       let mut authorization = spotify_source.to_spotify_authorization();
-      self.database.spotify_sync.play_track(&spotify_track.spotify_id, &mut authorization).await?;
+      self.database.spotify_sync.play_track(&spotify_track.spotify_id, None, &mut authorization).await?;
       if spotify_source.update_from_spotify_authorization(authorization) {
         event!(Level::DEBUG, ?spotify_source, "Spotify source has changed, updating the database");
         spotify_source.save_changes::<SpotifySource>(&*self.connection)?;

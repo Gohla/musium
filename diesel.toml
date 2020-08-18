@@ -2,4 +2,4 @@
 # see diesel.rs/guides/configuring-diesel-cli
 
 [print_schema]
-file = "musium_core/src/schema.rs"
+file = "core/src/schema.rs"

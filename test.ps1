@@ -1,3 +1,5 @@
+#!/usr/bin/env pwsh
+
 param(
   [parameter(Position = 0, Mandatory = $true)][String]$Command,
   [switch]$DebugProfile,
@@ -19,7 +21,7 @@ if($NoBuild.IsPresent) {
   $Build = $true
 }
 
-$env:SQLITE_MAX_VARIABLE_NUMBER = 1000000
+$Env:SQLITE_MAX_VARIABLE_NUMBER = 1000000
 
 $FastDevPath = Join-Path $PSScriptRoot "target\fastdev"
 $DebugPath = Join-Path $PSScriptRoot "target\debug"
@@ -28,9 +30,14 @@ if($DebugProfile -eq $true) {
 } else {
   $ExeDir = $FastDevPath
 }
-$ServerExePath = [System.IO.Path]::GetFullPath((Join-Path $ExeDir "musium_server.exe"))
-$CliExePath = [System.IO.Path]::GetFullPath((Join-Path $ExeDir "musium_cli.exe"))
-$TuiExePath = [System.IO.Path]::GetFullPath((Join-Path $ExeDir "musium_tui.exe"))
+if($IsWindows -eq $true) {
+  $ExeSuffix = ".exe"
+} else {
+  $ExeSuffix = ""
+}
+$ServerExePath = [System.IO.Path]::GetFullPath((Join-Path $ExeDir "musium_server$ExeSuffix"))
+$CliExePath = [System.IO.Path]::GetFullPath((Join-Path $ExeDir "musium_cli$ExeSuffix"))
+$TuiExePath = [System.IO.Path]::GetFullPath((Join-Path $ExeDir "musium_tui$ExeSuffix"))
 
 function Start-Diesel-Cli {
   diesel $args
@@ -105,6 +112,7 @@ function Before {
   Start-Build @args
   Stop-Servers-Before-If-Requested
   Start-Server-If-Not-Running
+  Start-Sleep -m 100 # Sleep to give the server some time to start up
 }
 function After {
   Stop-Servers-After-If-Requested
@@ -124,7 +132,7 @@ function Test-Stop {
 
 
 function Test-Reset {
-  Start-Diesel-Cli migration redo
+  Start-Diesel-Cli migration redo --migration-dir backend/migrations/
   Before -Server -Cli
   Start-Cli create-spotify-source
   After
