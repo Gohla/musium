@@ -1,127 +1,91 @@
-use tui::backend::Backend;
-use tui::Frame;
-use tui::layout::{Constraint, Direction, Layout, Rect};
+#![allow(dead_code)]
 
-// Element
+use tui::layout::{Constraint, Direction, Layout};
 
-pub trait Element<'a, B: Backend, M> {
-  fn render(&self, f: &mut Frame<B>, area: Rect, selected: bool);
-
-  fn message(&mut self, message: M);
+pub struct NavFrame<'a, M> {
+  root: Item<'a, M>,
+  current: Vec<usize>,
 }
 
-pub struct FnElement<FR, FM> {
-  render_fn: FR,
-  message_fn: FM,
-}
-
-impl<FR, FM> FnElement<FR, FM> {
-  pub fn new<'a, B: Backend, M>(render_fn: FR, message_fn: FM) -> Self where FR: Fn(&mut Frame<B>, Rect, bool) + 'a, FM: FnMut(M) + 'a {
-    Self { render_fn, message_fn }
-  }
-}
-
-impl<'a, B: Backend, FR: Fn(&mut Frame<B>, Rect, bool) + 'a, M, FM: FnMut(M) + 'a> Element<'a, B, M> for FnElement<FR, FM> {
-  fn render(&self, f: &mut Frame<B>, area: Rect, selected: bool) {
-    (self.render_fn)(f, area, selected);
+impl<'a, M> NavFrame<'a, M> {
+  pub fn nav(&mut self, direction: Direction, constraints: impl Into<Vec<Constraint>>) {
+    // TODO: get current selected thing. If it is different: replace it. If it is the same: possibly trim the selection
   }
 
-  fn message(&mut self, message: M) {
-    (self.message_fn)(message);
+  pub fn rows(&mut self, constraints: impl Into<Vec<Constraint>>) {
+    self.nav(Direction::Vertical, constraints);
+  }
+
+  pub fn cols(&mut self, constraints: impl Into<Vec<Constraint>>) {
+    self.nav(Direction::Horizontal, constraints);
+  }
+
+  fn get_item(&mut self, stack: &[usize]) -> Option<&mut Item<'a, M>> {
+    let mut current_item = &mut self.root;
+    for index in stack {
+      match current_item {
+        Item::MessageHandler(_) => return None, // Want to get an item at certain index, but the item does not have sub-items.
+        Item::Container(container) => {
+          if let Some(item) = container.items.get_mut(index) {
+
+          }
+        }
+      }
+    }
+    Some(current_item)
   }
 }
 
 // Container
 
-enum ElementOrContainer<'a, B: Backend, M> {
-  Element(Box<dyn Element<'a, B, M> + 'a>),
-  Container(Container<'a, B, M>),
+enum Item<'a, M> {
+  Container(Container<'a, M>),
+  MessageHandler(Box<dyn FnMut(M) + 'a>),
 }
 
-pub struct Container<'a, B: Backend, M> {
-  items: Vec<ElementOrContainer<'a, B, M>>,
+struct Container<'a, M> {
+  items: Vec<Item<'a, M>>,
   direction: Direction,
   layout: Layout,
   selection_index: Option<usize>,
   last_selection_index: Option<usize>,
 }
 
-// Creation and addition
+// Creation
 
-impl<'a, B: Backend, M> Container<'a, B, M> {
-  pub fn new(direction: Direction) -> Container<'a, B, M> {
+impl<'a, M> Container<'a, M> {
+  fn new(direction: Direction, constraints: impl Into<Vec<Constraint>>) -> Container<'a, M> {
+    let constraints = constraints.into();
     Self {
-      items: Vec::new(),
+      items: Vec::with_capacity(constraints.len()),
       direction: direction.clone(),
-      layout: Layout::default().direction(direction),
+      layout: Layout::default().direction(direction).constraints(constraints),
       selection_index: None,
       last_selection_index: None,
     }
   }
 
-  pub fn rows() -> Self {
-    Self::new(Direction::Vertical)
+  fn rows(constraints: impl Into<Vec<Constraint>>) -> Self {
+    Self::new(Direction::Vertical, constraints)
   }
 
-  pub fn cols() -> Self {
-    Self::new(Direction::Horizontal)
-  }
-
-
-  pub fn constraints(mut self, constraints: impl Into<Vec<Constraint>>) -> Self {
-    self.layout = self.layout.constraints(constraints);
-    self
-  }
-
-
-  pub fn element(mut self, element: Box<dyn Element<'a, B, M>>) -> Self {
-    self.items.push(ElementOrContainer::Element(element));
-    self
-  }
-
-  pub fn widget<FR: Fn(&mut Frame<B>, Rect, bool) + 'a, FM: FnMut(M) + 'a>(mut self, render_fn: FR, message_fn: FM) -> Self {
-    let element = FnElement::new(render_fn, message_fn);
-    let b = Box::new(element);
-    self.items.push(ElementOrContainer::Element(b));
-    self
-  }
-
-  pub fn container(mut self, container: Container<'a, B, M>) -> Self {
-    self.items.push(ElementOrContainer::Container(container));
-    self
-  }
-}
-
-// Rendering
-
-impl<'a, B: Backend, M> Container<'a, B, M> {
-  pub fn render(&self, f: &mut Frame<B>, area: Rect) {
-    let chunks = self.layout.split(area);
-    for (index, (item, area)) in self.items.iter().zip(chunks).enumerate() {
-      match item {
-        ElementOrContainer::Element(element) => {
-          element.render(f, area, self.selection_index.map_or(false, |i| index == i))
-        }
-        ElementOrContainer::Container(container) => {
-          container.render(f, area)
-        }
-      }
-    }
+  fn cols(constraints: impl Into<Vec<Constraint>>) -> Self {
+    Self::new(Direction::Horizontal, constraints)
   }
 }
 
 // Message handling
 
-impl<'a, B: Backend, M> Container<'a, B, M> {
+impl<'a, M> Container<'a, M> {
   pub fn message(&mut self, message: M) {
     for (index, item) in self.items.iter_mut().enumerate() {
       if self.selection_index.map_or(false, |i| index == i) {
         match item {
-          ElementOrContainer::Element(element) => {
+          Item::MessageHandler(element) => {
             element.message(message);
             break;
           }
-          ElementOrContainer::Container(container) => {
+          Item::Container(container) => {
             container.message(message);
             break;
           }
@@ -133,7 +97,7 @@ impl<'a, B: Backend, M> Container<'a, B, M> {
 
 // Selection
 
-impl<'a, B: Backend, M> Container<'a, B, M> {
+impl<'a, M> Container<'a, M> {
   pub fn move_selection_up(&mut self) {
     self.move_selection(Direction::Horizontal, true);
   }
@@ -157,13 +121,13 @@ impl<'a, B: Backend, M> Container<'a, B, M> {
   ) -> bool {
     if let Some(selection_index) = self.selection_index {
       if let Some(new_selection_index) = Self::new_selection_index(selection_index, up_left, self.items.len()) {
-        if let Some(ElementOrContainer::Container(container)) = self.items.get_mut(selection_index) {
+        if let Some(Item::Container(container)) = self.items.get_mut(selection_index) {
           container.unselect();
         }
         self.selection_index = Some(new_selection_index);
         self.last_selection_index = self.selection_index;
         let self_direction = self.direction.clone();
-        if let Some(ElementOrContainer::Container(container)) = self.items.get_mut(new_selection_index) {
+        if let Some(Item::Container(container)) = self.items.get_mut(new_selection_index) {
           let mode = Self::selection_change_mode(self_direction, direction.clone(), up_left);
           container.select(mode);
         }
@@ -171,7 +135,7 @@ impl<'a, B: Backend, M> Container<'a, B, M> {
       true
     } else {
       for item in self.items.iter_mut() {
-        if let ElementOrContainer::Container(container) = item {
+        if let Item::Container(container) = item {
           if container.move_selection(direction.clone(), up_left) {
             return true;
           }

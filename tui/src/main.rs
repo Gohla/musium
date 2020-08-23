@@ -26,7 +26,6 @@ use musium_core::model::*;
 use musium_core::model::collection::{Albums, Tracks};
 
 use crate::app::App;
-use crate::nav::Container;
 
 mod nav;
 mod util;
@@ -186,10 +185,7 @@ fn run(client: Client, user_login: UserLogin, mut app: App, tick_rate: Duration)
   // Main loop that draws the terminal and handles messages.
   terminal.clear()?;
   loop {
-    let mut container = app.layout();
-    terminal.draw(|f| container.render(f, f.size()))?;
-    container.message(()); // TODO: message
-    drop(container);
+    terminal.draw(|f| app.draw(f))?;
     let result = terminal_event_rx.recv_deadline(Instant::now() + tick_rate);
     let terminal_event = match result {
       Ok(terminal_event) => terminal_event,

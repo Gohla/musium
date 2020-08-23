@@ -1,3 +1,5 @@
+#![allow(dead_code)]
+
 use itertools::Itertools;
 use tui::{
   backend::Backend,
@@ -14,7 +16,6 @@ use tui::widgets::{Block, Borders, Paragraph, Row, Table, TableState, Wrap};
 use musium_core::model::{Artist, Track};
 use musium_core::model::collection::{Albums, Tracks};
 
-use crate::nav::Container;
 use crate::util::{TabsState, TabState};
 
 pub struct App {
@@ -80,24 +81,7 @@ impl App {
 // Drawing
 
 impl App {
-  pub fn layout<'a, B: Backend, M>(&'a mut self) -> Container<'a, B, M> {
-    let main_container = Container::rows()
-      .constraints([Constraint::Length(2), Constraint::Percentage(100)].as_ref())
-      .widget(move |f, area, selected| {
-        let titles = ListTabs::iter().map(|s| Spans::from(s.name())).collect();
-        let tabs = Tabs::new(titles)
-          .block(Self::block(selected))
-          .style(Self::style(false))
-          .highlight_style(Self::style(true))
-          .select(self.list_tabs.index());
-        f.render_widget(tabs, area);
-      }, |m| {})
-      ;
-
-    main_container
-  }
-
-  pub fn draw<B: Backend>(&mut self, f: &mut Frame<B>) {
+  pub fn draw<'a, B: Backend>(&'a mut self, f: &mut Frame<B>) {
     if !self.logged_in {
       let text = vec![
         Spans::from(Span::styled("Logging in", Style::default())),
@@ -108,7 +92,6 @@ impl App {
       f.render_widget(widget, f.size());
       return;
     }
-
 
     let chunks = Layout::default()
       .constraints([Constraint::Length(2), Constraint::Percentage(100)].as_ref())
