@@ -92,6 +92,9 @@ function Stop-Servers-After-If-Requested {
 function Start-Server {
   Start-Process -FilePath $ServerExePath -WorkingDirectory $PSScriptRoot -NoNewWindow
 }
+function Start-ServerWait {
+  Start-Process -FilePath $ServerExePath -WorkingDirectory $PSScriptRoot -NoNewWindow -Wait
+}
 function Start-Server-If-Not-Running {
   $ServerIsRunning = (Get-Process | Where-Object {
     $_.Path -like $ServerExePath
@@ -119,17 +122,22 @@ function After {
 }
 
 # Start server if it is not running, or restart it if requested
-Function Test-Start {
+Function Test-StartServer {
   Before -Server
   Start-Server-If-Not-Running
   After
 }
-function Test-Stop {
+function Test-StopServer {
   # No Before, as building is not required (and may fail because the server could be running)
   Stop-Servers
   After
 }
 
+Function Test-Server {
+  Before -Server
+  Start-ServerWait
+  After
+}
 
 function Test-Reset {
   Start-Diesel-Cli migration redo --migration-dir backend/migrations/
