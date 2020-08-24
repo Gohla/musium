@@ -9,6 +9,16 @@ pub struct NavFrame<'a, M> {
 
 impl<'a, M> NavFrame<'a, M> {
   pub fn nav(&mut self, direction: Direction, constraints: impl Into<Vec<Constraint>>) {
+    let constraints = constraints.into();
+    let current = self.current.clone();
+    if let Item::Container(container) = self.get_item(&current) {
+      if container.direction != direction {
+        *container = Container::new(direction, constraints);
+      } else {
+        container.modify(constraints);
+      }
+    }
+
     // TODO: get current selected thing. If it is different: replace it. If it is the same: possibly trim the selection
   }
 
@@ -20,19 +30,21 @@ impl<'a, M> NavFrame<'a, M> {
     self.nav(Direction::Horizontal, constraints);
   }
 
-  fn get_item(&mut self, stack: &[usize]) -> Option<&mut Item<'a, M>> {
+  fn get_item(&mut self, stack: &[usize]) -> &mut Item<'a, M> {
     let mut current_item = &mut self.root;
     for index in stack {
       match current_item {
-        Item::MessageHandler(_) => return None, // Want to get an item at certain index, but the item does not have sub-items.
+        Item::MessageHandler(_) => panic!("OMFG"), // Want to get an item at certain index, but the item does not have sub-items.
         Item::Container(container) => {
-          if let Some(item) = container.items.get_mut(index) {
-
+          if let Some(item) = container.items.get_mut(*index) {
+            current_item = item;
+          } else {
+            panic!("OMFGWTFBBQ")
           }
         }
       }
     }
-    Some(current_item)
+    current_item
   }
 }
 
@@ -51,11 +63,13 @@ struct Container<'a, M> {
   last_selection_index: Option<usize>,
 }
 
-// Creation
+// Creation & modification
 
 impl<'a, M> Container<'a, M> {
   fn new(direction: Direction, constraints: impl Into<Vec<Constraint>>) -> Container<'a, M> {
     let constraints = constraints.into();
+    let len = constraints.len();
+    assert_ne!(len, 0);
     Self {
       items: Vec::with_capacity(constraints.len()),
       direction: direction.clone(),
@@ -72,6 +86,15 @@ impl<'a, M> Container<'a, M> {
   fn cols(constraints: impl Into<Vec<Constraint>>) -> Self {
     Self::new(Direction::Horizontal, constraints)
   }
+
+  fn modify(&mut self, constraints: impl Into<Vec<Constraint>>) {
+    let constraints = constraints.into();
+    let len = constraints.len();
+    assert_ne!(len, 0);
+    self.layout = Layout::default().direction(direction).constraints(constraints);
+    self.selection_index = self.selection_index.map(|i|i.min(len - 1));
+    self.last_selection_index = self.last_selection_index.map(|i|i.min(len - 1));
+  }
 }
 
 // Message handling
@@ -81,8 +104,8 @@ impl<'a, M> Container<'a, M> {
     for (index, item) in self.items.iter_mut().enumerate() {
       if self.selection_index.map_or(false, |i| index == i) {
         match item {
-          Item::MessageHandler(element) => {
-            element.message(message);
+          Item::MessageHandler(f) => {
+            (f)(message);
             break;
           }
           Item::Container(container) => {
