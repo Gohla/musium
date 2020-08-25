@@ -4,22 +4,28 @@ use tui::layout::{Constraint, Direction, Layout};
 
 pub struct NavFrame<'a, M> {
   root: Item<'a, M>,
-  current: Vec<usize>,
+  next: Vec<usize>,
 }
 
 impl<'a, M> NavFrame<'a, M> {
+  pub fn start_frame(&mut self) {
+    self.next.clear();
+  }
+
   pub fn nav(&mut self, direction: Direction, constraints: impl Into<Vec<Constraint>>) {
-    let constraints = constraints.into();
-    let current = self.current.clone();
-    if let Item::Container(container) = self.get_item(&current) {
-      if container.direction != direction {
-        *container = Container::new(direction, constraints);
-      } else {
-        container.modify(constraints);
+    let next = self.next.clone();
+    match self.get_item(&next) {
+      Some(Item::Container(container)) => {
+        container.modify(direction, constraints);
+      }
+      Some(Item::Widget(handler)) => {
+        panic!("Navigation container cannot be nested into widgets");
+      }
+      None => {
+        // TODO: have to add new item to parent. Need to get parent first
       }
     }
-
-    // TODO: get current selected thing. If it is different: replace it. If it is the same: possibly trim the selection
+    self.next.push(0);
   }
 
   pub fn rows(&mut self, constraints: impl Into<Vec<Constraint>>) {
@@ -30,21 +36,23 @@ impl<'a, M> NavFrame<'a, M> {
     self.nav(Direction::Horizontal, constraints);
   }
 
-  fn get_item(&mut self, stack: &[usize]) -> &mut Item<'a, M> {
-    let mut current_item = &mut self.root;
+  pub fn widget(&mut self, handler: Box<dyn FnMut(M) + 'a>) {
+
+  }
+
+
+  fn get_item<'b>(&'a mut self, stack: &'b [usize]) -> (Option<&'a mut Item<'a, M>>, Option<&'a mut Item<'a, M>>) {
+    let mut parent = None;
+    let mut current = &mut self.root;
     for index in stack {
-      match current_item {
-        Item::MessageHandler(_) => panic!("OMFG"), // Want to get an item at certain index, but the item does not have sub-items.
+      match current {
+        Item::Widget(_) => None,
         Item::Container(container) => {
-          if let Some(item) = container.items.get_mut(*index) {
-            current_item = item;
-          } else {
-            panic!("OMFGWTFBBQ")
-          }
+          current = container.items.get_mut(*index)
         }
       }
     }
-    current_item
+    Some(current)
   }
 }
 
@@ -52,7 +60,7 @@ impl<'a, M> NavFrame<'a, M> {
 
 enum Item<'a, M> {
   Container(Container<'a, M>),
-  MessageHandler(Box<dyn FnMut(M) + 'a>),
+  Widget(Box<dyn FnMut(M) + 'a>),
 }
 
 struct Container<'a, M> {
@@ -87,13 +95,19 @@ impl<'a, M> Container<'a, M> {
     Self::new(Direction::Horizontal, constraints)
   }
 
-  fn modify(&mut self, constraints: impl Into<Vec<Constraint>>) {
+  fn modify(&mut self, direction: Direction, constraints: impl Into<Vec<Constraint>>) {
     let constraints = constraints.into();
     let len = constraints.len();
     assert_ne!(len, 0);
     self.layout = Layout::default().direction(direction).constraints(constraints);
-    self.selection_index = self.selection_index.map(|i|i.min(len - 1));
-    self.last_selection_index = self.last_selection_index.map(|i|i.min(len - 1));
+    if self.direction != direction {
+      self.direction = direction;
+      self.selection_index = None;
+      self.last_selection_index = None;
+    } else {
+      self.selection_index = self.selection_index.map(|i| i.min(len - 1));
+      self.last_selection_index = self.last_selection_index.map(|i| i.min(len - 1));
+    }
   }
 }
 
@@ -104,7 +118,7 @@ impl<'a, M> Container<'a, M> {
     for (index, item) in self.items.iter_mut().enumerate() {
       if self.selection_index.map_or(false, |i| index == i) {
         match item {
-          Item::MessageHandler(f) => {
+          Item::Widget(f) => {
             (f)(message);
             break;
           }
