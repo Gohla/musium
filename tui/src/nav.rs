@@ -3,7 +3,7 @@
 use tui::layout::{Constraint, Direction, Layout};
 
 pub struct NavFrame<'a, M> {
-  root: Item<'a, M>,
+  root: Option<Item<'a, M>>,
   next: Vec<usize>,
 }
 
@@ -13,6 +13,7 @@ impl<'a, M> NavFrame<'a, M> {
   }
 
   pub fn nav(&mut self, direction: Direction, constraints: impl Into<Vec<Constraint>>) {
+    if self.next.is_empty() && root.is
     let next = self.next.clone();
     match self.get_item(&next) {
       Some(Item::Container(container)) => {
@@ -43,17 +44,25 @@ impl<'a, M> NavFrame<'a, M> {
 
   fn get_item<'b>(&'a mut self, stack: &'b [usize]) -> (Option<&'a mut Item<'a, M>>, Option<&'a mut Item<'a, M>>) {
     let mut parent = None;
-    let mut current = &mut self.root;
+    let mut current = self.root.as_mut();
     for index in stack {
       match current {
-        Item::Widget(_) => None,
-        Item::Container(container) => {
+        Some(Item::Widget(_)) => panic!(),
+        Some(Item::Container(container)) => {
+          parent = current;
           current = container.items.get_mut(*index)
         }
+        None => break;
       }
     }
     Some(current)
   }
+}
+
+enum GetItem<'a, M> {
+  CreateRoot,
+  CreateInParent(&'a mut Container<'a, M>),
+  Modify(&'a mut Item<'a, M>)
 }
 
 // Container
