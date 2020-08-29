@@ -2,74 +2,86 @@
 
 use tui::layout::{Constraint, Direction, Layout};
 
-pub struct NavFrame<'a, M> {
-  root: Option<Item<'a, M>>,
+pub struct NavFrame<'m, M> {
+  root: Option<Item<'m, M>>,
   next: Vec<usize>,
 }
 
-impl<'a, M> NavFrame<'a, M> {
+impl<'n, 'm, M: 'm> NavFrame<'m, M> {
   pub fn start_frame(&mut self) {
     self.next.clear();
   }
 
-  pub fn nav(&mut self, direction: Direction, constraints: impl Into<Vec<Constraint>>) {
-    if self.next.is_empty() && root.is
+  pub fn nav(&'n mut self, direction: Direction, constraints: impl Into<Vec<Constraint>>) {
     let next = self.next.clone();
-    match self.get_item(&next) {
-      Some(Item::Container(container)) => {
-        container.modify(direction, constraints);
+    match self.get_item(next) {
+      GetItem::CreateRoot => {
+        self.root = Some(Item::Container(Container::new(direction, constraints)))
       }
-      Some(Item::Widget(handler)) => {
-        panic!("Navigation container cannot be nested into widgets");
+      GetItem::CreateInParent(parent) => {
+        parent.add_item(Item::Container(Container::new(direction, constraints)))
       }
-      None => {
-        // TODO: have to add new item to parent. Need to get parent first
+      GetItem::Modify(parent, index, item) => {
+        match item {
+          Item::Container(container) => {
+            container.modify(direction, constraints);
+          }
+          Item::Widget(_) => {
+            parent.unwrap_or_else(|| panic!()).replace_item(index, Item::Container(Container::new(direction, constraints)));
+          }
+        }
       }
     }
     self.next.push(0);
   }
 
-  pub fn rows(&mut self, constraints: impl Into<Vec<Constraint>>) {
-    self.nav(Direction::Vertical, constraints);
-  }
+  // pub fn rows(&'n mut self, constraints: impl Into<Vec<Constraint>>) {
+  //   self.nav(Direction::Vertical, constraints);
+  // }
+  //
+  // pub fn cols(&'n mut self, constraints: impl Into<Vec<Constraint>>) {
+  //   self.nav(Direction::Horizontal, constraints);
+  // }
+  //
+  // pub fn widget(&'m mut self, _handler: Box<dyn FnMut(M) + 'm>) {
+  //   // TODO
+  // }
 
-  pub fn cols(&mut self, constraints: impl Into<Vec<Constraint>>) {
-    self.nav(Direction::Horizontal, constraints);
-  }
 
-  pub fn widget(&mut self, handler: Box<dyn FnMut(M) + 'a>) {
-
-  }
-
-
-  fn get_item<'b>(&'a mut self, stack: &'b [usize]) -> (Option<&'a mut Item<'a, M>>, Option<&'a mut Item<'a, M>>) {
+  fn get_item(&'n mut self, stack: Vec<usize>) -> GetItem<'n, 'm, M> {
     let mut parent = None;
-    let mut current = self.root.as_mut();
-    for index in stack {
+    let mut current: Option<&'n mut Item<'m, M>> = self.root.as_mut();
+    for (i, item_index) in stack.iter().enumerate() {
+      let last = i == stack.len() - 1;
       match current {
-        Some(Item::Widget(_)) => panic!(),
+        Some(Item::Widget(_)) => panic!("Attempted to get item with index '{}' from within a widget", item_index),
         Some(Item::Container(container)) => {
-          parent = current;
-          current = container.items.get_mut(*index)
+          parent = Some(container);
+          current = container.items.get_mut(*item_index)
         }
-        None => break;
+        None if !last => panic!("Attempted to get item with index '{}', but the current item is None and it is not the last one", item_index),
+        None => {}
       }
     }
-    Some(current)
+    match (parent, current) {
+      (None, None) => GetItem::<'n, 'm, M>::CreateRoot,
+      (Some(container), None) => GetItem::<'n, 'm, M>::CreateInParent(container),
+      (container, Some(item)) => GetItem::<'n, 'm, M>::Modify(container, *stack.last().unwrap(), item),
+    }
   }
 }
 
-enum GetItem<'a, M> {
+enum GetItem<'n, 'm, M: 'm> {
   CreateRoot,
-  CreateInParent(&'a mut Container<'a, M>),
-  Modify(&'a mut Item<'a, M>)
+  CreateInParent(&'n mut Container<'m, M>),
+  Modify(Option<&'n mut Container<'m, M>>, usize, &'n mut Item<'m, M>),
 }
 
 // Container
 
-enum Item<'a, M> {
-  Container(Container<'a, M>),
-  Widget(Box<dyn FnMut(M) + 'a>),
+enum Item<'m, M: 'm> {
+  Container(Container<'m, M>),
+  Widget(Box<dyn FnMut(M) + 'm>),
 }
 
 struct Container<'a, M> {
@@ -108,7 +120,7 @@ impl<'a, M> Container<'a, M> {
     let constraints = constraints.into();
     let len = constraints.len();
     assert_ne!(len, 0);
-    self.layout = Layout::default().direction(direction).constraints(constraints);
+    self.layout = Layout::default().direction(direction.clone()).constraints(constraints);
     if self.direction != direction {
       self.direction = direction;
       self.selection_index = None;
@@ -117,6 +129,15 @@ impl<'a, M> Container<'a, M> {
       self.selection_index = self.selection_index.map(|i| i.min(len - 1));
       self.last_selection_index = self.last_selection_index.map(|i| i.min(len - 1));
     }
+  }
+
+  fn add_item(&mut self, item: Item<'a, M>) {
+    self.items.push(item);
+  }
+
+  fn replace_item(&mut self, index: usize, item: Item<'a, M>) {
+    *self.items.get_mut(index)
+      .unwrap_or_else(|| panic!("Cannot replace item at index {}, there is no item for that index", index)) = item;
   }
 }
 
