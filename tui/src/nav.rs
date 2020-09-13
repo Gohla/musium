@@ -48,40 +48,57 @@ impl<'n, 'm, M: 'm> NavFrame<'m, M> {
   // }
 
 
-  fn get_item(&'n mut self, stack: Vec<usize>) -> GetItem<'n, 'm, M> {
-    let mut parent = None;
+  fn set_item(&'n mut self, stack: Vec<usize>, item: Item<'m, M>) {
     let mut current: Option<&'n mut Item<'m, M>> = self.root.as_mut();
-    for (i, item_index) in stack.iter().enumerate() {
-      let last = i == stack.len() - 1;
-      match current {
-        Some(Item::Widget(_)) => panic!("Attempted to get item with index '{}' from within a widget", item_index),
-        Some(Item::Container(container)) => {
-          parent = Some(container);
-          current = container.items.get_mut(*item_index)
+    if stack.is_empty() && current.is_none() {
+      self.root = Some(item);
+    } else {
+      for (i, item_index) in stack.iter().enumerate() {
+        let last = i == stack.len() - 1;
+        match current {
+          Some(Item::Widget(_)) => panic!("Attempted to get item with index '{}' from within a widget", item_index),
+          Some(Item::Container(container)) if last => {
+            parent = Some(container);
+            current = container.items.get_mut(*item_index)
+          }
+          Some(Item::Container(container)) => {
+            current = container.items.get_mut(*item_index)
+          }
+          None => panic!("Attempted to get item with index '{}', but the current item is None", item_index),
         }
-        None if !last => panic!("Attempted to get item with index '{}', but the current item is None and it is not the last one", item_index),
-        None => {}
       }
     }
-    match (parent, current) {
-      (None, None) => GetItem::<'n, 'm, M>::CreateRoot,
-      (Some(container), None) => GetItem::<'n, 'm, M>::CreateInParent(container),
-      (container, Some(item)) => GetItem::<'n, 'm, M>::Modify(container, *stack.last().unwrap(), item),
-    }
+
+    // match (parent, current) {
+    //   (None, None) => GetItem::<'n, 'm, M>::CreateRoot,
+    //   (Some(container), None) => GetItem::<'n, 'm, M>::CreateInParent(container),
+    //   (container, Some(item)) => GetItem::<'n, 'm, M>::Modify(container, *stack.last().unwrap(), item),
+    // }
   }
 }
 
-enum GetItem<'n, 'm, M: 'm> {
-  CreateRoot,
-  CreateInParent(&'n mut Container<'m, M>),
-  Modify(Option<&'n mut Container<'m, M>>, usize, &'n mut Item<'m, M>),
-}
+// enum GetItem<'n, 'm, M: 'm> {
+//   CreateRoot,
+//   CreateInParent(&'n mut Container<'m, M>),
+//   Modify(Option<&'n mut Container<'m, M>>, usize, &'n mut Item<'m, M>),
+// }
 
 // Container
 
 enum Item<'m, M: 'm> {
   Container(Container<'m, M>),
   Widget(Box<dyn FnMut(M) + 'm>),
+}
+
+impl<'m, M: 'm> Item<'m, M> {
+  pub fn is_same_variant(&self, other: &Self) -> bool {
+    use Item::*;
+    match (self, other) {
+      (Container(_), Container(_)) => true,
+      (Widget(_), Widget(_)) => true,
+      _ => false,
+    }
+  }
 }
 
 struct Container<'a, M> {
