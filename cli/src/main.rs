@@ -166,7 +166,10 @@ fn main() -> Result<()> {
   let client: Client = Client::new(opt.url_base)
     .with_context(|| "Failed to create client")?;
   // Create an async runtime
-  let runtime = tokio::runtime::Builder::new_current_thread().build().unwrap();
+  let runtime = tokio::runtime::Builder::new_current_thread()
+    .enable_io()
+    .build()
+    .unwrap();
   // Login
   let user_login = UserLogin { name: opt.name, password: opt.password };
   runtime.block_on(async {
