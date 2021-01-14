@@ -10,7 +10,7 @@ members = [
   "client",
   "audio",
   "cli",
-  "tui"
+  "gui"
 ]
 
 # Development profile: full debug information, no optimisations.
@@ -50,7 +50,7 @@ opt-level = 2
 opt-level = 2
 [profile.fastdev.package."musium_cli"]
 opt-level = 2
-[profile.fastdev.package."musium_tui"]
+[profile.fastdev.package."musium_gui"]
 opt-level = 2
 
 [profile.test]

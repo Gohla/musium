@@ -9,10 +9,10 @@ publish = false
 musium_core = { path = "../core" }
 musium_spotify_client = { path = "../spotify_client" }
 musium_backend = { path = "../backend" }
-actix-web = "2"
+actix-web = "3"
 actix-rt = "1"
-actix-identity = "0.2"
-actix-files = "0.2"
+actix-identity = "0.3"
+actix-files = "0.5"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 structopt = "0.3"

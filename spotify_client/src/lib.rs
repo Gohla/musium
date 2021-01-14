@@ -334,7 +334,7 @@ impl SpotifyClient {
 
           // When the request was rate limited, delay for some time and then retry.
           event!(Level::TRACE, ?request_builder_clone, "Server responded with {}; retrying after {:?}", error, retry_after);
-          tokio::time::delay_for(retry_after).await;
+          tokio::time::sleep(retry_after).await;
           let request_builder = request_builder_clone.ok_or(CannotRetryFail(error))?;
           Ok(self.send_request_with_retry(request_builder, expected_status_codes, authorization, retry + 1).await?)
         }

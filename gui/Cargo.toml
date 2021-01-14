@@ -1,5 +1,5 @@
 [package]
-name = "musium_tui"
+name = "musium_gui"
 version = "0.1.0"
 authors = ["Gabriel Konat <gabrielkonat@gmail.com>"]
 edition = "2018"
@@ -9,12 +9,9 @@ publish = false
 musium_core = { path = "../core" }
 musium_client = { path = "../client" }
 musium_audio = { path = "../audio" }
-tui = { version = "0.10", features = ["crossterm"], default-features = false }
-crossterm = "0.17"
 structopt = "0.3"
 dotenv = "0.15"
-tokio = { version = "0.2", features = ["rt-threaded", "sync"], default-features = false }
-itertools = "0.9"
+itertools = "0.10"
 anyhow = "1"
 thiserror = "1"
 metrics-core = "0.5"
