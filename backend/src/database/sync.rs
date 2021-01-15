@@ -56,7 +56,10 @@ impl DatabaseConnection<'_> {
     self.connection.transaction::<_, SyncError, _>(|| {
       event!(Level::INFO, "Starting Spotify synchronization...");
       let spotify_sources: Vec<SpotifySource> = self.list_spotify_sources()?;
-      let runtime = tokio::runtime::Builder::new_current_thread().build().unwrap();
+      let runtime = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .unwrap();
       runtime.block_on(self.spotify_sync(spotify_sources))?;
       Ok(())
     })?;
