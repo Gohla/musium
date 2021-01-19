@@ -2,6 +2,7 @@
 
 use anyhow::{Context, Result};
 use dotenv;
+use iced::Application;
 use metrics_core::{Builder, Drain, Observe};
 use metrics_observer_yaml::{YamlBuilder, YamlObserver};
 use metrics_runtime::{Controller, Receiver};
@@ -12,6 +13,8 @@ use tracing_subscriber::prelude::*;
 
 use musium_client::{Client, Url};
 use musium_core::model::*;
+
+mod app;
 
 #[derive(Debug, StructOpt)]
 #[structopt(name = "cli", about = "Musium CLI")]
@@ -53,10 +56,21 @@ fn main() -> Result<()> {
   let mut observer: YamlObserver = YamlBuilder::new().build();
   metrics_receiver.install();
   // Create client
-  let _client = Client::new(opt.url_base)
+  let client = Client::new(opt.url_base)
     .with_context(|| "Failed to create client")?;
-  let _user_login = UserLogin { name: opt.name, password: opt.password };
-  // TODO: Run GUI
+  // Create an async runtime
+  let runtime = tokio::runtime::Builder::new_current_thread()
+    .enable_io()
+    .build()
+    .unwrap();
+  // Login
+  let user_login = UserLogin { name: opt.name, password: opt.password };
+  runtime.block_on(async {
+    client.login(&user_login).await
+  }).with_context(|| "Failed to login to server")?;
+  // Run GUI
+  // TODO: this takes control of the application, the rest will not run. Should put this in a tread!
+  app::App::run(iced::Settings::default()).unwrap();
   // Print metrics
   if opt.print_metrics {
     controller.observe(&mut observer);
