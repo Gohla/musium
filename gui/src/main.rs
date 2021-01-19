@@ -15,6 +15,7 @@ use musium_client::{Client, Url};
 use musium_core::model::*;
 
 mod app;
+mod page;
 
 #[derive(Debug, StructOpt)]
 #[structopt(name = "cli", about = "Musium CLI")]
