@@ -1,5 +1,6 @@
-use iced::{Color, Command, Element, Subscription};
 use std::fmt::Debug;
+
+use iced::Command;
 
 pub struct Update<M, A> {
   pub command: Command<M>,
@@ -7,7 +8,7 @@ pub struct Update<M, A> {
 }
 
 impl<M: Debug + Send, A> Update<M, A> {
-  pub fn new(command: Command<M>, action: Option<A>) -> Self { Self { command, action } }
+  pub fn new(command: Command<M>, action: A) -> Self { Self { command, action: Some(action) } }
 
   pub fn command(command: Command<M>) -> Self { Self { command, action: None } }
 
@@ -38,22 +39,4 @@ impl<M: Debug + Send, A> Update<M, A> {
   pub fn map_action<AA>(mut self, f: impl Fn(A) -> AA) -> Update<M, AA> {
     Update::new(self.command, self.action.map(f))
   }
-}
-
-pub trait Component {
-  type Message: Debug + Send;
-  type Action;
-
-  fn update(&mut self, message: Self::Message) -> Update<Self::Message, Self::Action>;
-
-  fn view(&mut self) -> Element<'_, Self::Message>;
-
-
-  fn subscription(&self) -> Subscription<Self::Message> {
-    Subscription::none()
-  }
-
-  fn title(&self) -> Option<String> { None }
-
-  fn background_color(&self) -> Option<Color> { None }
 }

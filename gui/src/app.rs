@@ -5,7 +5,6 @@ use musium_client::Client;
 use musium_core::model::UserLogin;
 
 use crate::page::login;
-use crate::util::Component;
 
 pub struct Flags {
   pub client: Client,
@@ -22,7 +21,7 @@ enum Page {
   Login(login::Root),
 }
 
-#[derive(Debug, Clone)]
+#[derive(Clone, Debug)]
 pub enum Message {
   Login(login::Message),
 }
@@ -45,7 +44,7 @@ impl Application for App {
   fn update(&mut self, message: Self::Message) -> Command<Self::Message> {
     match (&mut self.current_page, message) {
       (Page::Login(p), Message::Login(m)) => {
-        p.update(m).command.map(|m| Message::Login(m))
+        p.update(&mut self.client, m).command.map(|m| Message::Login(m))
       }
       (p, m) => {
         error!("[BUG] Requested update with message '{:?}', but that message cannot be handled by the current page '{:?}' or the application itself", m, p);

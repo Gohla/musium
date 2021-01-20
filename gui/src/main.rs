@@ -63,14 +63,9 @@ fn main() -> Result<()> {
     .with_context(|| "Failed to create client")?;
   // Create an async runtime
   let runtime = tokio::runtime::Builder::new_current_thread()
-    .enable_io()
+    .enable_all()
     .build()
     .unwrap();
-  // // Login
-  //
-  // runtime.block_on(async {
-  //   client.login(&user_login).await
-  // }).with_context(|| "Failed to login to server")?;
   // Run GUI
   // TODO: this takes control of the application, the rest will not run. Should put this in a tread!
   let user_login = UserLogin { name: opt.name, password: opt.password };

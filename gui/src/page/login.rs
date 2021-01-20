@@ -1,9 +1,10 @@
 use iced::{Command, Element};
 use tracing::error;
 
+use musium_client::Client;
 use musium_core::model::UserLogin;
 
-use crate::util::{Component, Update};
+use crate::util::Update;
 
 #[derive(Debug)]
 pub struct Root {
@@ -30,18 +31,19 @@ pub enum Action {
 }
 
 impl Root {
-  pub fn new(user_login: UserLogin) -> Self { Self { current_page: Page::Main(main::Page::new(user_login)) } }
+  pub fn new(user_login: UserLogin) -> Self {
+    Self {
+      current_page: Page::Main(main::Page::new(user_login))
+    }
+  }
 }
 
-impl Component for Root {
-  type Message = Message;
-  type Action = Action;
-
-  fn update(&mut self, message: Self::Message) -> Update<Message, Action> {
+impl Root {
+  pub fn update(&mut self, client: &mut Client, message: Message) -> Update<Message, Action> {
     match (&mut self.current_page, message) {
       (Page::Main(p), Message::Main(m)) => {
-        let (action, update) = p.update(m).map_command(|m| Message::Main(m)).take_action();
-        if let Some(main::Action::Start) = action {
+        let (action, update) = p.update(client, m).map_command(|m| Message::Main(m)).take_action();
+        if let Some(main::Action::LoginRequestSent) = action {
           self.current_page = Page::Busy(busy::Page::new())
         }
         update
@@ -59,7 +61,7 @@ impl Component for Root {
     }
   }
 
-  fn view(&mut self) -> Element<'_, Self::Message> {
+  pub fn view(&mut self) -> Element<'_, Message> {
     match &mut self.current_page {
       Page::Main(p) => p.view().map(|m| Message::Main(m)),
       Page::Busy(p) => p.view().map(|m| Message::Busy(m)),
@@ -72,16 +74,17 @@ impl Component for Root {
 pub mod main {
   use iced::{Button, button, Column, Command, Element, Row, Text, text_input, TextInput};
 
-  use musium_core::model::UserLogin;
+  use musium_client::{Client, HttpRequestError};
+  use musium_core::model::{UserLogin, User};
 
-  use crate::util::{Component, Update};
+  use crate::util::Update;
 
-  #[derive(Default, Debug)]
+  #[derive(Debug)]
   pub struct Page {
     name_state: text_input::State,
     password_state: text_input::State,
-    user_login: UserLogin,
     login_state: button::State,
+    user_login: UserLogin,
   }
 
   #[derive(Clone, Debug)]
@@ -89,36 +92,37 @@ pub mod main {
     SetName(String),
     SetPassword(String),
     Login(UserLogin),
+    LoginResponseReceived(Result<User, HttpRequestError>)
   }
 
   #[derive(Debug)]
   pub enum Action {
-    Start,
+    LoginRequestSent,
   }
 
   impl Page {
     pub fn new(user_login: UserLogin) -> Self {
       Self {
+        name_state: text_input::State::default(),
+        password_state: text_input::State::default(),
+        login_state: button::State::default(),
         user_login,
-        ..Self::default()
       }
     }
-  }
 
-  impl Component for Page {
-    type Message = Message;
-    type Action = Action;
-
-    fn update(&mut self, message: Self::Message) -> Update<Message, Action> {
+    pub fn update(&mut self, client: &mut Client, message: Message) -> Update<Message, Action> {
       match message {
         Message::SetName(name) => self.user_login.name = name,
         Message::SetPassword(password) => self.user_login.password = password,
-        Message::Login(user_login) => return Update::action(Action::Start),
+        Message::Login(user_login) => {
+          let command = Command::perform(client.login(&user_login), super::busy::Message::LoginResponseReceived);
+          return Update::new(command, Action::LoginRequestSent);
+        }
       }
       Update::none()
     }
 
-    fn view(&mut self) -> Element<'_, Self::Message> {
+    pub fn view(&mut self) -> Element<'_, Message> {
       Row::new()
         .push(TextInput::new(&mut self.name_state, "Name", &self.user_login.name, Message::SetName))
         .push(TextInput::new(&mut self.password_state, "Password", &self.user_login.password, Message::SetPassword)
@@ -136,13 +140,18 @@ pub mod main {
 pub mod busy {
   use iced::{Column, Command, Element};
 
-  use crate::util::{Component, Update};
+  use musium_client::HttpRequestError;
+  use musium_core::model::User;
+
+  use crate::util::Update;
 
   #[derive(Debug)]
   pub struct Page {}
 
   #[derive(Clone, Debug)]
-  pub enum Message {}
+  pub enum Message {
+
+  }
 
   #[derive(Debug)]
   pub enum Action {
@@ -152,17 +161,12 @@ pub mod busy {
 
   impl Page {
     pub fn new() -> Self { Self {} }
-  }
 
-  impl Component for Page {
-    type Message = Message;
-    type Action = Action;
-
-    fn update(&mut self, _message: Message) -> Update<Message, Action> {
+    pub fn update(&mut self, _message: Message) -> Update<Message, Action> {
       Update::none()
     }
 
-    fn view(&mut self) -> Element<'_, Message> {
+    pub fn view(&mut self) -> Element<'_, Message> {
       Column::new().into()
     }
   }
@@ -172,7 +176,7 @@ pub mod busy {
 pub mod failed {
   use iced::{Column, Command, Element};
 
-  use crate::util::{Component, Update};
+  use crate::util::Update;
 
   #[derive(Debug)]
   pub struct Page {}
@@ -187,17 +191,12 @@ pub mod failed {
 
   impl Page {
     pub fn new() -> Self { Self {} }
-  }
 
-  impl Component for Page {
-    type Message = Message;
-    type Action = Action;
-
-    fn update(&mut self, _message: Message) -> Update<Message, Action> {
+    pub fn update(&mut self, _message: Message) -> Update<Message, Action> {
       Update::none()
     }
 
-    fn view(&mut self) -> Element<'_, Message> {
+    pub fn view(&mut self) -> Element<'_, Message> {
       Column::new().into()
     }
   }
