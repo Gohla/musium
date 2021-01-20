@@ -13,7 +13,7 @@ pub mod collection;
 
 // Album
 
-#[derive(Clone, PartialOrd, PartialEq, Debug, Identifiable, Queryable, AsChangeset, Serialize, Deserialize)]
+#[derive(Default, Clone, PartialOrd, PartialEq, Debug, Identifiable, Queryable, AsChangeset, Serialize, Deserialize)]
 #[table_name = "album"]
 #[changeset_options(treat_none_as_null = "true")]
 pub struct Album {
@@ -21,7 +21,7 @@ pub struct Album {
   pub name: String,
 }
 
-#[derive(Debug, Insertable)]
+#[derive(Default, Debug, Insertable)]
 #[table_name = "album"]
 pub struct NewAlbum {
   pub name: String,
@@ -29,7 +29,7 @@ pub struct NewAlbum {
 
 // Track
 
-#[derive(Clone, PartialOrd, PartialEq, Debug, Identifiable, Queryable, Associations, AsChangeset, Serialize, Deserialize)]
+#[derive(Default, Clone, PartialOrd, PartialEq, Debug, Identifiable, Queryable, Associations, AsChangeset, Serialize, Deserialize)]
 #[belongs_to(Album)]
 #[table_name = "track"]
 #[changeset_options(treat_none_as_null = "true")]
@@ -43,7 +43,7 @@ pub struct Track {
   pub title: String,
 }
 
-#[derive(Default, Debug, Insertable)]
+#[derive(Default, Clone, Debug, Insertable)]
 #[table_name = "track"]
 pub struct NewTrack {
   pub album_id: i32,
@@ -56,7 +56,7 @@ pub struct NewTrack {
 
 // Artist
 
-#[derive(Clone, PartialOrd, Ord, PartialEq, Eq, Hash, Debug, Identifiable, Queryable, AsChangeset, Serialize, Deserialize)]
+#[derive(Default, Clone, PartialOrd, Ord, PartialEq, Eq, Hash, Debug, Identifiable, Queryable, AsChangeset, Serialize, Deserialize)]
 #[table_name = "artist"]
 #[changeset_options(treat_none_as_null = "true")]
 pub struct Artist {
@@ -64,7 +64,7 @@ pub struct Artist {
   pub name: String,
 }
 
-#[derive(Debug, Insertable)]
+#[derive(Default, Debug, Insertable)]
 #[table_name = "artist"]
 pub struct NewArtist {
   pub name: String,
@@ -72,7 +72,7 @@ pub struct NewArtist {
 
 // Track-artist
 
-#[derive(Clone, PartialOrd, Ord, PartialEq, Eq, Hash, Debug, Identifiable, Queryable, Associations, Serialize, Deserialize)]
+#[derive(Default, Copy, Clone, PartialOrd, Ord, PartialEq, Eq, Hash, Debug, Identifiable, Queryable, Associations, Serialize, Deserialize)]
 #[primary_key(track_id, artist_id)]
 #[table_name = "track_artist"]
 #[belongs_to(Track)]
@@ -82,7 +82,7 @@ pub struct TrackArtist {
   pub artist_id: i32,
 }
 
-#[derive(Debug, Insertable)]
+#[derive(Default, Copy, Clone, Debug, Insertable)]
 #[table_name = "track_artist"]
 pub struct NewTrackArtist {
   pub track_id: i32,
@@ -91,7 +91,7 @@ pub struct NewTrackArtist {
 
 // Album-artist
 
-#[derive(Clone, PartialOrd, Ord, PartialEq, Eq, Hash, Debug, Identifiable, Queryable, Associations, Serialize, Deserialize)]
+#[derive(Default, Copy, Clone, PartialOrd, Ord, PartialEq, Eq, Hash, Debug, Identifiable, Queryable, Associations, Serialize, Deserialize)]
 #[primary_key(album_id, artist_id)]
 #[table_name = "album_artist"]
 #[belongs_to(Album)]
@@ -101,7 +101,7 @@ pub struct AlbumArtist {
   pub artist_id: i32,
 }
 
-#[derive(Debug, Insertable)]
+#[derive(Default, Copy, Clone, Debug, Insertable)]
 #[table_name = "album_artist"]
 pub struct NewAlbumArtist {
   pub album_id: i32,
@@ -113,7 +113,7 @@ pub struct NewAlbumArtist {
 // Local source and linked data
 //
 
-#[derive(Clone, PartialOrd, PartialEq, Debug, Identifiable, Queryable, AsChangeset, Serialize, Deserialize)]
+#[derive(Default, Clone, PartialOrd, PartialEq, Debug, Identifiable, Queryable, AsChangeset, Serialize, Deserialize)]
 #[table_name = "local_source"]
 #[changeset_options(treat_none_as_null = "true")]
 pub struct LocalSource {
@@ -122,14 +122,14 @@ pub struct LocalSource {
   pub directory: String,
 }
 
-#[derive(Clone, Debug, Insertable, Serialize, Deserialize)]
+#[derive(Default, Clone, Debug, Insertable, Serialize, Deserialize)]
 #[table_name = "local_source"]
 pub struct NewLocalSource {
   pub enabled: bool,
   pub directory: String,
 }
 
-#[derive(Clone, PartialOrd, PartialEq, Debug, Identifiable, Queryable, Associations, Serialize, Deserialize)]
+#[derive(Default, Copy, Clone, PartialOrd, PartialEq, Debug, Identifiable, Queryable, Associations, Serialize, Deserialize)]
 #[primary_key(album_id, local_source_id)]
 #[table_name = "local_album"]
 #[belongs_to(Album)]
@@ -139,14 +139,14 @@ pub struct LocalAlbum {
   pub local_source_id: i32,
 }
 
-#[derive(Debug, Insertable)]
+#[derive(Default, Copy, Clone, Debug, Insertable)]
 #[table_name = "local_album"]
 pub struct NewLocalAlbum {
   pub album_id: i32,
   pub local_source_id: i32,
 }
 
-#[derive(Clone, PartialOrd, PartialEq, Debug, Identifiable, Queryable, Associations, AsChangeset, Serialize, Deserialize)]
+#[derive(Default, Clone, PartialOrd, PartialEq, Debug, Identifiable, Queryable, Associations, AsChangeset, Serialize, Deserialize)]
 #[primary_key(track_id, local_source_id)]
 #[table_name = "local_track"]
 #[belongs_to(Track)]
@@ -159,7 +159,7 @@ pub struct LocalTrack {
   pub hash: i64,
 }
 
-#[derive(Debug, Insertable)]
+#[derive(Default, Clone, Debug, Insertable)]
 #[table_name = "local_track"]
 pub struct NewLocalTrack {
   pub track_id: i32,
@@ -168,7 +168,7 @@ pub struct NewLocalTrack {
   pub hash: i64,
 }
 
-#[derive(Clone, PartialOrd, PartialEq, Debug, Identifiable, Queryable, Associations, Serialize, Deserialize)]
+#[derive(Default, Copy, Clone, PartialOrd, PartialEq, Debug, Identifiable, Queryable, Associations, Serialize, Deserialize)]
 #[primary_key(artist_id, local_source_id)]
 #[table_name = "local_artist"]
 #[belongs_to(Artist)]
@@ -178,7 +178,7 @@ pub struct LocalArtist {
   pub local_source_id: i32,
 }
 
-#[derive(Debug, Insertable)]
+#[derive(Default, Copy, Clone, Debug, Insertable)]
 #[table_name = "local_artist"]
 pub struct NewLocalArtist {
   pub artist_id: i32,
@@ -212,7 +212,7 @@ pub struct NewSpotifySource {
   pub expiry_date: NaiveDateTime,
 }
 
-#[derive(Clone, PartialOrd, PartialEq, Debug, Identifiable, Queryable, Associations, Serialize, Deserialize)]
+#[derive(Default, Clone, PartialOrd, PartialEq, Debug, Identifiable, Queryable, Associations, Serialize, Deserialize)]
 #[primary_key(album_id, spotify_id)]
 #[table_name = "spotify_album"]
 #[belongs_to(Album)]
@@ -221,14 +221,14 @@ pub struct SpotifyAlbum {
   pub spotify_id: String,
 }
 
-#[derive(Debug, Insertable)]
+#[derive(Default, Clone, Insertable)]
 #[table_name = "spotify_album"]
 pub struct NewSpotifyAlbum {
   pub album_id: i32,
   pub spotify_id: String,
 }
 
-#[derive(Clone, PartialOrd, PartialEq, Debug, Identifiable, Queryable, Associations, Serialize, Deserialize)]
+#[derive(Default, Clone, PartialOrd, PartialEq, Debug, Identifiable, Queryable, Associations, Serialize, Deserialize)]
 #[primary_key(track_id, spotify_id)]
 #[table_name = "spotify_track"]
 #[belongs_to(Track)]
@@ -237,14 +237,14 @@ pub struct SpotifyTrack {
   pub spotify_id: String,
 }
 
-#[derive(Debug, Insertable)]
+#[derive(Default, Clone, Insertable)]
 #[table_name = "spotify_track"]
 pub struct NewSpotifyTrack {
   pub track_id: i32,
   pub spotify_id: String,
 }
 
-#[derive(Clone, PartialOrd, PartialEq, Debug, Identifiable, Queryable, Associations, Serialize, Deserialize)]
+#[derive(Default, Clone, PartialOrd, PartialEq, Debug, Identifiable, Queryable, Associations, Serialize, Deserialize)]
 #[primary_key(artist_id, spotify_id)]
 #[table_name = "spotify_artist"]
 #[belongs_to(Artist)]
@@ -253,7 +253,7 @@ pub struct SpotifyArtist {
   pub spotify_id: String,
 }
 
-#[derive(Debug, Insertable)]
+#[derive(Default, Clone, Debug, Insertable)]
 #[table_name = "spotify_artist"]
 pub struct NewSpotifyArtist {
   pub artist_id: i32,
@@ -264,7 +264,7 @@ pub struct NewSpotifyArtist {
 // Spotify source data
 //
 
-#[derive(Clone, PartialOrd, PartialEq, Debug, Identifiable, Queryable, Associations, Serialize, Deserialize)]
+#[derive(Default, Copy, Clone, PartialOrd, PartialEq, Debug, Identifiable, Queryable, Associations, Serialize, Deserialize)]
 #[primary_key(album_id, spotify_source_id)]
 #[table_name = "spotify_album_source"]
 #[belongs_to(Album)]
@@ -274,14 +274,14 @@ pub struct SpotifyAlbumSource {
   pub spotify_source_id: i32,
 }
 
-#[derive(Debug, Insertable)]
+#[derive(Default, Copy, Clone, Debug, Insertable)]
 #[table_name = "spotify_album_source"]
 pub struct NewSpotifyAlbumSource {
   pub album_id: i32,
   pub spotify_source_id: i32,
 }
 
-#[derive(Clone, PartialOrd, PartialEq, Debug, Identifiable, Queryable, Associations, Serialize, Deserialize)]
+#[derive(Default, Copy, Clone, PartialOrd, PartialEq, Debug, Identifiable, Queryable, Associations, Serialize, Deserialize)]
 #[primary_key(track_id, spotify_source_id)]
 #[table_name = "spotify_track_source"]
 #[belongs_to(Track)]
@@ -291,14 +291,14 @@ pub struct SpotifyTrackSource {
   pub spotify_source_id: i32,
 }
 
-#[derive(Debug, Insertable)]
+#[derive(Default, Copy, Clone, Debug, Insertable)]
 #[table_name = "spotify_track_source"]
 pub struct NewSpotifyTrackSource {
   pub track_id: i32,
   pub spotify_source_id: i32,
 }
 
-#[derive(Clone, PartialOrd, PartialEq, Debug, Identifiable, Queryable, Associations, Serialize, Deserialize)]
+#[derive(Default, Copy, Clone, PartialOrd, PartialEq, Debug, Identifiable, Queryable, Associations, Serialize, Deserialize)]
 #[primary_key(artist_id, spotify_source_id)]
 #[table_name = "spotify_artist_source"]
 #[belongs_to(Artist)]
@@ -308,7 +308,7 @@ pub struct SpotifyArtistSource {
   pub spotify_source_id: i32,
 }
 
-#[derive(Debug, Insertable)]
+#[derive(Default, Copy, Clone, Debug, Insertable)]
 #[table_name = "spotify_artist_source"]
 pub struct NewSpotifyArtistSource {
   pub artist_id: i32,
@@ -322,20 +322,20 @@ pub struct NewSpotifyArtistSource {
 
 // User
 
-#[derive(Clone, PartialOrd, Ord, PartialEq, Eq, Hash, Debug, Identifiable, Queryable, Serialize, Deserialize)]
+#[derive(Default, Clone, PartialOrd, Ord, PartialEq, Eq, Hash, Debug, Identifiable, Queryable, Serialize, Deserialize)]
 #[table_name = "user"]
 pub struct User {
   pub id: i32,
   pub name: String,
 }
 
-#[derive(Clone, PartialOrd, Ord, PartialEq, Eq, Hash, Debug, Serialize, Deserialize)]
+#[derive(Default, Clone, PartialOrd, Ord, PartialEq, Eq, Hash, Debug, Serialize, Deserialize)]
 pub struct UserLogin {
   pub name: String,
   pub password: String,
 }
 
-#[derive(Clone, PartialOrd, Ord, PartialEq, Eq, Hash, Debug, Serialize, Deserialize)]
+#[derive(Default, Clone, PartialOrd, Ord, PartialEq, Eq, Hash, Debug, Serialize, Deserialize)]
 pub struct NewUser {
   pub name: String,
   pub password: String,
@@ -343,7 +343,7 @@ pub struct NewUser {
 
 // User-album rating
 
-#[derive(Clone, PartialOrd, Ord, PartialEq, Eq, Hash, Debug, Identifiable, Queryable, Associations, AsChangeset, Serialize, Deserialize)]
+#[derive(Default, Copy, Clone, PartialOrd, Ord, PartialEq, Eq, Hash, Debug, Identifiable, Queryable, Associations, AsChangeset, Serialize, Deserialize)]
 #[primary_key(user_id, album_id)]
 #[table_name = "user_album_rating"]
 #[belongs_to(User)]
@@ -355,7 +355,7 @@ pub struct UserAlbumRating {
   pub rating: i32,
 }
 
-#[derive(Debug, Insertable, Serialize, Deserialize)]
+#[derive(Default, Copy, Clone, Debug, Insertable, Serialize, Deserialize)]
 #[table_name = "user_album_rating"]
 pub struct NewUserAlbumRating {
   pub user_id: i32,
@@ -365,7 +365,7 @@ pub struct NewUserAlbumRating {
 
 // User-track rating
 
-#[derive(Clone, PartialOrd, Ord, PartialEq, Eq, Hash, Debug, Identifiable, Queryable, Associations, AsChangeset, Serialize, Deserialize)]
+#[derive(Default, Copy, Clone, PartialOrd, Ord, PartialEq, Eq, Hash, Debug, Identifiable, Queryable, Associations, AsChangeset, Serialize, Deserialize)]
 #[primary_key(user_id, track_id)]
 #[table_name = "user_track_rating"]
 #[belongs_to(User)] /*, foreign_key = "user_id"*/
@@ -377,7 +377,7 @@ pub struct UserTrackRating {
   pub rating: i32,
 }
 
-#[derive(Debug, Insertable, Serialize, Deserialize)]
+#[derive(Default, Copy, Clone, Debug, Insertable, Serialize, Deserialize)]
 #[table_name = "user_track_rating"]
 pub struct NewUserTrackRating {
   pub user_id: i32,
@@ -387,7 +387,7 @@ pub struct NewUserTrackRating {
 
 // User-artist rating
 
-#[derive(Clone, PartialOrd, Ord, PartialEq, Eq, Hash, Debug, Identifiable, Queryable, Associations, AsChangeset, Serialize, Deserialize)]
+#[derive(Default, Copy, Clone, PartialOrd, Ord, PartialEq, Eq, Hash, Debug, Identifiable, Queryable, Associations, AsChangeset, Serialize, Deserialize)]
 #[primary_key(user_id, artist_id)]
 #[table_name = "user_artist_rating"]
 #[belongs_to(User)]
@@ -399,7 +399,7 @@ pub struct UserArtistRating {
   pub rating: i32,
 }
 
-#[derive(Debug, Insertable, Serialize, Deserialize)]
+#[derive(Default, Copy, Clone, Debug, Insertable, Serialize, Deserialize)]
 #[table_name = "user_artist_rating"]
 pub struct NewUserArtistRating {
   pub user_id: i32,

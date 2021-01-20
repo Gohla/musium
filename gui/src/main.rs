@@ -11,11 +11,13 @@ use tracing::trace;
 use tracing_subscriber::{EnvFilter, fmt};
 use tracing_subscriber::prelude::*;
 
+use app::{App, Flags};
 use musium_client::{Client, Url};
 use musium_core::model::*;
 
 mod app;
 mod page;
+mod util;
 
 #[derive(Debug, StructOpt)]
 #[structopt(name = "cli", about = "Musium CLI")]
@@ -64,14 +66,15 @@ fn main() -> Result<()> {
     .enable_io()
     .build()
     .unwrap();
-  // Login
-  let user_login = UserLogin { name: opt.name, password: opt.password };
-  runtime.block_on(async {
-    client.login(&user_login).await
-  }).with_context(|| "Failed to login to server")?;
+  // // Login
+  //
+  // runtime.block_on(async {
+  //   client.login(&user_login).await
+  // }).with_context(|| "Failed to login to server")?;
   // Run GUI
   // TODO: this takes control of the application, the rest will not run. Should put this in a tread!
-  app::App::run(iced::Settings::default()).unwrap();
+  let user_login = UserLogin { name: opt.name, password: opt.password };
+  app::App::run(iced::Settings::with_flags(Flags { client, user_login })).unwrap();
   // Print metrics
   if opt.print_metrics {
     controller.observe(&mut observer);

@@ -1,15 +1,25 @@
 use iced::{Application, Command, Element};
 use tracing::error;
 
-use crate::page::{login, Page as PageTrait};
+use musium_client::Client;
+use musium_core::model::UserLogin;
+
+use crate::page::login;
+use crate::util::Component;
+
+pub struct Flags {
+  pub client: Client,
+  pub user_login: UserLogin,
+}
 
 pub struct App {
-  current_page: Page
+  client: Client,
+  current_page: Page,
 }
 
 #[derive(Debug)]
-pub enum Page {
-  Login(login::Page),
+enum Page {
+  Login(login::Root),
 }
 
 #[derive(Debug, Clone)]
@@ -20,11 +30,11 @@ pub enum Message {
 impl Application for App {
   type Executor = iced::executor::Default;
   type Message = Message;
-  type Flags = ();
+  type Flags = Flags;
 
-  fn new(_flags: ()) -> (Self, Command<Self::Message>) {
-    let current_page = Page::Login(login::Page::new());
-    let app = Self { current_page };
+  fn new(flags: Flags) -> (Self, Command<Message>) {
+    let current_page = Page::Login(login::Root::new(flags.user_login));
+    let app = Self { client: flags.client, current_page };
     (app, Command::none())
   }
 
@@ -34,7 +44,9 @@ impl Application for App {
 
   fn update(&mut self, message: Self::Message) -> Command<Self::Message> {
     match (&mut self.current_page, message) {
-      (Page::Login(p), Message::Login(m)) => { p.update(m).map(|m| Message::Login(m)) }
+      (Page::Login(p), Message::Login(m)) => {
+        p.update(m).command.map(|m| Message::Login(m))
+      }
       (p, m) => {
         error!("[BUG] Requested update with message '{:?}', but that message cannot be handled by the current page '{:?}' or the application itself", m, p);
         Command::none()
