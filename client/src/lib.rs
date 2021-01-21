@@ -37,6 +37,10 @@ impl Client {
       .build()?;
     Ok(Self { client, url })
   }
+
+  pub fn set_url(&mut self, url: Url) {
+    self.url = url;
+  }
 }
 
 // Generic HTTP request error type for the most common errors

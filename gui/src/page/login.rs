@@ -1,23 +1,30 @@
 use std::sync::Arc;
 
-use iced::{Button, button, Column, Command, Element, Row, Text, text_input, TextInput};
+use iced::{Button, button, Column, Command, Element, HorizontalAlignment, Length, Row, Text, text_input, TextInput, Align};
 
-use musium_client::{Client, HttpRequestError};
+use musium_client::{Client, HttpRequestError, Url};
 use musium_core::model::{User, UserLogin};
 
 use crate::util::Update;
 
 #[derive(Default, Debug)]
 pub struct Page {
+  url_input: text_input::State,
   name_input: text_input::State,
   password_input: text_input::State,
   login_button: button::State,
-  user_login: UserLogin,
+
   state: State,
+
+  url: String,
+  parsed_url: Option<Url>,
+  url_parse_error: Option<url::ParseError>,
+  user_login: UserLogin,
 }
 
 #[derive(Clone, Debug)]
 pub enum Message {
+  SetUrl(String),
   SetName(String),
   SetPassword(String),
   SendLoginRequest(UserLogin),
@@ -34,8 +41,10 @@ enum State { Idle, Busy, Failed(Arc<HttpRequestError>) }
 impl Default for State { fn default() -> Self { Self::Idle } }
 
 impl Page {
-  pub fn new(user_login: UserLogin) -> Self {
+  pub fn new(url: Url, user_login: UserLogin) -> Self {
     Self {
+      url: url.to_string(),
+      parsed_url: Some(url),
       user_login,
       ..Self::default()
     }
@@ -43,6 +52,19 @@ impl Page {
 
   pub fn update(&mut self, client: &mut Client, message: Message) -> Update<Message, Action> {
     match message {
+      Message::SetUrl(url) => {
+        self.url = url.clone();
+        match Url::parse(&url) {
+          Ok(url) => {
+            self.parsed_url = Some(url);
+            self.url_parse_error = None;
+          }
+          Err(e) => {
+            self.parsed_url = None;
+            self.url_parse_error = Some(e)
+          }
+        }
+      }
       Message::SetName(name) => self.user_login.name = name,
       Message::SetPassword(password) => self.user_login.password = password,
       Message::SendLoginRequest(user_login) => {
@@ -64,16 +86,62 @@ impl Page {
   }
 
   pub fn view(&mut self) -> Element<'_, Message> {
-    match &self.state {
-      State::Idle => Row::new()
-        .push(TextInput::new(&mut self.name_input, "Name", &self.user_login.name, Message::SetName))
-        .push(TextInput::new(&mut self.password_input, "Password", &self.user_login.password, Message::SetPassword)
-          .password()
-        )
-        .push(Button::new(&mut self.login_button, Text::new("Login"))
-          .on_press(Message::SendLoginRequest(self.user_login.clone()))
-        )
-        .into(),
+    let title = Text::new("Login")
+      .width(Length::Fill)
+      .size(100)
+      .color([0.5, 0.5, 0.5])
+      .horizontal_alignment(HorizontalAlignment::Center);
+
+    let content: Element<_> = match &self.state {
+      State::Idle => {
+        let spacing = 5;
+        let align = Align::Center;
+        let label_size = 20;
+        let label_width = Length::Units(100);
+        let input_size = 30;
+        let input_width = Length::Units(400);
+        let input_padding = 5;
+        Column::new().spacing(spacing)
+          .push(Row::new().spacing(spacing).align_items(align)
+            .push(Text::new("Server URL")
+                    .size(label_size)
+                    .width(label_width)
+                  //.vertical_alignment(VerticalAlignment::Center)
+            )
+            .push(TextInput::new(&mut self.url_input, "Server URL", &self.url, Message::SetUrl)
+              .size(input_size)
+              .width(input_width)
+              .padding(input_padding)
+            )
+          )
+          .push(Row::new().spacing(spacing).align_items(align)
+            .push(Text::new("Name")
+              .size(label_size)
+              .width(label_width)
+            )
+            .push(TextInput::new(&mut self.name_input, "Name", &self.user_login.name, Message::SetName)
+              .size(input_size)
+              .width(input_width)
+              .padding(input_padding)
+            )
+          )
+          .push(Row::new().spacing(spacing).align_items(align)
+            .push(Text::new("Password")
+              .size(label_size)
+              .width(label_width)
+            )
+            .push(TextInput::new(&mut self.password_input, "Password", &self.user_login.password, Message::SetPassword)
+              .size(input_size)
+              .width(input_width)
+              .padding(input_padding)
+              .password()
+            )
+          )
+          .push(Button::new(&mut self.login_button, Text::new("Login"))
+            .on_press(Message::SendLoginRequest(self.user_login.clone()))
+          )
+          .into()
+      }
       State::Busy => Row::new()
         .push(Text::new("Logging in..."))
         .into(),
@@ -84,149 +152,13 @@ impl Page {
           .on_press(Message::Return)
         )
         .into(),
-    }
+    };
+
+    let view = Column::new()
+      .spacing(20)
+      .align_items(Align::Center)
+      .push(title)
+      .push(content);
+    view.into()
   }
 }
-
-// use iced::{Command, Element};
-// use tracing::error;
-//
-// use musium_client::Client;
-// use musium_core::model::UserLogin;
-//
-// use crate::util::Update;
-//
-// #[derive(Debug)]
-// pub struct Root {
-//   current_page: Page,
-// }
-//
-// #[derive(Debug)]
-// pub enum Page {
-//   Main(main::Page),
-//   Busy(busy::Page),
-//   Failed(failed::Page),
-// }
-//
-// #[derive(Clone, Debug)]
-// pub enum Message {
-//   Main(main::Message),
-//   Busy(busy::Message),
-//   Failed(failed::Message),
-// }
-//
-// #[derive(Debug)]
-// pub enum Action {
-//   LoggedIn
-// }
-//
-// impl Root {
-//   pub fn new(user_login: UserLogin) -> Self {
-//     Self {
-//       current_page: Page::Main(main::Page::new(user_login))
-//     }
-//   }
-// }
-//
-// impl Root {
-//   pub fn update(&mut self, client: &mut Client, message: Message) -> Update<Message, Action> {
-//     match (&mut self.current_page, message) {
-//       (Page::Main(p), Message::Main(m)) => {
-//         let (action, update) = p.update(client, m).map_command(|m| Message::Main(m)).take_action();
-//         if let Some(main::Action::LoginRequestSent) = action {
-//           self.current_page = Page::Busy(busy::Page::new())
-//         }
-//         update
-//       }
-//       (Page::Busy(p), Message::Busy(m)) => {
-//         p.update(m).map_command(|m| Message::Busy(m)).discard_action()
-//       }
-//       (Page::Failed(p), Message::Failed(m)) => {
-//         p.update(m).map_command(|m| Message::Failed(m)).discard_action()
-//       }
-//       (p, m) => {
-//         error!("[BUG] Requested update with message '{:?}', but that message cannot be handled by the current page '{:?}' or the application itself", m, p);
-//         Update::none()
-//       }
-//     }
-//   }
-//
-//   pub fn view(&mut self) -> Element<'_, Message> {
-//     match &mut self.current_page {
-//       Page::Main(p) => p.view().map(|m| Message::Main(m)),
-//       Page::Busy(p) => p.view().map(|m| Message::Busy(m)),
-//       Page::Failed(p) => p.view().map(|m| Message::Failed(m)),
-//     }
-//   }
-// }
-//
-//
-// pub mod main {
-//
-// }
-//
-//
-// pub mod busy {
-//   use iced::{Column, Command, Element};
-//
-//   use musium_client::HttpRequestError;
-//   use musium_core::model::User;
-//
-//   use crate::util::Update;
-//
-//   #[derive(Debug)]
-//   pub struct Page {}
-//
-//   #[derive(Clone, Debug)]
-//   pub enum Message {
-//
-//   }
-//
-//   #[derive(Debug)]
-//   pub enum Action {
-//     Success,
-//     Fail,
-//   }
-//
-//   impl Page {
-//     pub fn new() -> Self { Self {} }
-//
-//     pub fn update(&mut self, _message: Message) -> Update<Message, Action> {
-//       Update::none()
-//     }
-//
-//     pub fn view(&mut self) -> Element<'_, Message> {
-//       Column::new().into()
-//     }
-//   }
-// }
-//
-//
-// pub mod failed {
-//   use iced::{Column, Command, Element};
-//
-//   use crate::util::Update;
-//
-//   #[derive(Debug)]
-//   pub struct Page {}
-//
-//   #[derive(Clone, Debug)]
-//   pub enum Message {}
-//
-//   #[derive(Debug)]
-//   pub enum Action {
-//     Return
-//   }
-//
-//   impl Page {
-//     pub fn new() -> Self { Self {} }
-//
-//     pub fn update(&mut self, _message: Message) -> Update<Message, Action> {
-//       Update::none()
-//     }
-//
-//     pub fn view(&mut self) -> Element<'_, Message> {
-//       Column::new().into()
-//     }
-//   }
-// }

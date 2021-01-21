@@ -59,17 +59,17 @@ fn main() -> Result<()> {
   let mut observer: YamlObserver = YamlBuilder::new().build();
   metrics_receiver.install();
   // Create client
-  let client = Client::new(opt.url_base)
+  let client = Client::new(opt.url_base.clone())
     .with_context(|| "Failed to create client")?;
   // Create an async runtime
-  let runtime = tokio::runtime::Builder::new_current_thread()
+  let _runtime = tokio::runtime::Builder::new_current_thread()
     .enable_all()
     .build()
     .unwrap();
   // Run GUI
   // TODO: this takes control of the application, the rest will not run. Should put this in a tread!
   let user_login = UserLogin { name: opt.name, password: opt.password };
-  App::run(iced::Settings::with_flags(Flags { client, user_login })).unwrap();
+  App::run(iced::Settings::with_flags(Flags { client, initial_url: opt.url_base, initial_user_login: user_login })).unwrap();
   // Print metrics
   if opt.print_metrics {
     controller.observe(&mut observer);

@@ -1,15 +1,16 @@
 use iced::{Application, Command, Element, Row};
 use tracing::error;
 
-use musium_client::Client;
+use musium_client::{Client, Url};
 use musium_core::model::UserLogin;
 
 use crate::page::login;
 use crate::util::Update;
 
 pub struct Flags {
+  pub initial_url: Url,
+  pub initial_user_login: UserLogin,
   pub client: Client,
-  pub user_login: UserLogin,
 }
 
 pub struct App {
@@ -34,7 +35,7 @@ impl Application for App {
   type Flags = Flags;
 
   fn new(flags: Flags) -> (Self, Command<Message>) {
-    let current_page = Page::Login(login::Page::new(flags.user_login));
+    let current_page = Page::Login(login::Page::new(flags.initial_url, flags.initial_user_login));
     let app = Self { client: flags.client, current_page };
     (app, Command::none())
   }

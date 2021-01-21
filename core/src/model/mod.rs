@@ -221,7 +221,7 @@ pub struct SpotifyAlbum {
   pub spotify_id: String,
 }
 
-#[derive(Default, Clone, Insertable)]
+#[derive(Default, Clone, Debug, Insertable)]
 #[table_name = "spotify_album"]
 pub struct NewSpotifyAlbum {
   pub album_id: i32,
@@ -237,7 +237,7 @@ pub struct SpotifyTrack {
   pub spotify_id: String,
 }
 
-#[derive(Default, Clone, Insertable)]
+#[derive(Default, Clone, Debug, Insertable)]
 #[table_name = "spotify_track"]
 pub struct NewSpotifyTrack {
   pub track_id: i32,
