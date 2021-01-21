@@ -8,7 +8,7 @@ pub struct Update<M, A> {
 }
 
 impl<M: Debug + Send, A> Update<M, A> {
-  pub fn new(command: Command<M>, action: A) -> Self { Self { command, action: Some(action) } }
+  pub fn new(command: Command<M>, action: Option<A>) -> Self { Self { command, action } }
 
   pub fn command(command: Command<M>) -> Self { Self { command, action: None } }
 

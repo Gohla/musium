@@ -69,7 +69,7 @@ fn main() -> Result<()> {
   // Run GUI
   // TODO: this takes control of the application, the rest will not run. Should put this in a tread!
   let user_login = UserLogin { name: opt.name, password: opt.password };
-  app::App::run(iced::Settings::with_flags(Flags { client, user_login })).unwrap();
+  App::run(iced::Settings::with_flags(Flags { client, user_login })).unwrap();
   // Print metrics
   if opt.print_metrics {
     controller.observe(&mut observer);

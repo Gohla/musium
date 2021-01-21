@@ -1,10 +1,11 @@
-use iced::{Application, Command, Element};
+use iced::{Application, Command, Element, Row};
 use tracing::error;
 
 use musium_client::Client;
 use musium_core::model::UserLogin;
 
 use crate::page::login;
+use crate::util::Update;
 
 pub struct Flags {
   pub client: Client,
@@ -18,7 +19,8 @@ pub struct App {
 
 #[derive(Debug)]
 enum Page {
-  Login(login::Root),
+  Login(login::Page),
+  Main,
 }
 
 #[derive(Clone, Debug)]
@@ -32,7 +34,7 @@ impl Application for App {
   type Flags = Flags;
 
   fn new(flags: Flags) -> (Self, Command<Message>) {
-    let current_page = Page::Login(login::Root::new(flags.user_login));
+    let current_page = Page::Login(login::Page::new(flags.user_login));
     let app = Self { client: flags.client, current_page };
     (app, Command::none())
   }
@@ -44,7 +46,11 @@ impl Application for App {
   fn update(&mut self, message: Self::Message) -> Command<Self::Message> {
     match (&mut self.current_page, message) {
       (Page::Login(p), Message::Login(m)) => {
-        p.update(&mut self.client, m).command.map(|m| Message::Login(m))
+        let Update { action, command } = p.update(&mut self.client, m);
+        if let Some(login::Action::LoggedIn(_)) = action {
+          self.current_page = Page::Main;
+        }
+        command.map(|m| Message::Login(m))
       }
       (p, m) => {
         error!("[BUG] Requested update with message '{:?}', but that message cannot be handled by the current page '{:?}' or the application itself", m, p);
@@ -56,6 +62,7 @@ impl Application for App {
   fn view(&mut self) -> Element<'_, Self::Message> {
     match &mut self.current_page {
       Page::Login(p) => p.view().map(|m| Message::Login(m)),
+      Page::Main => Row::new().into()
     }
   }
 }
