@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use iced::{Button, button, Column, Command, Element, HorizontalAlignment, Length, Row, Text, text_input, TextInput, Align};
+use iced::{Align, Button, button, Column, Command, Element, HorizontalAlignment, Length, Row, Text, text_input, TextInput};
 
 use musium_client::{Client, HttpRequestError, Url};
 use musium_core::model::{User, UserLogin};
@@ -86,7 +86,7 @@ impl Page {
   }
 
   pub fn view(&mut self) -> Element<'_, Message> {
-    let title = Text::new("Login")
+    let title = Text::new("Musium")
       .width(Length::Fill)
       .size(100)
       .color([0.5, 0.5, 0.5])
@@ -101,12 +101,11 @@ impl Page {
         let input_size = 30;
         let input_width = Length::Units(400);
         let input_padding = 5;
-        Column::new().spacing(spacing)
+        Column::new().spacing(spacing).align_items(align)
           .push(Row::new().spacing(spacing).align_items(align)
             .push(Text::new("Server URL")
-                    .size(label_size)
-                    .width(label_width)
-                  //.vertical_alignment(VerticalAlignment::Center)
+              .size(label_size)
+              .width(label_width)
             )
             .push(TextInput::new(&mut self.url_input, "Server URL", &self.url, Message::SetUrl)
               .size(input_size)
@@ -137,7 +136,7 @@ impl Page {
               .password()
             )
           )
-          .push(Button::new(&mut self.login_button, Text::new("Login"))
+          .push(Button::new(&mut self.login_button, Text::new("Login").size(30).width(label_width).horizontal_alignment(HorizontalAlignment::Center))
             .on_press(Message::SendLoginRequest(self.user_login.clone()))
           )
           .into()
