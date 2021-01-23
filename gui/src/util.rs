@@ -19,6 +19,11 @@ impl<M: Debug + Send, A> Update<M, A> {
   pub fn none() -> Self { Self { command: Command::none(), action: None } }
 
 
+  pub fn unwrap(self) -> (Command<M>, Option<A>) { (self.command, self.action) }
+
+
+  pub fn into_command(self) -> Command<M> { self.command }
+
   #[cfg(not(target_arch = "wasm32"))]
   pub fn map_command<MM>(self, f: impl Fn(M) -> MM + 'static + Send + Sync) -> Update<MM, A> where M: 'static, MM: Send + Debug {
     Update::new(self.command.map(f), self.action)
@@ -29,6 +34,8 @@ impl<M: Debug + Send, A> Update<M, A> {
     Update::new(self.command.map(f), self.action)
   }
 
+
+  pub fn into_action(self) -> Option<A> { self.action }
 
   pub fn take_action<AA>(self) -> (Option<A>, Update<M, AA>) {
     (self.action, Update::new(self.command, None))

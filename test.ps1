@@ -9,68 +9,62 @@ param(
   [Parameter(Position = 1, ValueFromRemainingArguments)][String]$RemainingArgs
 )
 
-if($NoStopServerBefore.IsPresent) {
-  $StopServerBefore = $false
-} else {
-  $StopServerBefore = $true
-}
-
-if($NoBuild.IsPresent) {
-  $Build = $false
-} else {
-  $Build = $true
-}
+$StopServerBefore = $NoStopServerBefore
+$Build = !$NoBuild
 
 $Env:SQLITE_MAX_VARIABLE_NUMBER = 1000000
 
 $FastDevPath = Join-Path $PSScriptRoot "target\fastdev"
 $DebugPath = Join-Path $PSScriptRoot "target\debug"
-if($DebugProfile -eq $true) {
+if($DebugProfile) {
   $ExeDir = $DebugPath
 } else {
   $ExeDir = $FastDevPath
 }
-if($IsWindows -eq $true) {
+if($IsWindows) {
   $ExeSuffix = ".exe"
 } else {
   $ExeSuffix = ""
 }
 $ServerExePath = [System.IO.Path]::GetFullPath((Join-Path $ExeDir "musium_server$ExeSuffix"))
 $CliExePath = [System.IO.Path]::GetFullPath((Join-Path $ExeDir "musium_cli$ExeSuffix"))
-$TuiExePath = [System.IO.Path]::GetFullPath((Join-Path $ExeDir "musium_tui$ExeSuffix"))
+$GuiExePath = [System.IO.Path]::GetFullPath((Join-Path $ExeDir "musium_gui$ExeSuffix"))
 
 function Start-Diesel-Cli {
-  diesel $args
+  param(
+    [parameter(mandatory = $false, position = 0, ValueFromRemainingArguments = $true)]$Args
+  )
+  diesel $Args
 }
 
 function Start-Build {
   param(
     [switch]$Server,
     [switch]$Cli,
-    [switch]$Tui
+    [switch]$Gui
   )
-  if($Build -eq $true) {
-    $Params = @("build")
-    if($Server.IsPresent) {
+  if($Build) {
+    $Params = @("build", "--quiet")
+    if($Server) {
       Stop-Servers # Need to stop the servers before building, otherwise we cannot write to the server executable.
       $Params += "--package"
       $Params += "musium_server"
     }
-    if($Cli.IsPresent) {
+    if($Cli) {
       $Params += "--package"
       $Params += "musium_cli"
     }
-    if($Tui.IsPresent) {
+    if($Gui) {
       $Params += "--package"
-      $Params += "musium_tui"
+      $Params += "musium_gui"
     }
-    if($DebugProfile -eq $false) {
+    if(!$DebugProfile) {
       $Params += "-Z"
       $Params += "unstable-options"
       $Params += "--profile"
       $Params += "fastdev"
     }
-    cargo @Params
+    cargo @Params >$null 2>&1
   }
 }
 
@@ -80,12 +74,12 @@ function Stop-Servers {
   } | Stop-Process
 }
 function Stop-Servers-Before-If-Requested {
-  if($StopServerBefore -eq $true) {
+  if($StopServerBefore) {
     Stop-Servers
   }
 }
 function Stop-Servers-After-If-Requested {
-  if($StopServerAfter -eq $true) {
+  if($StopServerAfter) {
     Stop-Servers
   }
 }
@@ -96,23 +90,23 @@ function Start-ServerWait {
   Start-Process -FilePath $ServerExePath -WorkingDirectory $PSScriptRoot -NoNewWindow -Wait
 }
 function Start-Server-If-Not-Running {
-  $ServerIsRunning = (Get-Process | Where-Object {
-    $_.Path -like $ServerExePath
-  }).Count -gt 0
-  if($ServerIsRunning -eq $false) {
+  if((Get-Process | Where-Object { $_.Path -like $ServerExePath }).Count -eq 0) {
     Start-Server
   }
 }
 function Start-Cli {
   Start-Process -FilePath $CliExePath -WorkingDirectory $PSScriptRoot -ArgumentList $args -NoNewWindow -Wait
 }
-function Start-Tui {
-  Start-Process -FilePath $TuiExePath -WorkingDirectory $PSScriptRoot -NoNewWindow -Wait
+function Start-Gui {
+  Start-Process -FilePath $GuiExePath -WorkingDirectory $PSScriptRoot -NoNewWindow -Wait
 }
 
 
 function Before {
-  Start-Build @args
+  param(
+    [parameter(mandatory = $false, position = 0, ValueFromRemainingArguments = $true)]$Args
+  )
+  Start-Build $Args
   Stop-Servers-Before-If-Requested
   Start-Server-If-Not-Running
   Start-Sleep -m 100 # Sleep to give the server some time to start up
@@ -172,9 +166,10 @@ function Test-Play {
   After
 }
 
-function Test-Tui {
-  Start-Build -Tui
-  Start-Tui
+function Test-Gui {
+  Before -Server -Gui
+  Start-Gui
+  After
 }
 
 Invoke-Expression "Test-$Command"

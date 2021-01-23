@@ -1,8 +1,10 @@
 use std::sync::Arc;
 
 use iced::{Align, Button, button, Column, Command, Element, HorizontalAlignment, Length, Row, Text, text_input, TextInput};
+use tracing::error;
 
 use musium_client::{Client, HttpRequestError, Url};
+use musium_core::format_error::FormatError;
 use musium_core::model::{User, UserLogin};
 
 use crate::util::Update;
@@ -14,12 +16,12 @@ pub struct Page {
   password_input: text_input::State,
   login_button: button::State,
 
-  state: State,
-
   url: String,
   parsed_url: Option<Url>,
   url_parse_error: Option<url::ParseError>,
   user_login: UserLogin,
+
+  state: State,
 }
 
 #[derive(Clone, Debug)]
@@ -69,16 +71,23 @@ impl Page {
       Message::SetPassword(password) => self.user_login.password = password,
       Message::SendLoginRequest(user_login) => {
         let client = client.clone();
-        let command = Command::perform(async move { client.login(&user_login).await }, |r| Message::LoginResponseReceived(r.map_err(|e| Arc::new(e))));
+        let command = Command::perform(
+          async move { client.login(&user_login).await },
+          |r| Message::LoginResponseReceived(r.map_err(|e| Arc::new(e))),
+        );
         self.state = State::Busy;
         return Update::command(command);
       }
-      Message::LoginResponseReceived(response) => match response {
+      Message::LoginResponseReceived(result) => match result {
         Ok(user) => {
           self.state = State::Idle;
           return Update::action(Action::LoggedIn(user));
         }
-        Err(e) => self.state = State::Failed(e),
+        Err(e) => {
+          let format_error = FormatError::new(e.as_ref());
+          error!("{:?}", format_error);
+          self.state = State::Failed(e)
+        }
       },
       Message::Return => self.state = State::Idle,
     }

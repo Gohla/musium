@@ -3,8 +3,9 @@ use tracing::error;
 
 use musium_client::{Client, Url};
 use musium_core::model::UserLogin;
+use musium_core::schema::track_artist::dsl::track_artist;
 
-use crate::page::login;
+use crate::page::{login, track};
 use crate::util::Update;
 
 pub struct Flags {
@@ -21,12 +22,13 @@ pub struct App {
 #[derive(Debug)]
 enum Page {
   Login(login::Page),
-  Main,
+  Track(track::Page),
 }
 
 #[derive(Clone, Debug)]
 pub enum Message {
   Login(login::Message),
+  Track(track::Message),
 }
 
 impl Application for App {
@@ -44,15 +46,20 @@ impl Application for App {
     "Musium".to_string()
   }
 
-  fn update(&mut self, message: Self::Message) -> Command<Self::Message> {
+  fn update(&mut self, message: Message) -> Command<Message> {
     match (&mut self.current_page, message) {
       (Page::Login(p), Message::Login(m)) => {
         let Update { action, command } = p.update(&mut self.client, m);
-        if let Some(login::Action::LoggedIn(_)) = action {
-          self.current_page = Page::Main;
+        let command = command.map(|m| Message::Login(m));
+        if let Some(login::Action::LoggedIn(user)) = action {
+          let (track_page, track_command) = track::Page::new(user, &mut self.client);
+          self.current_page = Page::Track(track_page);
+          Command::batch(vec![command, track_command.map(|m| Message::Track(m))]) // OPTO: array instead of Vec?
+        } else {
+          command
         }
-        command.map(|m| Message::Login(m))
       }
+      (Page::Track(p), Message::Track(m)) => p.update(&mut self.client, m).into_command().map(|m| Message::Track(m)),
       (p, m) => {
         error!("[BUG] Requested update with message '{:?}', but that message cannot be handled by the current page '{:?}' or the application itself", m, p);
         Command::none()
@@ -60,10 +67,10 @@ impl Application for App {
     }
   }
 
-  fn view(&mut self) -> Element<'_, Self::Message> {
+  fn view(&mut self) -> Element<'_, Message> {
     match &mut self.current_page {
       Page::Login(p) => p.view().map(|m| Message::Login(m)),
-      Page::Main => Row::new().into()
+      Page::Track(p) => p.view().map(|m| Message::Track(m)),
     }
   }
 }
