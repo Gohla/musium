@@ -3087,6 +3087,8 @@ dependencies = [
  "anyhow",
  "dotenv",
  "iced",
+ "iced_graphics",
+ "iced_native",
  "itertools",
  "metrics-core",
  "metrics-observer-yaml",

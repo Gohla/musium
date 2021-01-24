@@ -1,4 +1,5 @@
 #![feature(deadline_api)]
+#![allow(dead_code, unused_imports, unused_variables)]
 
 use anyhow::{Context, Result};
 use dotenv;
@@ -18,6 +19,7 @@ use musium_core::model::*;
 mod app;
 mod page;
 mod util;
+mod widget;
 
 #[derive(Debug, StructOpt)]
 #[structopt(name = "cli", about = "Musium CLI")]

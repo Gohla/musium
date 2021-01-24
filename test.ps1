@@ -64,7 +64,7 @@ function Start-Build {
       $Params += "--profile"
       $Params += "fastdev"
     }
-    cargo @Params >$null 2>&1
+    cargo @Params
   }
 }
 
