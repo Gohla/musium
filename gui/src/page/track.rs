@@ -61,7 +61,7 @@ impl Page {
 
   pub fn view(&mut self) -> Element<'_, Message> {
     let mut tracks = Scrollable::new(&mut self.scrollable_state);
-    for (track, track_artists, album, album_artists) in self.tracks.iter() {
+    for (track, track_artists, album, album_artists) in self.tracks.iter().take(1024) {
       tracks = tracks.push(Text::new(track.title.clone()));
       info!("{:?}", track);
     }

@@ -61,11 +61,6 @@ fn main() -> Result<()> {
   // Create client
   let client = Client::new(opt.url_base.clone())
     .with_context(|| "Failed to create client")?;
-  // Create an async runtime
-  let _runtime = tokio::runtime::Builder::new_current_thread()
-    .enable_all()
-    .build()
-    .unwrap();
   // Run GUI
   // TODO: this takes control of the application, the rest will not run. Should put this in a tread!
   let user_login = UserLogin { name: opt.name, password: opt.password };

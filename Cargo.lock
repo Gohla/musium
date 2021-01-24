@@ -3096,7 +3096,6 @@ dependencies = [
  "musium_core",
  "structopt",
  "thiserror",
- "tokio",
  "tracing",
  "tracing-log",
  "tracing-subscriber",

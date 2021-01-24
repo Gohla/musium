@@ -9,7 +9,6 @@ publish = false
 musium_core = { path = "../core" }
 musium_client = { path = "../client" }
 musium_audio = { path = "../audio" }
-tokio = { version = "1", features = ["rt"] }
 url = "2"
 structopt = "0.3"
 dotenv = "0.15"
