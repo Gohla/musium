@@ -4,38 +4,57 @@ use iced_graphics::{Backend, Defaults, Primitive, Renderer};
 use iced_native::{Align, Background, Color, Element, Hasher, layout, Layout, layout::flex, Length, mouse, Point, Rectangle, Size, Widget};
 use iced_native::layout::{Limits, Node};
 use tracing::info;
+use iced::{Row, Container};
 
 pub struct Table<'a, M, R> {
-  spacing: u16,
-  padding: u16,
+  // Properties for the entire table.
   width: Length,
   height: Length,
   max_width: u32,
   max_height: u32,
-  align_header_items: Align,
-  header_row: Vec<Element<'a, M, R>>,
+  padding: u16,
+
+  // Properties for elements inside the table.
+  spacing: u16,
+  columns: Vec<TableColumn<'a, M, R>>,
+  header_row_align: Align,
+  row_height: u32,
   rows: Vec<Vec<Element<'a, M, R>>>,
+}
+
+pub struct TableColumn<'a, M, R> {
+  width: Length,
+  header: Element<'a, M, R>,
 }
 
 impl<'a, M, R> Table<'a, M, R> {
   pub fn new() -> Self {
     Self {
-      spacing: 0,
-      padding: 0,
       width: Length::Shrink,
       height: Length::Shrink,
       max_width: u32::MAX,
       max_height: u32::MAX,
-      align_header_items: Align::Start,
-      header_row: Vec::new(),
+      padding: 0,
+
+      spacing: 0,
+      columns: Vec::new(),
+      header_row_align: Align::Start,
+      row_height: 16,
       rows: Vec::new(),
     }
   }
 
-  pub fn push_header<E>(mut self, header: E) -> Self
+
+  pub fn push_column<E>(mut self, width: Length, header: E) -> Self
     where E: Into<Element<'a, M, R>>
   {
-    self.header_row.push(header.into());
+    let header = header.into();
+    self.columns.push(TableColumn { width, header });
+    self
+  }
+
+  pub fn row_height(mut self, height: u32) -> Self {
+    self.row_height = height;
     self
   }
 
@@ -58,6 +77,24 @@ impl<'a, M, B> Widget<M, Renderer<B>> for Table<'a, M, Renderer<B>>
       .max_height(self.max_height)
       .width(self.width)
       .height(self.height);
+      //.pad(self.padding as f32);
+
+    let header_row = {
+      let mut row = Row::new()
+        .width(Length::Fill)
+        .spacing(self.spacing)
+        .align_items(self.header_row_align)
+        ;
+      for column in self.columns {
+        let container = Container::new(column.header.into()))
+        .
+        ;
+        row = row.push(container);
+      }
+    };
+
+
+
     let header_row_node = flex::resolve(
       flex::Axis::Horizontal,
       renderer,

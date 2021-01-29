@@ -44,7 +44,7 @@ function Start-Build {
     [switch]$Gui
   )
   if($Build) {
-    $Params = @("build", "--quiet")
+    $Params = @("build")
     if($Server) {
       Stop-Servers # Need to stop the servers before building, otherwise we cannot write to the server executable.
       $Params += "--package"
