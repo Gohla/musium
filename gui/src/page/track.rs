@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use iced::{Column, Command, Element, Scrollable, scrollable, Text};
+use iced::{Column, Command, Element, Length, Scrollable, scrollable, Text};
 use tracing::{error, info};
 
 use musium_client::{Client, HttpRequestError};
@@ -62,12 +62,12 @@ impl Page {
 
   pub fn view(&mut self) -> Element<'_, Message> {
     let table = Table::new()
-      .push_header(Text::new("A"))
-      .push_header(Text::new("BB"))
-      .push_header(Text::new("CCC"))
+      .push_column(Length::Units(15), Text::new("A"))
+      .push_column(Length::Units(15), Text::new("BB"))
+      .push_column(Length::Units(15), Text::new("CCC"))
       .push_row(vec![Text::new("a1").into(), Text::new("bb1").into(), Text::new("ccc1").into()])
       .push_row(vec![Text::new("a2").into(), Text::new("bb2").into(), Text::new("ccc2").into()])
-    ;
+      ;
     // let mut tracks = Scrollable::new(&mut self.scrollable_state);
     // for (track, track_artists, album, album_artists) in self.tracks.iter().take(1024) {
     //   tracks = tracks.push(Text::new(track.title.clone()));
