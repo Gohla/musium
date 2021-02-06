@@ -65,6 +65,9 @@ function Start-Build {
       $Params += "fastdev"
     }
     cargo @Params
+    if(!$?) {
+      exit
+    }
   }
 }
 

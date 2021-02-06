@@ -53,8 +53,9 @@ impl Application for App {
         let command = command.map(|m| Message::Login(m));
         if let Some(login::Action::LoggedIn(user)) = action {
           let (track_page, track_command) = track::Page::new(user, &mut self.client);
+          let track_command = track_command.map(|m| Message::Track(m));
           self.current_page = Page::Track(track_page);
-          Command::batch(vec![command, track_command.map(|m| Message::Track(m))]) // OPTO: array instead of Vec?
+          Command::batch(vec![command, track_command]) // OPTO: array instead of Vec?
         } else {
           command
         }
