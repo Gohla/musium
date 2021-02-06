@@ -3,7 +3,7 @@ use std::sync::Arc;
 use iced::{Column, Command, Element, Length, Scrollable, scrollable, Text};
 use iced_native::{HorizontalAlignment, Space, VerticalAlignment};
 use itertools::Itertools;
-use tracing::{error, info};
+use tracing::{debug, error, info, trace, warn};
 
 use musium_client::{Client, HttpRequestError};
 use musium_core::format_error::FormatError;
@@ -49,12 +49,13 @@ impl Page {
     match message {
       Message::TracksReceived(result) => match result {
         Ok(tracks) => {
+          debug!("Received {} tracks", tracks.len());
           self.tracks = tracks;
           self.list_tracks_state = ListTracksState::Idle;
         }
         Err(e) => {
           let format_error = FormatError::new(e.as_ref());
-          error!("{:?}", format_error);
+          error!("Receiving tracks failed: {:?}", format_error);
           self.list_tracks_state = ListTracksState::Failed(e);
         }
       }
@@ -82,7 +83,9 @@ impl Page {
         cell_text(album_artists.map(|a| a.name.clone()).join(", ")),
       ]);
     }
-    tracks.into()
+    Scrollable::new(&mut self.scrollable_state)
+      .push(tracks)
+      .into()
   }
 
   fn update_tracks(&mut self, client: &mut Client) -> Command<Message> {

@@ -13,9 +13,9 @@ members = [
   "gui"
 ]
 
-# Development profile: full debug information, no optimisations.
+# Development profile: full debug information, some optimisations.
 [profile.dev]
-opt-level = 0
+opt-level = 2
 overflow-checks = true
 debug-assertions = true
 panic = "abort"
@@ -26,7 +26,7 @@ incremental = true
 [profile.dev.package.backtrace] # Fully optimize backtrace crate to speed up backtrace collection
 opt-level = 3
 
-# Fast development profile: no debug information, more optimisations.
+# Fast development profile: no debug information, some optimisations.
 [profile.fastdev]
 inherits = 'dev'
 opt-level = 2
@@ -55,6 +55,12 @@ opt-level = 2
 
 [profile.test]
 inherits = 'fastdev'
+
+# Performance profiling profile: full debug information, full optimisations.
+[profile.profiling]
+inherits = 'dev'
+opt-level = 3
+debug = true
 
 # Release profile: full optimisations, including link-time optimisations.
 [profile.release]

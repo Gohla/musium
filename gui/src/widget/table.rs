@@ -1,7 +1,8 @@
 use std::hash::Hash;
 
 use iced_graphics::{Backend, Defaults, Primitive, Renderer};
-use iced_native::{Align, Background, Color, Container, Element, Hasher, layout, Layout, layout::flex, Length, mouse, Point, Rectangle, Row, Size, Widget};
+use iced_native::{Align, Background, Clipboard, Color, Container, Element, event, Event, Hasher, layout, Layout, layout::flex, Length, mouse, overlay, Point, Rectangle, Row, Size, Widget};
+use iced_native::event::Status;
 use iced_native::layout::{Limits, Node};
 use tracing::info;
 
@@ -178,57 +179,87 @@ impl<'a, M, B> Widget<M, Renderer<B>> for Table<'a, M, Renderer<B>>
   ) -> (Primitive, mouse::Interaction) {
     let mut mouse_cursor = mouse::Interaction::default();
     let mut layout_children = layout.children();
-
     let mut primitives = Vec::new();
-
-    let header_row_layout = layout_children.next().unwrap();
-    for (column, layout) in self.columns.iter().zip(header_row_layout.children()) {
-      let (primitive, new_mouse_cursor) = column.header.draw(
-        renderer,
-        defaults,
-        layout,
-        cursor_position,
-        viewport,
-      );
-      if new_mouse_cursor > mouse_cursor {
-        mouse_cursor = new_mouse_cursor;
-      }
+    for (column, layout) in self.columns.iter().zip(layout_children.next().unwrap().children()) {
+      let (primitive, new_mouse_cursor) = column.header.draw(renderer, defaults, layout, cursor_position, viewport);
+      if new_mouse_cursor > mouse_cursor { mouse_cursor = new_mouse_cursor; }
       primitives.push(primitive);
     }
-
-    let rows_layout = layout_children.next().unwrap();
-    for (element, layout) in self.rows.iter().flat_map(|r| r).zip(rows_layout.children()) {
-      let (primitive, new_mouse_cursor) = element.draw(
-        renderer,
-        defaults,
-        layout,
-        cursor_position,
-        viewport,
-      );
-      if new_mouse_cursor > mouse_cursor {
-        mouse_cursor = new_mouse_cursor;
-      }
+    for (element, layout) in self.rows.iter().flat_map(|r| r).zip(layout_children.next().unwrap().children()) {
+      let (primitive, new_mouse_cursor) = element.draw(renderer, defaults, layout, cursor_position, viewport);
+      if new_mouse_cursor > mouse_cursor { mouse_cursor = new_mouse_cursor; }
       primitives.push(primitive);
     }
-
     (Primitive::Group { primitives }, mouse_cursor)
   }
 
   fn hash_layout(&self, state: &mut Hasher) {
     struct Marker;
     std::any::TypeId::of::<Marker>().hash(state);
-
-    self.spacing.hash(state);
-    self.padding.hash(state);
     self.width.hash(state);
     self.height.hash(state);
     self.max_width.hash(state);
     self.max_height.hash(state);
-    // self.header_row_align.hash(state);
-
-    for column in &self.columns {
+    self.padding.hash(state);
+    self.spacing.hash(state);
+    for column in self.columns.iter() {
       column.header.hash_layout(state);
     }
+    self.row_height.hash(state);
+    for row in self.rows.iter() {
+      for cell in row.iter() {
+        cell.hash_layout(state);
+      }
+    }
+  }
+
+  fn on_event(
+    &mut self,
+    event: Event,
+    layout: Layout<'_>,
+    cursor_position: Point,
+    messages: &mut Vec<M>,
+    renderer: &Renderer<B>,
+    clipboard: Option<&dyn Clipboard>,
+  ) -> Status {
+    let mut layout_children = layout.children();
+    let header_row_status = self.columns
+      .iter_mut()
+      .zip(layout_children.next().unwrap().children())
+      .map(|(column, layout)| {
+        column.header.on_event(event.clone(), layout, cursor_position, messages, renderer, clipboard)
+      })
+      .fold(event::Status::Ignored, event::Status::merge);
+    let rows_status = self.rows
+      .iter_mut()
+      .flat_map(|r| r)
+      .zip(layout_children.next().unwrap().children())
+      .map(|(element, layout)| {
+        element.on_event(event.clone(), layout, cursor_position, messages, renderer, clipboard)
+      })
+      .fold(event::Status::Ignored, event::Status::merge);
+    header_row_status.merge(rows_status)
+  }
+
+  fn overlay(
+    &mut self,
+    layout: Layout<'_>,
+  ) -> Option<overlay::Element<'_, M, Renderer<B>>> {
+    let mut layout_children = layout.children();
+    let header_row_overlay = self.columns
+      .iter_mut()
+      .zip(layout_children.next().unwrap().children())
+      .filter_map(|(column, layout)| column.header.overlay(layout))
+      .next();
+    if header_row_overlay.is_some() {
+      return header_row_overlay;
+    }
+    self.rows
+      .iter_mut()
+      .flat_map(|r| r)
+      .zip(layout.children())
+      .filter_map(|(element, layout)| element.overlay(layout))
+      .next()
   }
 }
 

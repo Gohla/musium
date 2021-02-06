@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use iced::{Align, Button, button, Column, Command, Element, HorizontalAlignment, Length, Row, Text, text_input, TextInput};
-use tracing::error;
+use tracing::{error, debug};
 
 use musium_client::{Client, HttpRequestError, Url};
 use musium_core::format_error::FormatError;
@@ -80,12 +80,13 @@ impl Page {
       }
       Message::LoginResponseReceived(result) => match result {
         Ok(user) => {
+          debug!("Logged in as: {}", user.name);
           self.state = State::Idle;
           return Update::action(Action::LoggedIn(user));
         }
         Err(e) => {
           let format_error = FormatError::new(e.as_ref());
-          error!("{:?}", format_error);
+          error!("Failed to log in: {:?}", format_error);
           self.state = State::Failed(e)
         }
       },
