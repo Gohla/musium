@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use iced::{Column, Command, Element, Length, Scrollable, scrollable, Text};
+use iced::{Column, Command, Element, Length, Scrollable, scrollable, Text, Align};
 use iced_native::{HorizontalAlignment, Space, VerticalAlignment};
 use itertools::Itertools;
 use tracing::{debug, error, info, trace, warn};
@@ -65,7 +65,6 @@ impl Page {
 
   pub fn view(&mut self) -> Element<'_, Message> {
     let mut tracks = Table::new()
-      .padding(50)
       .spacing(2)
       .row_height(20)
       .push_column(5, header_text("#"))
@@ -85,9 +84,12 @@ impl Page {
         ]);
       }
     }
-    Scrollable::new(&mut self.scrollable_state)
+    let scrollable = Scrollable::new(&mut self.scrollable_state)
       .push(tracks)
-      .into()
+      .padding(20)
+      .align_items(Align::Center)
+      ;
+    scrollable.into()
   }
 
   fn update_tracks(&mut self, client: &mut Client) -> Command<Message> {
@@ -106,7 +108,7 @@ fn header_text<'a, M>(label: impl Into<String>) -> Element<'a, M> {
     .height(Length::Fill)
     .horizontal_alignment(HorizontalAlignment::Left)
     .vertical_alignment(VerticalAlignment::Center)
-    .size(50)
+    .size(30)
     .into()
 }
 
