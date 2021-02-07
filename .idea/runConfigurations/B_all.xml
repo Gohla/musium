@@ -1,15 +1,16 @@
 <component name="ProjectRunConfigurationManager">
-  <configuration default="false" name="Run (fastdev) cli -- list-tracks" type="CargoCommandRunConfiguration" factoryName="Cargo Command">
+  <configuration default="false" name="B all" type="CargoCommandRunConfiguration" factoryName="Cargo Command">
+    <option name="command" value="build -Z unstable-options --profile=fastdev" />
+    <option name="workingDirectory" value="file://$PROJECT_DIR$" />
     <option name="channel" value="DEFAULT" />
-    <option name="command" value="run --bin musium_cli -Z unstable-options --profile fastdev -- list-tracks" />
     <option name="allFeatures" value="false" />
-    <option name="nocapture" value="false" />
     <option name="emulateTerminal" value="false" />
     <option name="backtrace" value="SHORT" />
-    <option name="workingDirectory" value="file://$PROJECT_DIR$" />
     <envs>
       <env name="SQLITE_MAX_VARIABLE_NUMBER" value="1000000" />
     </envs>
+    <option name="isRedirectInput" value="false" />
+    <option name="redirectInputPath" value="" />
     <method v="2">
       <option name="CARGO.BUILD_TASK_PROVIDER" enabled="true" />
     </method>

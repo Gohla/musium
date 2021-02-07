@@ -24,13 +24,13 @@ tracing-log = "0.1"
 
 [dependencies.iced]
 features = ["tokio"]
-git = "https://github.com/hecrj/iced.git"
-rev = "9da0a3de54e8e7161d4a3405633bc574ce43eb2d" # To work with tokio 1
+git = "https://github.com/Gohla/iced.git"
+branch = "develop"
 
 [dependencies.iced_graphics]
-git = "https://github.com/hecrj/iced.git"
-rev = "9da0a3de54e8e7161d4a3405633bc574ce43eb2d" # Sync with iced
+git = "https://github.com/Gohla/iced.git"
+branch = "develop" # Sync with iced
 
 [dependencies.iced_native]
-git = "https://github.com/hecrj/iced.git"
-rev = "9da0a3de54e8e7161d4a3405633bc574ce43eb2d" # Sync with iced
+git = "https://github.com/Gohla/iced.git"
+branch = "develop" # Sync with iced

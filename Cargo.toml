@@ -56,12 +56,6 @@ opt-level = 2
 [profile.test]
 inherits = 'fastdev'
 
-# Performance profiling profile: full debug information, full optimisations.
-[profile.profiling]
-inherits = 'dev'
-opt-level = 3
-debug = true
-
 # Release profile: full optimisations, including link-time optimisations.
 [profile.release]
 opt-level = 3
@@ -69,3 +63,8 @@ overflow-checks = false
 debug-assertions = false
 lto = true
 debug = false
+
+# Performance profiling profile: full debug information, full optimisations.
+[profile.profile]
+inherits = 'release'
+debug = true

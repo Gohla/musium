@@ -65,7 +65,7 @@ impl Page {
 
   pub fn view(&mut self) -> Element<'_, Message> {
     let mut tracks = Table::new()
-      .padding(6)
+      .padding(50)
       .spacing(2)
       .row_height(20)
       .push_column(5, header_text("#"))
@@ -74,14 +74,16 @@ impl Page {
       .push_column(25, header_text("Album"))
       .push_column(25, header_text("Album Artists"))
       ;
-    for (track, track_artists, album, album_artists) in self.tracks.iter().take(128) {
-      tracks = tracks.push_row(vec![
-        if let Some(track_number) = track.track_number { cell_text(track_number.to_string()) } else { empty() },
-        cell_text(track.title.clone()),
-        cell_text(track_artists.map(|a| a.name.clone()).join(", ")),
-        cell_text(album.name.clone()),
-        cell_text(album_artists.map(|a| a.name.clone()).join(", ")),
-      ]);
+    for _ in 0..30 {
+      for (track, track_artists, album, album_artists) in self.tracks.iter() {
+        tracks = tracks.push_row(vec![
+          if let Some(track_number) = track.track_number { cell_text(track_number.to_string()) } else { empty() },
+          cell_text(track.title.clone()),
+          cell_text(track_artists.map(|a| a.name.clone()).join(", ")),
+          cell_text(album.name.clone()),
+          cell_text(album_artists.map(|a| a.name.clone()).join(", ")),
+        ]);
+      }
     }
     Scrollable::new(&mut self.scrollable_state)
       .push(tracks)
@@ -104,7 +106,7 @@ fn header_text<'a, M>(label: impl Into<String>) -> Element<'a, M> {
     .height(Length::Fill)
     .horizontal_alignment(HorizontalAlignment::Left)
     .vertical_alignment(VerticalAlignment::Center)
-    .size(30)
+    .size(50)
     .into()
 }
 

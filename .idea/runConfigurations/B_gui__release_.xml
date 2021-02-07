@@ -1,11 +1,11 @@
 <component name="ProjectRunConfigurationManager">
-  <configuration default="false" name="Build all (dbg)" type="CargoCommandRunConfiguration" factoryName="Cargo Command">
-    <option name="command" value="build" />
+  <configuration default="false" name="B gui [release]" type="CargoCommandRunConfiguration" factoryName="Cargo Command" folderName="Release">
+    <option name="command" value="build --bin musium_gui --release" />
     <option name="workingDirectory" value="file://$PROJECT_DIR$" />
     <option name="channel" value="DEFAULT" />
     <option name="allFeatures" value="false" />
     <option name="emulateTerminal" value="false" />
-    <option name="backtrace" value="FULL" />
+    <option name="backtrace" value="SHORT" />
     <envs>
       <env name="SQLITE_MAX_VARIABLE_NUMBER" value="1000000" />
     </envs>
