@@ -11,7 +11,7 @@ use musium_core::model::collection::Tracks;
 use musium_core::model::User;
 
 use crate::util::Update;
-use crate::widget::table::Table;
+use crate::widget::table::{Table, TableBuilder};
 
 #[derive(Default, Debug)]
 pub struct Page {
@@ -64,7 +64,7 @@ impl Page {
   }
 
   pub fn view(&mut self) -> Element<'_, Message> {
-    let mut tracks = Table::new()
+    let mut table = TableBuilder::new()
       .spacing(2)
       .row_height(20)
       .push_column(5, header_text("#"))
@@ -75,7 +75,7 @@ impl Page {
       ;
     for _ in 0..30 {
       for (track, track_artists, album, album_artists) in self.tracks.iter() {
-        tracks = tracks.push_row(vec![
+        table = table.push_row(vec![
           if let Some(track_number) = track.track_number { cell_text(track_number.to_string()) } else { empty() },
           cell_text(track.title.clone()),
           cell_text(track_artists.map(|a| a.name.clone()).join(", ")),
@@ -84,12 +84,7 @@ impl Page {
         ]);
       }
     }
-    let scrollable = Scrollable::new(&mut self.scrollable_state)
-      .push(tracks)
-      .padding(20)
-      .align_items(Align::Center)
-      ;
-    scrollable.into()
+    table.build(&mut self.scrollable_state).into()
   }
 
   fn update_tracks(&mut self, client: &mut Client) -> Command<Message> {
