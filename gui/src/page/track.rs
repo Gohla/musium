@@ -65,7 +65,9 @@ impl Page {
 
   pub fn view(&mut self) -> Element<'_, Message> {
     let mut table = TableBuilder::new()
+      .padding(4)
       .spacing(2)
+      .header_row_height(30)
       .row_height(20)
       .push_column(5, header_text("#"))
       .push_column(25, header_text("Title"))
@@ -113,6 +115,7 @@ fn cell_text<'a, M>(label: impl Into<String>) -> Element<'a, M> {
     .height(Length::Fill)
     .horizontal_alignment(HorizontalAlignment::Left)
     .vertical_alignment(VerticalAlignment::Center)
+    .size(20)
     .into()
 }
 

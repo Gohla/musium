@@ -168,7 +168,7 @@ impl<'a, M, R: TableRenderer + TableHeaderRenderer + scrollable::Renderer> Widge
     cursor_position: Point,
     viewport: &Rectangle<f32>,
   ) -> R::Output {
-    TableRenderer::draw(renderer, defaults, layout, cursor_position, viewport, &self.header, &self.rows)
+    renderer.draw_table(defaults, layout, cursor_position, viewport, &self.header, &self.rows)
   }
 
   fn hash_layout(&self, state: &mut Hasher) {
@@ -193,16 +193,22 @@ impl<'a, M, R: TableRenderer + TableHeaderRenderer + scrollable::Renderer> Widge
     renderer: &R,
     clipboard: Option<&dyn Clipboard>,
   ) -> Status {
-    event::Status::Ignored // TODO: propagate
+    let mut layout_iter = layout.children();
+    let header_status = self.header.on_event(event.clone(), layout_iter.next().unwrap(), cursor_position, messages, renderer, clipboard);
+    if header_status == Status::Captured { return Status::Captured; }
+    self.rows.on_event(event, layout_iter.next().unwrap(), cursor_position, messages, renderer, clipboard)
   }
 
   fn overlay(&mut self, layout: Layout<'_>) -> Option<overlay::Element<'_, M, R>> {
-    None // TODO: propagate
+    let mut layout_iter = layout.children();
+    let header_overlay = self.header.overlay(layout_iter.next().unwrap());
+    if header_overlay.is_some() { return header_overlay; }
+    self.rows.overlay(layout_iter.next().unwrap())
   }
 }
 
 pub trait TableRenderer: TableHeaderRenderer + scrollable::Renderer {
-  fn draw<M>(
+  fn draw_table<M>(
     &mut self,
     defaults: &Self::Defaults,
     layout: Layout<'_>,
@@ -214,7 +220,7 @@ pub trait TableRenderer: TableHeaderRenderer + scrollable::Renderer {
 }
 
 impl<B: Backend> TableRenderer for ConcreteRenderer<B> {
-  fn draw<M>(
+  fn draw_table<M>(
     &mut self,
     defaults: &Self::Defaults,
     layout: Layout<'_>,
@@ -258,19 +264,19 @@ impl<'a, M, R: TableHeaderRenderer> Widget<M, R> for TableHeader<'a, M, R> {
   fn height(&self) -> Length { Length::Fill }
 
   fn layout(&self, renderer: &R, limits: &Limits) -> Node {
-    let total_width = limits.fill().width;
-    let height = self.row_height as f32;
+    let total_width = limits.max().width;
+    let total_height = self.row_height as f32;
     let column_layouts = layout_columns(total_width, self.column_fill_portions.iter().copied(), self.spacing);
     let layouts = {
       let mut layouts = Vec::new();
       for column_layout in &column_layouts {
-        let mut layout = Node::new(Size::new(column_layout.width, height));
+        let mut layout = Node::new(Size::new(column_layout.width, total_height));
         layout.move_to(Point::new(column_layout.x_offset, 0f32));
         layouts.push(layout);
       }
       layouts
     };
-    Node::with_children(Size::new(total_width, height), layouts)
+    Node::with_children(Size::new(total_width, total_height), layouts)
   }
 
   fn draw(
@@ -281,7 +287,7 @@ impl<'a, M, R: TableHeaderRenderer> Widget<M, R> for TableHeader<'a, M, R> {
     cursor_position: Point,
     viewport: &Rectangle<f32>,
   ) -> R::Output {
-    TableHeaderRenderer::draw(renderer, defaults, layout, cursor_position, viewport, self.row_height as f32, &self.headers)
+    renderer.draw_table_header(defaults, layout, cursor_position, viewport, self.row_height as f32, &self.headers)
   }
 
   fn hash_layout(&self, state: &mut Hasher) {
@@ -293,26 +299,10 @@ impl<'a, M, R: TableHeaderRenderer> Widget<M, R> for TableHeader<'a, M, R> {
       column_fill_portion.hash(state);
     }
   }
-
-  // fn on_event(
-  //   &mut self,
-  //   event: Event,
-  //   layout: Layout<'_>,
-  //   cursor_position: Point,
-  //   messages: &mut Vec<M>,
-  //   renderer: &Renderer<B>,
-  //   clipboard: Option<&dyn Clipboard>,
-  // ) -> Status {
-  //   Status::Ignored // TODO: pass through on_event.
-  // }
-  //
-  // fn overlay(&mut self, layout: Layout<'_>) -> Option<Element<'_, M, Renderer<B>>> {
-  //   None // TODO: pass through overlay.
-  // }
 }
 
 pub trait TableHeaderRenderer: Renderer {
-  fn draw<M>(
+  fn draw_table_header<M>(
     &mut self,
     defaults: &Self::Defaults,
     layout: Layout<'_>,
@@ -324,7 +314,7 @@ pub trait TableHeaderRenderer: Renderer {
 }
 
 impl<B: Backend> TableHeaderRenderer for ConcreteRenderer<B> {
-  fn draw<M>(
+  fn draw_table_header<M>(
     &mut self,
     defaults: &Self::Defaults,
     layout: Layout<'_>,
@@ -334,7 +324,7 @@ impl<B: Backend> TableHeaderRenderer for ConcreteRenderer<B> {
     headers: &[Element<'_, M, Self>],
   ) -> Self::Output {
     let mut mouse_cursor = mouse::Interaction::default();
-    if headers.is_empty() || viewport.x > row_height {
+    if headers.is_empty() {
       return (Primitive::None, mouse_cursor);
     }
     let mut primitives = Vec::new();
@@ -369,10 +359,8 @@ impl<'a, M, R: TableRowsRenderer> Widget<M, R> for TableRows<'a, M, R> {
   fn height(&self) -> Length { Length::Fill }
 
   fn layout(&self, renderer: &R, limits: &Limits) -> Node {
-    let fill = limits.fill();
-    let total_width = fill.width;
-    let total_height = fill.height;
-
+    let max = limits.max();
+    let total_width = max.width;
     let row_height = self.row_height as f32;
     let column_layouts = layout_columns(total_width, self.column_fill_portions.iter().copied(), self.spacing);
     let layouts = {
@@ -384,7 +372,9 @@ impl<'a, M, R: TableRowsRenderer> Widget<M, R> for TableRows<'a, M, R> {
       }
       layouts
     };
-    Node::with_children(Size::new(total_width, total_height), layouts)
+    let num_rows = self.rows.len();
+    let total_height = num_rows * self.row_height as usize + num_rows.saturating_sub(1) * self.spacing as usize;
+    Node::with_children(Size::new(total_width, total_height as f32), layouts)
   }
 
   fn draw(
@@ -395,7 +385,7 @@ impl<'a, M, R: TableRowsRenderer> Widget<M, R> for TableRows<'a, M, R> {
     cursor_position: Point,
     viewport: &Rectangle<f32>,
   ) -> R::Output {
-    TableRowsRenderer::draw(renderer, defaults, layout, cursor_position, viewport, self.row_height as f32, self.spacing as f32, &self.rows)
+    renderer.draw_table_rows(defaults, layout, cursor_position, viewport, self.row_height as f32, self.spacing as f32, &self.rows)
   }
 
   fn hash_layout(&self, state: &mut Hasher) {
@@ -408,7 +398,7 @@ impl<'a, M, R: TableRowsRenderer> Widget<M, R> for TableRows<'a, M, R> {
 }
 
 pub trait TableRowsRenderer: Renderer {
-  fn draw<M>(
+  fn draw_table_rows<M>(
     &mut self,
     defaults: &Self::Defaults,
     layout: Layout<'_>,
@@ -421,7 +411,7 @@ pub trait TableRowsRenderer: Renderer {
 }
 
 impl<B: Backend> TableRowsRenderer for ConcreteRenderer<B> {
-  fn draw<M>(
+  fn draw_table_rows<M>(
     &mut self,
     defaults: &Self::Defaults,
     layout: Layout<'_>,
@@ -443,19 +433,23 @@ impl<B: Backend> TableRowsRenderer for ConcreteRenderer<B> {
     let num_rows = rows.len();
     let last_row_index = num_rows.saturating_sub(1);
     let row_height_plus_spacing = row_height + spacing;
-    let start_offset = ((viewport.y / row_height_plus_spacing).floor() as usize).min(last_row_index);
-    // TODO: figure out why this + 1 is needed. I added it because the last row did not always seem visible from a certain y offset. May be a float precision issue?
-    let num_rows_to_render = (viewport.height / row_height_plus_spacing).ceil() as usize + 1;
+    let relative_y = viewport.y - absolute_position.y;
+    let start_offset = ((relative_y / row_height_plus_spacing).floor() as usize).min(last_row_index);
+    let num_rows_to_render = (viewport.height / row_height_plus_spacing).ceil() as usize;
     let end_offset = (start_offset + num_rows_to_render).min(last_row_index);
 
-    let mut y_offset = row_height_plus_spacing + (start_offset as f32 * row_height_plus_spacing);
+    let mut y_offset = start_offset as f32 * row_height_plus_spacing;
     for i in start_offset..=end_offset {
       let row = &rows[i]; // OPTO: get_unchecked
       for (cell, base_layout) in row.iter().zip(layout.children()) {
+        // Reconstruct the layout from `base_layout` which has a correct x position, but an incorrect y position which
+        // always points to the first row. This is needed so that we do not have to lay out all the cells of the table
+        // each time the layout changes. Now we only calculate the absolute layout of cells which are in view.
         let bounds = base_layout.bounds();
         let mut node = Node::new(Size::new(bounds.width, bounds.height));
         node.move_to(Point::new(bounds.x, y_offset));
         let layout = Layout::with_offset(offset, &node);
+
         let (primitive, new_mouse_cursor) = cell.draw(self, defaults, layout, cursor_position, viewport);
         if new_mouse_cursor > mouse_cursor { mouse_cursor = new_mouse_cursor; }
         primitives.push(primitive);
