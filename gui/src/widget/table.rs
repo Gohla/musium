@@ -14,7 +14,7 @@ use tracing::trace;
 // Table builder
 //
 
-pub struct TableBuilder<'a, M, R: TableRenderer + TableHeaderRenderer + scrollable::Renderer + TableRowsRenderer> {
+pub struct TableBuilder<'a, M, R: TableRenderer> {
   width: Length,
   height: Length,
   max_width: u32,
@@ -25,7 +25,7 @@ pub struct TableBuilder<'a, M, R: TableRenderer + TableHeaderRenderer + scrollab
   rows: TableRows<'a, M, R>,
 }
 
-impl<'a, M, R: TableRenderer + TableHeaderRenderer + scrollable::Renderer + TableRowsRenderer> TableBuilder<'a, M, R> {
+impl<'a, M, R: TableRenderer> TableBuilder<'a, M, R> {
   pub fn new() -> Self {
     let spacing = 0;
     let row_height = 16;
@@ -119,7 +119,7 @@ impl<'a, M, R: TableRenderer + TableHeaderRenderer + scrollable::Renderer + Tabl
 // Table widget
 //
 
-pub struct Table<'a, M, R: TableRenderer + TableHeaderRenderer + scrollable::Renderer> {
+pub struct Table<'a, M, R: TableRenderer> {
   width: Length,
   height: Length,
   max_width: u32,
@@ -130,7 +130,7 @@ pub struct Table<'a, M, R: TableRenderer + TableHeaderRenderer + scrollable::Ren
   rows: Scrollable<'a, M, R>,
 }
 
-impl<'a, M, R: TableRenderer + TableHeaderRenderer + scrollable::Renderer> Widget<M, R> for Table<'a, M, R> {
+impl<'a, M, R: TableRenderer> Widget<M, R> for Table<'a, M, R> {
   fn width(&self) -> Length { self.width }
 
   fn height(&self) -> Length { self.height }
@@ -207,7 +207,7 @@ impl<'a, M, R: TableRenderer + TableHeaderRenderer + scrollable::Renderer> Widge
   }
 }
 
-pub trait TableRenderer: TableHeaderRenderer + scrollable::Renderer {
+pub trait TableRenderer: TableHeaderRenderer + scrollable::Renderer + TableRowsRenderer {
   fn draw_table<M>(
     &mut self,
     defaults: &Self::Defaults,
@@ -242,7 +242,7 @@ impl<B: Backend> TableRenderer for ConcreteRenderer<B> {
   }
 }
 
-impl<'a, M: 'a, R: 'a + TableRenderer + TableHeaderRenderer + scrollable::Renderer> Into<Element<'a, M, R>> for Table<'a, M, R> {
+impl<'a, M: 'a, R: 'a + TableRenderer> Into<Element<'a, M, R>> for Table<'a, M, R> {
   fn into(self) -> Element<'a, M, R> {
     Element::new(self)
   }
