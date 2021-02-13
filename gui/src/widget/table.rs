@@ -193,18 +193,29 @@ impl<'a, M, R: TableRenderer> Widget<M, R> for Table<'a, M, R> {
     renderer: &R,
     clipboard: Option<&dyn Clipboard>,
   ) -> Status {
-    let mut layout_iter = layout.children();
-    let header_status = self.header.on_event(event.clone(), layout_iter.next().unwrap(), cursor_position, messages, renderer, clipboard);
-    if header_status == Status::Captured { return Status::Captured; }
-    self.rows.on_event(event, layout_iter.next().unwrap(), cursor_position, messages, renderer, clipboard)
+    if let (Some(header_layout), Some(rows_layout)) = unfold_table_layout(layout) {
+      let header_status = self.header.on_event(event.clone(), header_layout, cursor_position, messages, renderer, clipboard);
+      if header_status == Status::Captured { return Status::Captured; }
+      self.rows.on_event(event, rows_layout, cursor_position, messages, renderer, clipboard)
+    } else {
+      Status::Ignored
+    }
   }
 
   fn overlay(&mut self, layout: Layout<'_>) -> Option<overlay::Element<'_, M, R>> {
-    let mut layout_iter = layout.children();
-    let header_overlay = self.header.overlay(layout_iter.next().unwrap());
-    if header_overlay.is_some() { return header_overlay; }
-    self.rows.overlay(layout_iter.next().unwrap())
+    if let (Some(header_layout), Some(rows_layout)) = unfold_table_layout(layout) {
+      let header_overlay = self.header.overlay(header_layout);
+      if header_overlay.is_some() { return header_overlay; }
+      self.rows.overlay(rows_layout)
+    } else {
+      None
+    }
   }
+}
+
+fn unfold_table_layout(layout: Layout<'_>) -> (Option<Layout<'_>>, Option<Layout<'_>>) {
+  let mut layout_iter = layout.children();
+  (layout_iter.next(), layout_iter.next())
 }
 
 pub trait TableRenderer: TableHeaderRenderer + scrollable::Renderer + TableRowsRenderer {
@@ -229,15 +240,16 @@ impl<B: Backend> TableRenderer for ConcreteRenderer<B> {
     header: &TableHeader<'_, M, Self>,
     rows: &Scrollable<'_, M, Self>,
   ) -> Self::Output {
-    let mut layout_iter = layout.children();
     let mut mouse_cursor = mouse::Interaction::default();
     let mut primitives = Vec::new();
-    let (primitive, new_mouse_cursor) = header.draw(self, defaults, layout_iter.next().unwrap(), cursor_position, viewport);
-    if new_mouse_cursor > mouse_cursor { mouse_cursor = new_mouse_cursor; }
-    primitives.push(primitive);
-    let (primitive, new_mouse_cursor) = rows.draw(self, defaults, layout_iter.next().unwrap(), cursor_position, viewport);
-    if new_mouse_cursor > mouse_cursor { mouse_cursor = new_mouse_cursor; }
-    primitives.push(primitive);
+    if let (Some(header_layout), Some(rows_layout)) = unfold_table_layout(layout) {
+      let (primitive, new_mouse_cursor) = header.draw(self, defaults, header_layout, cursor_position, viewport);
+      if new_mouse_cursor > mouse_cursor { mouse_cursor = new_mouse_cursor; }
+      primitives.push(primitive);
+      let (primitive, new_mouse_cursor) = rows.draw(self, defaults, rows_layout, cursor_position, viewport);
+      if new_mouse_cursor > mouse_cursor { mouse_cursor = new_mouse_cursor; }
+      primitives.push(primitive);
+    }
     (Primitive::Group { primitives }, mouse_cursor)
   }
 }
@@ -421,19 +433,20 @@ impl<B: Backend> TableRowsRenderer for ConcreteRenderer<B> {
 
     let mut y_offset = start_offset as f32 * row_height_plus_spacing;
     for i in start_offset..=end_offset {
-      let row = &rows[i]; // OPTO: get_unchecked
-      for (cell, base_layout) in row.iter().zip(layout.children()) {
-        // Reconstruct the layout from `base_layout` which has a correct x position, but an incorrect y position which
-        // always points to the first row. This is needed so that we do not have to lay out all the cells of the table
-        // each time the layout changes. Now we only calculate the absolute layout of cells which are in view.
-        let bounds = base_layout.bounds();
-        let mut node = Node::new(Size::new(bounds.width, bounds.height));
-        node.move_to(Point::new(bounds.x, y_offset));
-        let layout = Layout::with_offset(offset, &node);
+      if let Some(row) = rows.get(i) {
+        for (cell, base_layout) in row.iter().zip(layout.children()) {
+          // Reconstruct the layout from `base_layout` which has a correct x position, but an incorrect y position which
+          // always points to the first row. This is needed so that we do not have to lay out all the cells of the table
+          // each time the layout changes. Now we only calculate the absolute layout of cells which are in view.
+          let bounds = base_layout.bounds();
+          let mut node = Node::new(Size::new(bounds.width, bounds.height));
+          node.move_to(Point::new(bounds.x, y_offset));
+          let layout = Layout::with_offset(offset, &node);
 
-        let (primitive, new_mouse_cursor) = cell.draw(self, defaults, layout, cursor_position, viewport);
-        if new_mouse_cursor > mouse_cursor { mouse_cursor = new_mouse_cursor; }
-        primitives.push(primitive);
+          let (primitive, new_mouse_cursor) = cell.draw(self, defaults, layout, cursor_position, viewport);
+          if new_mouse_cursor > mouse_cursor { mouse_cursor = new_mouse_cursor; }
+          primitives.push(primitive);
+        }
       }
       y_offset += row_height;
       if i < last_row_index {
