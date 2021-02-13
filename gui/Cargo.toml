@@ -9,6 +9,9 @@ publish = false
 musium_core = { path = "../core" }
 musium_client = { path = "../client" }
 musium_audio = { path = "../audio" }
+iced = { version = "0.2.0", features = ["tokio"] }
+iced_graphics = "0.1.0"
+iced_native = "0.3.0"
 url = "2"
 structopt = "0.3"
 dotenv = "0.15"
@@ -22,15 +25,3 @@ tracing = "0.1"
 tracing-subscriber = "0.2"
 tracing-log = "0.1"
 
-[dependencies.iced]
-features = ["tokio"]
-git = "https://github.com/Gohla/iced.git"
-branch = "develop"
-
-[dependencies.iced_graphics]
-git = "https://github.com/Gohla/iced.git"
-branch = "develop" # Sync with iced
-
-[dependencies.iced_native]
-git = "https://github.com/Gohla/iced.git"
-branch = "develop" # Sync with iced

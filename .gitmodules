@@ -1,0 +1,4 @@
+[submodule "gui/iced"]
+	path = gui/iced
+	url = git@github.com:Gohla/iced.git
+	branch = develop

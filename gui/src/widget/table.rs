@@ -1,9 +1,11 @@
 use std::hash::Hash;
 
 use iced::Vector;
-use iced_graphics::{Backend, Defaults, Primitive, Renderer};
-use iced_native::{Align, Background, Clipboard, Color, Container, Element, event, Event, Hasher, layout, Layout,
-                  layout::flex, Length, mouse, overlay, Point, Rectangle, Row, Scrollable, scrollable, Size, Widget};
+use iced_graphics::{Backend, Primitive, Renderer as ConcreteRenderer};
+use iced_native::{
+  Align, Background, Clipboard, Color, Container, Element, event, Event, Hasher, layout, Layout, layout::flex, Length,
+  mouse, overlay, Point, Rectangle, Renderer, Row, Scrollable, scrollable, Size, Widget,
+};
 use iced_native::event::Status;
 use iced_native::layout::{Limits, Node};
 use tracing::trace;
@@ -12,7 +14,7 @@ use tracing::trace;
 // Table builder
 //
 
-pub struct TableBuilder<'a, M, R> {
+pub struct TableBuilder<'a, M, R: TableRenderer + TableHeaderRenderer + scrollable::Renderer + TableRowsRenderer> {
   width: Length,
   height: Length,
   max_width: u32,
@@ -23,7 +25,7 @@ pub struct TableBuilder<'a, M, R> {
   rows: TableRows<'a, M, R>,
 }
 
-impl<'a, M, R> TableBuilder<'a, M, R> {
+impl<'a, M, R: TableRenderer + TableHeaderRenderer + scrollable::Renderer + TableRowsRenderer> TableBuilder<'a, M, R> {
   pub fn new() -> Self {
     let spacing = 0;
     let row_height = 16;
@@ -98,7 +100,7 @@ impl<'a, M, R> TableBuilder<'a, M, R> {
   }
 
 
-  pub fn build(self, rows_scrollable_state: &'a mut scrollable::State) -> Table<'a, M, R> where R: scrollable::Renderer {
+  pub fn build(self, rows_scrollable_state: &'a mut scrollable::State) -> Table<'a, M, R> where M: 'a, R: 'a {
     let rows = Scrollable::new(rows_scrollable_state).push(Element::new(self.rows));
     Table {
       width: self.width,
@@ -117,7 +119,7 @@ impl<'a, M, R> TableBuilder<'a, M, R> {
 // Table widget
 //
 
-pub struct Table<'a, M, R: scrollable::Renderer> {
+pub struct Table<'a, M, R: TableRenderer + TableHeaderRenderer + scrollable::Renderer> {
   width: Length,
   height: Length,
   max_width: u32,
@@ -128,12 +130,12 @@ pub struct Table<'a, M, R: scrollable::Renderer> {
   rows: Scrollable<'a, M, R>,
 }
 
-impl<'a, M, B> Widget<M, Renderer<B>> for Table<'a, M, Renderer<B>> where B: Backend {
+impl<'a, M, R: TableRenderer + TableHeaderRenderer + scrollable::Renderer> Widget<M, R> for Table<'a, M, R> {
   fn width(&self) -> Length { self.width }
 
   fn height(&self) -> Length { self.height }
 
-  fn layout(&self, renderer: &Renderer<B>, limits: &Limits) -> Node {
+  fn layout(&self, renderer: &R, limits: &Limits) -> Node {
     let padding = self.padding as f32;
     let spacing = self.spacing as f32;
 
@@ -160,15 +162,13 @@ impl<'a, M, B> Widget<M, Renderer<B>> for Table<'a, M, Renderer<B>> where B: Bac
 
   fn draw(
     &self,
-    renderer: &mut Renderer<B>,
-    defaults: &Defaults,
+    renderer: &mut R,
+    defaults: &R::Defaults,
     layout: Layout<'_>,
     cursor_position: Point,
     viewport: &Rectangle<f32>,
-  ) -> (Primitive, mouse::Interaction) {
-    let mut mouse_cursor = mouse::Interaction::default();
-    let mut primitives = Vec::new();
-    (Primitive::Group { primitives }, mouse_cursor)
+  ) -> R::Output {
+    TableRenderer::draw(renderer, defaults, layout, cursor_position, viewport, &self.header, &self.rows)
   }
 
   fn hash_layout(&self, state: &mut Hasher) {
@@ -190,37 +190,74 @@ impl<'a, M, B> Widget<M, Renderer<B>> for Table<'a, M, Renderer<B>> where B: Bac
     layout: Layout<'_>,
     cursor_position: Point,
     messages: &mut Vec<M>,
-    renderer: &Renderer<B>,
+    renderer: &R,
     clipboard: Option<&dyn Clipboard>,
   ) -> Status {
     event::Status::Ignored // TODO: propagate
   }
 
-  fn overlay(&mut self, layout: Layout<'_>) -> Option<overlay::Element<'_, M, Renderer<B>>> {
+  fn overlay(&mut self, layout: Layout<'_>) -> Option<overlay::Element<'_, M, R>> {
     None // TODO: propagate
   }
 }
 
-impl<'a, M, B> Into<Element<'a, M, Renderer<B>>> for Table<'a, M, Renderer<B>> where M: 'a, B: 'a + Backend {
-  fn into(self) -> Element<'a, M, Renderer<B>> { Element::new(self) }
+pub trait TableRenderer: TableHeaderRenderer + scrollable::Renderer {
+  fn draw<M>(
+    &mut self,
+    defaults: &Self::Defaults,
+    layout: Layout<'_>,
+    cursor_position: Point,
+    viewport: &Rectangle<f32>,
+    header: &TableHeader<'_, M, Self>,
+    rows: &Scrollable<'_, M, Self>,
+  ) -> Self::Output;
+}
+
+impl<B: Backend> TableRenderer for ConcreteRenderer<B> {
+  fn draw<M>(
+    &mut self,
+    defaults: &Self::Defaults,
+    layout: Layout<'_>,
+    cursor_position: Point,
+    viewport: &Rectangle<f32>,
+    header: &TableHeader<'_, M, Self>,
+    rows: &Scrollable<'_, M, Self>,
+  ) -> Self::Output {
+    let mut layout_iter = layout.children();
+    let mut mouse_cursor = mouse::Interaction::default();
+    let mut primitives = Vec::new();
+    let (primitive, new_mouse_cursor) = header.draw(self, defaults, layout_iter.next().unwrap(), cursor_position, viewport);
+    if new_mouse_cursor > mouse_cursor { mouse_cursor = new_mouse_cursor; }
+    primitives.push(primitive);
+    let (primitive, new_mouse_cursor) = rows.draw(self, defaults, layout_iter.next().unwrap(), cursor_position, viewport);
+    if new_mouse_cursor > mouse_cursor { mouse_cursor = new_mouse_cursor; }
+    primitives.push(primitive);
+    (Primitive::Group { primitives }, mouse_cursor)
+  }
+}
+
+impl<'a, M: 'a, R: 'a + TableRenderer + TableHeaderRenderer + scrollable::Renderer> Into<Element<'a, M, R>> for Table<'a, M, R> {
+  fn into(self) -> Element<'a, M, R> {
+    Element::new(self)
+  }
 }
 
 //
 // Table header
 //
 
-struct TableHeader<'a, M, R> {
+pub struct TableHeader<'a, M, R: TableHeaderRenderer> {
   spacing: u32,
   row_height: u32,
   column_fill_portions: Vec<u32>,
   headers: Vec<Element<'a, M, R>>,
 }
 
-impl<'a, M, B> Widget<M, Renderer<B>> for TableHeader<'a, M, Renderer<B>> where B: Backend {
+impl<'a, M, R: TableHeaderRenderer> Widget<M, R> for TableHeader<'a, M, R> {
   fn width(&self) -> Length { Length::Fill }
   fn height(&self) -> Length { Length::Fill }
 
-  fn layout(&self, renderer: &Renderer<B>, limits: &Limits) -> Node {
+  fn layout(&self, renderer: &R, limits: &Limits) -> Node {
     let total_width = limits.fill().width;
     let height = self.row_height as f32;
     let column_layouts = layout_columns(total_width, self.column_fill_portions.iter().copied(), self.spacing);
@@ -238,28 +275,13 @@ impl<'a, M, B> Widget<M, Renderer<B>> for TableHeader<'a, M, Renderer<B>> where 
 
   fn draw(
     &self,
-    renderer: &mut Renderer<B>,
-    defaults: &Defaults,
+    renderer: &mut R,
+    defaults: &R::Defaults,
     layout: Layout<'_>,
     cursor_position: Point,
     viewport: &Rectangle<f32>,
-  ) -> (Primitive, mouse::Interaction) {
-    let row_height = self.row_height as f32;
-    // let offset = Vector::new(viewport.x, viewport.y);
-    let mut mouse_cursor = mouse::Interaction::default();
-    if self.headers.is_empty() || viewport.x > row_height {
-      return (Primitive::None, mouse_cursor);
-    }
-    let mut primitives = Vec::new();
-    for (header, layout) in self.headers.iter().zip(layout.children()) {
-      // let mut node = Node::new(Size::new(column_layout.width, row_height));
-      // node.move_to(Point::new(column_layout.x_offset, y_offset));
-      // let layout = Layout::with_offset(offset, &node);
-      let (primitive, new_mouse_cursor) = header.draw(renderer, defaults, layout, cursor_position, viewport);
-      if new_mouse_cursor > mouse_cursor { mouse_cursor = new_mouse_cursor; }
-      primitives.push(primitive);
-    }
-    (Primitive::Group { primitives }, mouse_cursor)
+  ) -> R::Output {
+    TableHeaderRenderer::draw(renderer, defaults, layout, cursor_position, viewport, self.row_height as f32, &self.headers)
   }
 
   fn hash_layout(&self, state: &mut Hasher) {
@@ -289,26 +311,64 @@ impl<'a, M, B> Widget<M, Renderer<B>> for TableHeader<'a, M, Renderer<B>> where 
   // }
 }
 
-impl<'a, M, B> Into<Element<'a, M, Renderer<B>>> for TableHeader<'a, M, Renderer<B>> where M: 'a, B: 'a + Backend {
-  fn into(self) -> Element<'a, M, Renderer<B>> { Element::new(self) }
+pub trait TableHeaderRenderer: Renderer {
+  fn draw<M>(
+    &mut self,
+    defaults: &Self::Defaults,
+    layout: Layout<'_>,
+    cursor_position: Point,
+    viewport: &Rectangle<f32>,
+    row_height: f32,
+    headers: &[Element<'_, M, Self>],
+  ) -> Self::Output;
+}
+
+impl<B: Backend> TableHeaderRenderer for ConcreteRenderer<B> {
+  fn draw<M>(
+    &mut self,
+    defaults: &Self::Defaults,
+    layout: Layout<'_>,
+    cursor_position: Point,
+    viewport: &Rectangle<f32>,
+    row_height: f32,
+    headers: &[Element<'_, M, Self>],
+  ) -> Self::Output {
+    let mut mouse_cursor = mouse::Interaction::default();
+    if headers.is_empty() || viewport.x > row_height {
+      return (Primitive::None, mouse_cursor);
+    }
+    let mut primitives = Vec::new();
+    for (header, layout) in headers.iter().zip(layout.children()) {
+      let (primitive, new_mouse_cursor) = header.draw(self, defaults, layout, cursor_position, viewport);
+      if new_mouse_cursor > mouse_cursor { mouse_cursor = new_mouse_cursor; }
+      primitives.push(primitive);
+    }
+    (Primitive::Group { primitives }, mouse_cursor)
+  }
+}
+
+impl<'a, M: 'a, R: 'a + TableHeaderRenderer> Into<Element<'a, M, R>> for TableHeader<'a, M, R> {
+  fn into(self) -> Element<'a, M, R> {
+    Element::new(self)
+  }
 }
 
 //
 // Table rows
 //
 
-struct TableRows<'a, M, R> {
+struct TableRows<'a, M, R: TableRowsRenderer> {
   spacing: u32,
   row_height: u32,
   column_fill_portions: Vec<u32>,
   rows: Vec<Vec<Element<'a, M, R>>>,
 }
 
-impl<'a, M, B> Widget<M, Renderer<B>> for TableRows<'a, M, Renderer<B>> where B: Backend {
+impl<'a, M, R: TableRowsRenderer> Widget<M, R> for TableRows<'a, M, R> {
   fn width(&self) -> Length { Length::Fill }
   fn height(&self) -> Length { Length::Fill }
 
-  fn layout(&self, renderer: &Renderer<B>, limits: &Limits) -> Node {
+  fn layout(&self, renderer: &R, limits: &Limits) -> Node {
     let fill = limits.fill();
     let total_width = fill.width;
     let total_height = fill.height;
@@ -325,57 +385,17 @@ impl<'a, M, B> Widget<M, Renderer<B>> for TableRows<'a, M, Renderer<B>> where B:
       layouts
     };
     Node::with_children(Size::new(total_width, total_height), layouts)
-    //Node::new(Size::new(limits.fill().width, self.row_height as f32))
   }
 
   fn draw(
     &self,
-    renderer: &mut Renderer<B>,
-    defaults: &Defaults,
+    renderer: &mut R,
+    defaults: &R::Defaults,
     layout: Layout<'_>,
     cursor_position: Point,
     viewport: &Rectangle<f32>,
-  ) -> (Primitive, mouse::Interaction) {
-    let row_height = self.row_height as f32;
-    let spacing = self.spacing as f32;
-
-    let absolute_position = layout.position();
-    let offset = Vector::new(absolute_position.x, absolute_position.y);
-
-    let mut mouse_cursor = mouse::Interaction::default();
-    if self.rows.is_empty() {
-      return (Primitive::None, mouse_cursor);
-    }
-    let mut primitives = Vec::new();
-
-    // TODO: adjust to new setup.
-    let num_rows = self.rows.len();
-    let last_row_index = num_rows.saturating_sub(1);
-    let row_height_plus_spacing = row_height + spacing;
-    let start_offset = ((viewport.y / row_height_plus_spacing).floor() as usize).min(last_row_index);
-    // TODO: figure out why this + 1 is needed. I added it because the last row did not always seem visible from a certain y offset. May be a float precision issue?
-    let num_rows_to_render = (viewport.height / row_height_plus_spacing).ceil() as usize + 1;
-    let end_offset = (start_offset + num_rows_to_render).min(last_row_index);
-
-    let mut y_offset = row_height_plus_spacing + (start_offset as f32 * row_height_plus_spacing);
-    for i in start_offset..=end_offset {
-      let row = &self.rows[i]; // OPTO: get_unchecked
-      for (cell, base_layout) in row.iter().zip(layout.children()) {
-        let bounds = base_layout.bounds();
-        let mut node = Node::new(Size::new(bounds.width, bounds.height));
-        node.move_to(Point::new(bounds.x, y_offset));
-        let layout = Layout::with_offset(offset, &node);
-        let (primitive, new_mouse_cursor) = cell.draw(renderer, defaults, layout, cursor_position, viewport);
-        if new_mouse_cursor > mouse_cursor { mouse_cursor = new_mouse_cursor; }
-        primitives.push(primitive);
-      }
-      y_offset += row_height;
-      if i < last_row_index {
-        y_offset += spacing;
-      }
-    }
-
-    (Primitive::Group { primitives }, mouse_cursor)
+  ) -> R::Output {
+    TableRowsRenderer::draw(renderer, defaults, layout, cursor_position, viewport, self.row_height as f32, self.spacing as f32, &self.rows)
   }
 
   fn hash_layout(&self, state: &mut Hasher) {
@@ -387,8 +407,73 @@ impl<'a, M, B> Widget<M, Renderer<B>> for TableRows<'a, M, Renderer<B>> where B:
   }
 }
 
-impl<'a, M, B> Into<Element<'a, M, Renderer<B>>> for TableRows<'a, M, Renderer<B>> where M: 'a, B: 'a + Backend {
-  fn into(self) -> Element<'a, M, Renderer<B>> { Element::new(self) }
+pub trait TableRowsRenderer: Renderer {
+  fn draw<M>(
+    &mut self,
+    defaults: &Self::Defaults,
+    layout: Layout<'_>,
+    cursor_position: Point,
+    viewport: &Rectangle<f32>,
+    row_height: f32,
+    spacing: f32,
+    rows: &Vec<Vec<Element<'_, M, Self>>>,
+  ) -> Self::Output;
+}
+
+impl<B: Backend> TableRowsRenderer for ConcreteRenderer<B> {
+  fn draw<M>(
+    &mut self,
+    defaults: &Self::Defaults,
+    layout: Layout<'_>,
+    cursor_position: Point,
+    viewport: &Rectangle<f32>,
+    row_height: f32,
+    spacing: f32,
+    rows: &Vec<Vec<Element<'_, M, Self>>>,
+  ) -> Self::Output {
+    let absolute_position = layout.position();
+    let offset = Vector::new(absolute_position.x, absolute_position.y);
+
+    let mut mouse_cursor = mouse::Interaction::default();
+    if rows.is_empty() {
+      return (Primitive::None, mouse_cursor);
+    }
+    let mut primitives = Vec::new();
+
+    let num_rows = rows.len();
+    let last_row_index = num_rows.saturating_sub(1);
+    let row_height_plus_spacing = row_height + spacing;
+    let start_offset = ((viewport.y / row_height_plus_spacing).floor() as usize).min(last_row_index);
+    // TODO: figure out why this + 1 is needed. I added it because the last row did not always seem visible from a certain y offset. May be a float precision issue?
+    let num_rows_to_render = (viewport.height / row_height_plus_spacing).ceil() as usize + 1;
+    let end_offset = (start_offset + num_rows_to_render).min(last_row_index);
+
+    let mut y_offset = row_height_plus_spacing + (start_offset as f32 * row_height_plus_spacing);
+    for i in start_offset..=end_offset {
+      let row = &rows[i]; // OPTO: get_unchecked
+      for (cell, base_layout) in row.iter().zip(layout.children()) {
+        let bounds = base_layout.bounds();
+        let mut node = Node::new(Size::new(bounds.width, bounds.height));
+        node.move_to(Point::new(bounds.x, y_offset));
+        let layout = Layout::with_offset(offset, &node);
+        let (primitive, new_mouse_cursor) = cell.draw(self, defaults, layout, cursor_position, viewport);
+        if new_mouse_cursor > mouse_cursor { mouse_cursor = new_mouse_cursor; }
+        primitives.push(primitive);
+      }
+      y_offset += row_height;
+      if i < last_row_index {
+        y_offset += spacing;
+      }
+    }
+
+    (Primitive::Group { primitives }, mouse_cursor)
+  }
+}
+
+impl<'a, M: 'a, R: 'a + TableRowsRenderer> Into<Element<'a, M, R>> for TableRows<'a, M, R> {
+  fn into(self) -> Element<'a, M, R> {
+    Element::new(self)
+  }
 }
 
 //
@@ -406,7 +491,7 @@ fn layout_columns(total_width: f32, width_fill_portions: impl Iterator<Item=u32>
   let num_spacers = num_columns.saturating_sub(1);
   let total_spacing = (spacing as usize * num_spacers) as f32;
   let total_space = total_width - total_spacing;
-  let total_fill_portion = width_fill_portions.sum::<u32>() as f32;
+  let total_fill_portion = width_fill_portions.clone().sum::<u32>() as f32;
   let mut layouts = Vec::new();
   let mut x_offset = 0f32;
   for (i, width_fill_portion) in width_fill_portions.enumerate() {

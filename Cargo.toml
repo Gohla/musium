@@ -13,6 +13,11 @@ members = [
   "gui"
 ]
 
+[patch.crates-io]
+iced = { path = "gui/iced" }
+iced_native = { path = "gui/iced/native" }
+iced_graphics = { path = "gui/iced/graphics" }
+
 # Development profile: full debug information, some optimisations.
 [profile.dev]
 opt-level = 2
