@@ -14,7 +14,7 @@ use tracing::trace;
 // Table builder
 //
 
-pub struct TableBuilder<'a, M, R: TableRenderer> {
+pub struct TableBuilder<'a, M, R> {
   width: Length,
   height: Length,
   max_width: u32,
@@ -25,7 +25,7 @@ pub struct TableBuilder<'a, M, R: TableRenderer> {
   rows: TableRows<'a, M, R>,
 }
 
-impl<'a, M, R: TableRenderer> TableBuilder<'a, M, R> {
+impl<'a, M, R> TableBuilder<'a, M, R> {
   pub fn new() -> Self {
     let spacing = 0;
     let row_height = 16;
@@ -100,7 +100,7 @@ impl<'a, M, R: TableRenderer> TableBuilder<'a, M, R> {
   }
 
 
-  pub fn build(self, rows_scrollable_state: &'a mut scrollable::State) -> Table<'a, M, R> where M: 'a, R: 'a {
+  pub fn build(self, rows_scrollable_state: &'a mut scrollable::State) -> Table<'a, M, R> where M: 'a, R: 'a + TableRenderer {
     let rows = Scrollable::new(rows_scrollable_state).push(Element::new(self.rows));
     Table {
       width: self.width,
@@ -252,7 +252,7 @@ impl<'a, M: 'a, R: 'a + TableRenderer> Into<Element<'a, M, R>> for Table<'a, M, 
 // Table header
 //
 
-pub struct TableHeader<'a, M, R: TableHeaderRenderer> {
+pub struct TableHeader<'a, M, R> {
   spacing: u32,
   row_height: u32,
   column_fill_portions: Vec<u32>,
@@ -338,7 +338,7 @@ impl<'a, M: 'a, R: 'a + TableHeaderRenderer> Into<Element<'a, M, R>> for TableHe
 // Table rows
 //
 
-struct TableRows<'a, M, R: TableRowsRenderer> {
+struct TableRows<'a, M, R> {
   spacing: u32,
   row_height: u32,
   column_fill_portions: Vec<u32>,
