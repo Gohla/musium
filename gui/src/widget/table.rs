@@ -266,16 +266,7 @@ impl<'a, M, R: TableHeaderRenderer> Widget<M, R> for TableHeader<'a, M, R> {
   fn layout(&self, renderer: &R, limits: &Limits) -> Node {
     let total_width = limits.max().width;
     let total_height = self.row_height as f32;
-    let column_layouts = layout_columns(total_width, self.column_fill_portions.iter().copied(), self.spacing);
-    let layouts = {
-      let mut layouts = Vec::new();
-      for column_layout in &column_layouts {
-        let mut layout = Node::new(Size::new(column_layout.width, total_height));
-        layout.move_to(Point::new(column_layout.x_offset, 0f32));
-        layouts.push(layout);
-      }
-      layouts
-    };
+    let layouts = layout_columns(total_width, total_height, self.column_fill_portions.iter().copied(), self.spacing);
     Node::with_children(Size::new(total_width, total_height), layouts)
   }
 
@@ -361,17 +352,7 @@ impl<'a, M, R: TableRowsRenderer> Widget<M, R> for TableRows<'a, M, R> {
   fn layout(&self, renderer: &R, limits: &Limits) -> Node {
     let max = limits.max();
     let total_width = max.width;
-    let row_height = self.row_height as f32;
-    let column_layouts = layout_columns(total_width, self.column_fill_portions.iter().copied(), self.spacing);
-    let layouts = {
-      let mut layouts = Vec::new();
-      for column_layout in &column_layouts {
-        let mut layout = Node::new(Size::new(column_layout.width, row_height));
-        layout.move_to(Point::new(column_layout.x_offset, 0f32));
-        layouts.push(layout);
-      }
-      layouts
-    };
+    let layouts = layout_columns(total_width, self.row_height as f32, self.column_fill_portions.iter().copied(), self.spacing);
     let num_rows = self.rows.len();
     let total_height = num_rows * self.row_height as usize + num_rows.saturating_sub(1) * self.spacing as usize;
     Node::with_children(Size::new(total_width, total_height as f32), layouts)
@@ -474,12 +455,7 @@ impl<'a, M: 'a, R: 'a + TableRowsRenderer> Into<Element<'a, M, R>> for TableRows
 // Column layout calculation
 //
 
-struct ColumnLayout {
-  width: f32,
-  x_offset: f32,
-}
-
-fn layout_columns(total_width: f32, width_fill_portions: impl Iterator<Item=u32> + Clone, spacing: u32) -> Vec<ColumnLayout> {
+fn layout_columns(total_width: f32, row_height: f32, width_fill_portions: impl Iterator<Item=u32> + Clone, spacing: u32) -> Vec<Node> {
   let num_columns = width_fill_portions.clone().count();
   let last_column_index = (num_columns - 1).max(0);
   let num_spacers = num_columns.saturating_sub(1);
@@ -490,7 +466,9 @@ fn layout_columns(total_width: f32, width_fill_portions: impl Iterator<Item=u32>
   let mut x_offset = 0f32;
   for (i, width_fill_portion) in width_fill_portions.enumerate() {
     let width = (width_fill_portion as f32 / total_fill_portion) * total_space;
-    layouts.push(ColumnLayout { width, x_offset });
+    let mut layout = Node::new(Size::new(width, row_height));
+    layout.move_to(Point::new(x_offset, 0f32));
+    layouts.push(layout);
     x_offset += width;
     if i < last_column_index {
       x_offset += spacing as f32;
