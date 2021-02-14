@@ -1,5 +1,4 @@
 #![feature(deadline_api)]
-#![allow(dead_code, unused_imports, unused_variables)]
 
 use anyhow::{Context, Result};
 use dotenv;

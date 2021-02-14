@@ -1,9 +1,8 @@
-use iced::{Application, Command, Element, Row};
+use iced::{Application, Command, Element};
 use tracing::error;
 
 use musium_client::{Client, Url};
 use musium_core::model::UserLogin;
-use musium_core::schema::track_artist::dsl::track_artist;
 
 use crate::page::{login, track};
 use crate::util::Update;

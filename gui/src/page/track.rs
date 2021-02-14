@@ -1,9 +1,11 @@
+#![allow(dead_code, unused_imports, unused_variables)]
+
 use std::sync::Arc;
 
-use iced::{Align, Column, Command, Element, Length, Scrollable, scrollable, Text};
+use iced::{Color, Column, Command, Element, Length, Row, scrollable, Text};
 use iced_native::{HorizontalAlignment, Space, VerticalAlignment};
 use itertools::Itertools;
-use tracing::{debug, error, info, trace, warn};
+use tracing::{debug, error};
 
 use musium_client::{Client, HttpRequestError};
 use musium_core::format_error::FormatError;
@@ -11,7 +13,7 @@ use musium_core::model::collection::Tracks;
 use musium_core::model::User;
 
 use crate::util::Update;
-use crate::widget::table::{Table, TableBuilder};
+use crate::widget::table::TableBuilder;
 
 #[derive(Default, Debug)]
 pub struct Page {
@@ -45,7 +47,7 @@ impl Page {
     (page, command)
   }
 
-  pub fn update(&mut self, client: &mut Client, message: Message) -> Update<Message, Action> {
+  pub fn update(&mut self, _client: &mut Client, message: Message) -> Update<Message, Action> {
     match message {
       Message::TracksReceived(result) => match result {
         Ok(tracks) => {
@@ -64,11 +66,10 @@ impl Page {
   }
 
   pub fn view(&mut self) -> Element<'_, Message> {
-    TableBuilder::new(NCycles::new(self.tracks.iter(), 30))
-      .padding(4)
+    let table: Element<_> = TableBuilder::new(NCycles::new(self.tracks.iter(), 30))
       .spacing(2)
-      .header_row_height(30)
-      .row_height(20)
+      .header_row_height(26)
+      .row_height(16)
       .push_column(5, header_text("#"), Box::new(|t|
         if let Some(track_number) = t.track.track_number { cell_text(track_number.to_string()) } else { empty() }
       ))
@@ -85,7 +86,15 @@ impl Page {
         cell_text(t.album_artists().map(|a| a.name.clone()).join(", "))
       ))
       .build(&mut self.scrollable_state)
-      .into()
+      .into();
+    let content: Element<_> = Column::new()
+      .width(Length::Fill)
+      .height(Length::Fill)
+      .padding(4)
+      .spacing(4)
+      .push(table)
+      .into();
+    content
   }
 
   fn update_tracks(&mut self, client: &mut Client) -> Command<Message> {
@@ -104,7 +113,7 @@ fn header_text<'a, M>(label: impl Into<String>) -> Element<'a, M> {
     .height(Length::Fill)
     .horizontal_alignment(HorizontalAlignment::Left)
     .vertical_alignment(VerticalAlignment::Center)
-    .size(30)
+    .size(26)
     .into()
 }
 
@@ -114,7 +123,7 @@ fn cell_text<'a, M>(label: impl Into<String>) -> Element<'a, M> {
     .height(Length::Fill)
     .horizontal_alignment(HorizontalAlignment::Left)
     .vertical_alignment(VerticalAlignment::Center)
-    .size(20)
+    .size(16)
     .into()
 }
 

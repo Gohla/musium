@@ -1,10 +1,11 @@
+#![allow(dead_code)]
+
 use std::hash::Hash;
 
-use iced::Vector;
 use iced_graphics::{Backend, Primitive, Renderer as ConcreteRenderer};
 use iced_native::{
-  Align, Background, Clipboard, Color, Container, Element, event, Event, Hasher, layout, Layout, layout::flex, Length,
-  mouse, overlay, Point, Rectangle, Renderer, Row, Scrollable, scrollable, Size, Widget,
+  Clipboard,  Element, Event, Hasher, Layout, Length,
+  mouse, overlay, Point, Rectangle, Renderer, Scrollable, scrollable, Size, Widget,
 };
 use iced_native::event::Status;
 use iced_native::layout::{Limits, Node};
@@ -21,7 +22,6 @@ pub struct TableBuilder<'a, T, I, M, R> where
   height: Length,
   max_width: u32,
   max_height: u32,
-  padding: u32,
   spacing: u32,
   header: TableHeader<'a, M, R>,
   rows: TableRows<'a, T, I, M, R>,
@@ -39,7 +39,6 @@ impl<'a, T, I, M, R> TableBuilder<'a, T, I, M, R> where
       height: Length::Fill,
       max_width: u32::MAX,
       max_height: u32::MAX,
-      padding: 0,
       spacing: 0,
       header: TableHeader { spacing, row_height, column_fill_portions: Vec::new(), headers: Vec::new() },
       rows: TableRows { spacing, row_height, column_fill_portions: Vec::new(), mappers: Vec::new(), rows },
@@ -64,11 +63,6 @@ impl<'a, T, I, M, R> TableBuilder<'a, T, I, M, R> where
 
   pub fn max_height(mut self, max_height: u32) -> Self {
     self.max_height = max_height;
-    self
-  }
-
-  pub fn padding(mut self, padding: u32) -> Self {
-    self.padding = padding;
     self
   }
 
@@ -115,7 +109,6 @@ impl<'a, T, I, M, R> TableBuilder<'a, T, I, M, R> where
       height: self.height,
       max_width: self.max_width,
       max_height: self.max_height,
-      padding: self.padding,
       spacing: self.spacing,
       header: self.header,
       rows,
@@ -132,7 +125,6 @@ pub struct Table<'a, M, R: TableRenderer> {
   height: Length,
   max_width: u32,
   max_height: u32,
-  padding: u32,
   spacing: u32,
   header: TableHeader<'a, M, R>,
   rows: Scrollable<'a, M, R>,
@@ -144,15 +136,13 @@ impl<'a, M, R: TableRenderer> Widget<M, R> for Table<'a, M, R> {
   fn height(&self) -> Length { self.height }
 
   fn layout(&self, renderer: &R, limits: &Limits) -> Node {
-    let padding = self.padding as f32;
     let spacing = self.spacing as f32;
-
     let limits = limits
       .max_width(self.max_width)
       .max_height(self.max_height)
       .width(self.width)
-      .height(self.height)
-      .pad(padding);
+      .height(self.height);
+
     let header_layout = self.header.layout(renderer, &limits);
     let header_size = header_layout.size();
     let header_y_offset = header_size.height + spacing;
@@ -163,9 +153,7 @@ impl<'a, M, R: TableRenderer> Widget<M, R> for Table<'a, M, R> {
     let rows_size = rows_layout.size();
 
     let size = Size::new(rows_size.width.max(rows_size.width), header_size.height + spacing + rows_size.height);
-    let mut layout = Node::with_children(size, vec![header_layout, rows_layout]);
-    layout.move_to(Point::new(padding, padding));
-    layout
+    Node::with_children(size, vec![header_layout, rows_layout])
   }
 
   fn draw(
@@ -186,7 +174,6 @@ impl<'a, M, R: TableRenderer> Widget<M, R> for Table<'a, M, R> {
     self.height.hash(state);
     self.max_width.hash(state);
     self.max_height.hash(state);
-    self.padding.hash(state);
     self.spacing.hash(state);
     self.header.hash_layout(state);
     self.rows.hash_layout(state);
@@ -283,10 +270,10 @@ impl<'a, M, R: TableHeaderRenderer> Widget<M, R> for TableHeader<'a, M, R> {
   fn width(&self) -> Length { Length::Fill }
   fn height(&self) -> Length { Length::Fill }
 
-  fn layout(&self, renderer: &R, limits: &Limits) -> Node {
+  fn layout(&self, _renderer: &R, limits: &Limits) -> Node {
     let total_width = limits.max().width;
     let total_height = self.row_height as f32;
-    let layouts = layout_columns(total_width, total_height, self.column_fill_portions.iter().copied(), self.spacing);
+    let layouts = layout_columns(total_width, total_height, &self.column_fill_portions, self.spacing);
     Node::with_children(Size::new(total_width, total_height), layouts)
   }
 
@@ -298,7 +285,7 @@ impl<'a, M, R: TableHeaderRenderer> Widget<M, R> for TableHeader<'a, M, R> {
     cursor_position: Point,
     viewport: &Rectangle<f32>,
   ) -> R::Output {
-    renderer.draw_table_header(defaults, layout, cursor_position, viewport, self.row_height as f32, &self.headers)
+    renderer.draw_table_header(defaults, layout, cursor_position, viewport, &self.headers)
   }
 
   fn hash_layout(&self, state: &mut Hasher) {
@@ -319,7 +306,6 @@ pub trait TableHeaderRenderer: Renderer {
     layout: Layout<'_>,
     cursor_position: Point,
     viewport: &Rectangle<f32>,
-    row_height: f32,
     headers: &[Element<'_, M, Self>],
   ) -> Self::Output;
 }
@@ -331,7 +317,6 @@ impl<B: Backend> TableHeaderRenderer for ConcreteRenderer<B> {
     layout: Layout<'_>,
     cursor_position: Point,
     viewport: &Rectangle<f32>,
-    row_height: f32,
     headers: &[Element<'_, M, Self>],
   ) -> Self::Output {
     let mut mouse_cursor = mouse::Interaction::default();
@@ -376,10 +361,10 @@ impl<'a, T, I, M, R: TableRowsRenderer<'a, T, I, M>> Widget<M, R> for TableRows<
   fn width(&self) -> Length { Length::Fill }
   fn height(&self) -> Length { Length::Fill }
 
-  fn layout(&self, renderer: &R, limits: &Limits) -> Node {
+  fn layout(&self, _renderer: &R, limits: &Limits) -> Node {
     let max = limits.max();
     let total_width = max.width;
-    let layouts = layout_columns(total_width, self.row_height as f32, self.column_fill_portions.iter().copied(), self.spacing);
+    let layouts = layout_columns(total_width, self.row_height as f32, &self.column_fill_portions, self.spacing);
     let num_rows = self.rows.len();
     let total_height = num_rows * self.row_height as usize + num_rows.saturating_sub(1) * self.spacing as usize;
     Node::with_children(Size::new(total_width, total_height as f32), layouts)
@@ -407,7 +392,7 @@ impl<'a, T, I, M, R: TableRowsRenderer<'a, T, I, M>> Widget<M, R> for TableRows<
 
 pub trait TableRowsRenderer<'a, T, I, M>: Renderer where
   T: 'a,
-  I: 'a + Iterator<Item=T> + ExactSizeIterator + Clone,
+  I: 'a + Iterator<Item=T> + ExactSizeIterator,
 {
   fn draw_table_rows(
     &mut self,
@@ -424,7 +409,7 @@ pub trait TableRowsRenderer<'a, T, I, M>: Renderer where
 
 impl<'a, T, I, M, B> TableRowsRenderer<'a, T, I, M> for ConcreteRenderer<B> where
   T: 'a,
-  I: 'a + Iterator<Item=T> + ExactSizeIterator + Clone,
+  I: 'a + Iterator<Item=T> + ExactSizeIterator,
   B: Backend,
 {
   fn draw_table_rows(
@@ -439,22 +424,18 @@ impl<'a, T, I, M, B> TableRowsRenderer<'a, T, I, M> for ConcreteRenderer<B> wher
     rows: I,
   ) -> Self::Output {
     let absolute_position = layout.position();
-    let offset = Vector::new(absolute_position.x, absolute_position.y);
-
     let mut mouse_cursor = mouse::Interaction::default();
-
     let num_rows = rows.len();
     if num_rows == 0 {
       return (Primitive::None, mouse_cursor);
     }
     let mut primitives = Vec::new();
-
     let last_row_index = num_rows.saturating_sub(1);
     let row_height_plus_spacing = row_height + spacing;
-    let relative_y = viewport.y - absolute_position.y;
-    let start_offset = ((relative_y / row_height_plus_spacing).floor() as usize).min(last_row_index);
-    let num_rows_to_render = (viewport.height / row_height_plus_spacing).ceil() as usize;
-    let mut y_offset = start_offset as f32 * row_height_plus_spacing;
+    let start_offset = (((viewport.y - absolute_position.y) / row_height_plus_spacing).floor() as usize).min(last_row_index);
+    // Note: + 1 on next line to ensure that last row is not culled. Not sure why this is needed.
+    let num_rows_to_render = ((viewport.height / row_height_plus_spacing).ceil() as usize + 1).min(last_row_index);
+    let mut y_offset = absolute_position.y + start_offset as f32 * row_height_plus_spacing;
     for (i, row) in rows.skip(start_offset).take(num_rows_to_render).enumerate() {
       for (mapper, base_layout) in mappers.iter().zip(layout.children()) {
         let element = mapper(&row);
@@ -464,8 +445,7 @@ impl<'a, T, I, M, B> TableRowsRenderer<'a, T, I, M> for ConcreteRenderer<B> wher
         let bounds = base_layout.bounds();
         let mut node = Node::new(Size::new(bounds.width, bounds.height));
         node.move_to(Point::new(bounds.x, y_offset));
-        let layout = Layout::with_offset(offset, &node);
-
+        let layout = Layout::new(&node);
         let (primitive, new_mouse_cursor) = element.draw(self, defaults, layout, cursor_position, viewport);
         if new_mouse_cursor > mouse_cursor { mouse_cursor = new_mouse_cursor; }
         primitives.push(primitive);
@@ -475,7 +455,6 @@ impl<'a, T, I, M, B> TableRowsRenderer<'a, T, I, M> for ConcreteRenderer<B> wher
         y_offset += spacing;
       }
     }
-
     (Primitive::Group { primitives }, mouse_cursor)
   }
 }
@@ -495,17 +474,17 @@ impl<'a, T, I, M, R> Into<Element<'a, M, R>> for TableRows<'a, T, I, M, R> where
 // Column layout calculation
 //
 
-fn layout_columns(total_width: f32, row_height: f32, width_fill_portions: impl Iterator<Item=u32> + Clone, spacing: u32) -> Vec<Node> {
-  let num_columns = width_fill_portions.clone().count();
+fn layout_columns(total_width: f32, row_height: f32, width_fill_portions: &Vec<u32>, spacing: u32) -> Vec<Node> {
+  let num_columns = width_fill_portions.len();
   let last_column_index = (num_columns - 1).max(0);
   let num_spacers = num_columns.saturating_sub(1);
   let total_spacing = (spacing as usize * num_spacers) as f32;
   let total_space = total_width - total_spacing;
-  let total_fill_portion = width_fill_portions.clone().sum::<u32>() as f32;
+  let total_fill_portion = width_fill_portions.iter().sum::<u32>() as f32;
   let mut layouts = Vec::new();
   let mut x_offset = 0f32;
-  for (i, width_fill_portion) in width_fill_portions.enumerate() {
-    let width = (width_fill_portion as f32 / total_fill_portion) * total_space;
+  for (i, width_fill_portion) in width_fill_portions.iter().enumerate() {
+    let width = (*width_fill_portion as f32 / total_fill_portion) * total_space;
     let mut layout = Node::new(Size::new(width, row_height));
     layout.move_to(Point::new(x_offset, 0f32));
     layouts.push(layout);

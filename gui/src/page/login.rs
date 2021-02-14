@@ -1,3 +1,5 @@
+#![allow(dead_code, unused_imports, unused_variables)]
+
 use std::sync::Arc;
 
 use iced::{Align, Button, button, Column, Command, Element, HorizontalAlignment, Length, Row, Text, text_input, TextInput};
