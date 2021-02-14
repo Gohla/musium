@@ -4,8 +4,8 @@ use std::hash::Hash;
 
 use iced_graphics::{Backend, Primitive, Renderer as ConcreteRenderer};
 use iced_native::{
-  Clipboard,  Element, Event, Hasher, Layout, Length,
-  mouse, overlay, Point, Rectangle, Renderer, Scrollable, scrollable, Size, Widget,
+  Clipboard, Element, Event, event, Hasher, Layout, Length, mouse, overlay, Point, Rectangle, Renderer, Scrollable,
+  scrollable, Size, Widget,
 };
 use iced_native::event::Status;
 use iced_native::layout::{Limits, Node};
@@ -297,6 +297,39 @@ impl<'a, M, R: TableHeaderRenderer> Widget<M, R> for TableHeader<'a, M, R> {
       column_fill_portion.hash(state);
     }
   }
+
+  fn on_event(
+    &mut self,
+    event: Event,
+    layout: Layout<'_>,
+    cursor_position: Point,
+    messages: &mut Vec<M>,
+    renderer: &R,
+    clipboard: Option<&dyn Clipboard>,
+  ) -> Status {
+    self.headers
+      .iter_mut()
+      .zip(layout.children())
+      .map(|(header, layout)| {
+        header.on_event(
+          event.clone(),
+          layout,
+          cursor_position,
+          messages,
+          renderer,
+          clipboard,
+        )
+      })
+      .fold(event::Status::Ignored, event::Status::merge)
+  }
+
+  fn overlay(&mut self, layout: Layout<'_>) -> Option<overlay::Element<'_, M, R>> {
+    self.headers
+      .iter_mut()
+      .zip(layout.children())
+      .filter_map(|(header, layout)| header.overlay(layout))
+      .next()
+  }
 }
 
 pub trait TableHeaderRenderer: Renderer {
@@ -388,6 +421,21 @@ impl<'a, T, I, M, R: TableRowsRenderer<'a, T, I, M>> Widget<M, R> for TableRows<
     self.row_height.hash(state);
     self.rows.len().hash(state);
   }
+
+  // fn on_event(
+  //   &mut self,
+  //   event: Event,
+  //   layout: Layout<'_>,
+  //   cursor_position: Point,
+  //   messages: &mut Vec<M>,
+  //   renderer: &R,
+  //   clipboard: Option<&dyn Clipboard>,
+  // ) -> Status {
+  //   let absolute_position = layout.position();
+  //   let relative_cursor_position = Point::new(cursor_position.x - absolute_position.x, cursor_position.y - absolute_position.y);
+  //   println!("{:?}", relative_cursor_position);
+  //   Status::Ignored
+  // }
 }
 
 pub trait TableRowsRenderer<'a, T, I, M>: Renderer where
