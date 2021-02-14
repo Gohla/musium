@@ -66,7 +66,7 @@ impl Page {
   }
 
   pub fn view(&mut self) -> Element<'_, Message> {
-    let table: Element<_> = TableBuilder::new(NCycles::new(self.tracks.iter(), 30))
+    let table: Element<_> = TableBuilder::new(self.tracks.iter())
       .spacing(2)
       .header_row_height(26)
       .row_height(16)
@@ -130,55 +130,4 @@ fn cell_text<'a, M>(label: impl Into<String>) -> Element<'a, M> {
 fn empty<'a, M: 'a>() -> Element<'a, M> {
   Space::new(Length::Shrink, Length::Shrink)
     .into()
-}
-
-#[derive(Clone)]
-pub struct NCycles<I> {
-  orig: I,
-  iter: I,
-  count: usize,
-}
-
-impl<I: Clone> NCycles<I> {
-  fn new(iter: I, count: usize) -> NCycles<I> {
-    NCycles {
-      orig: iter.clone(),
-      iter,
-      count,
-    }
-  }
-}
-
-impl<I> Iterator for NCycles<I> where
-  I: Clone + Iterator,
-{
-  type Item = <I as Iterator>::Item;
-
-  #[inline]
-  fn next(&mut self) -> Option<<I as Iterator>::Item> {
-    match self.iter.next() {
-      None if self.count == 0 => None,
-      None => {
-        self.iter = self.orig.clone();
-        self.count -= 1;
-        self.iter.next()
-      }
-      y => y,
-    }
-  }
-
-  #[inline]
-  fn size_hint(&self) -> (usize, Option<usize>) {
-    let (lower, upper) = self.iter.size_hint();
-    (lower * self.count, upper.map(|u| u * self.count))
-  }
-}
-
-impl<I> ExactSizeIterator for NCycles<I> where
-  I: Clone + ExactSizeIterator
-{
-  #[inline]
-  fn len(&self) -> usize {
-    self.iter.len() * self.count
-  }
 }
