@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use iced::{Column, Command, Element, Length, Scrollable, scrollable, Text, Align};
+use iced::{Align, Column, Command, Element, Length, Scrollable, scrollable, Text};
 use iced_native::{HorizontalAlignment, Space, VerticalAlignment};
 use itertools::Itertools;
 use tracing::{debug, error, info, trace, warn};
@@ -64,29 +64,28 @@ impl Page {
   }
 
   pub fn view(&mut self) -> Element<'_, Message> {
-    let mut table = TableBuilder::new()
+    TableBuilder::new(NCycles::new(self.tracks.iter(), 30))
       .padding(4)
       .spacing(2)
       .header_row_height(30)
       .row_height(20)
-      .push_column(5, header_text("#"))
-      .push_column(25, header_text("Title"))
-      .push_column(25, header_text("Track Artists"))
-      .push_column(25, header_text("Album"))
-      .push_column(25, header_text("Album Artists"))
-      ;
-    for _ in 0..30 {
-      for (track, track_artists, album, album_artists) in self.tracks.iter() {
-        table = table.push_row(vec![
-          if let Some(track_number) = track.track_number { cell_text(track_number.to_string()) } else { empty() },
-          cell_text(track.title.clone()),
-          cell_text(track_artists.map(|a| a.name.clone()).join(", ")),
-          cell_text(album.name.clone()),
-          cell_text(album_artists.map(|a| a.name.clone()).join(", ")),
-        ]);
-      }
-    }
-    table.build(&mut self.scrollable_state).into()
+      .push_column(5, header_text("#"), Box::new(|t|
+        if let Some(track_number) = t.track.track_number { cell_text(track_number.to_string()) } else { empty() }
+      ))
+      .push_column(25, header_text("Title"), Box::new(|t|
+        cell_text(t.track.title.clone())
+      ))
+      .push_column(25, header_text("Track Artists"), Box::new(|t|
+        cell_text(t.track_artists().map(|a| a.name.clone()).join(", "))
+      ))
+      .push_column(25, header_text("Album"), Box::new(|t|
+        if let Some(album) = t.album() { cell_text(album.name.clone()) } else { empty() }
+      ))
+      .push_column(25, header_text("Album Artists"), Box::new(|t|
+        cell_text(t.album_artists().map(|a| a.name.clone()).join(", "))
+      ))
+      .build(&mut self.scrollable_state)
+      .into()
   }
 
   fn update_tracks(&mut self, client: &mut Client) -> Command<Message> {
@@ -122,4 +121,55 @@ fn cell_text<'a, M>(label: impl Into<String>) -> Element<'a, M> {
 fn empty<'a, M: 'a>() -> Element<'a, M> {
   Space::new(Length::Shrink, Length::Shrink)
     .into()
+}
+
+#[derive(Clone)]
+pub struct NCycles<I> {
+  orig: I,
+  iter: I,
+  count: usize,
+}
+
+impl<I: Clone> NCycles<I> {
+  fn new(iter: I, count: usize) -> NCycles<I> {
+    NCycles {
+      orig: iter.clone(),
+      iter,
+      count,
+    }
+  }
+}
+
+impl<I> Iterator for NCycles<I> where
+  I: Clone + Iterator,
+{
+  type Item = <I as Iterator>::Item;
+
+  #[inline]
+  fn next(&mut self) -> Option<<I as Iterator>::Item> {
+    match self.iter.next() {
+      None if self.count == 0 => None,
+      None => {
+        self.iter = self.orig.clone();
+        self.count -= 1;
+        self.iter.next()
+      }
+      y => y,
+    }
+  }
+
+  #[inline]
+  fn size_hint(&self) -> (usize, Option<usize>) {
+    let (lower, upper) = self.iter.size_hint();
+    (lower * self.count, upper.map(|u| u * self.count))
+  }
+}
+
+impl<I> ExactSizeIterator for NCycles<I> where
+  I: Clone + ExactSizeIterator
+{
+  #[inline]
+  fn len(&self) -> usize {
+    self.iter.len() * self.count
+  }
 }

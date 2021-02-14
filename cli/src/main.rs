@@ -233,13 +233,13 @@ async fn run(command: Command, client: &Client) -> Result<()> {
 
     Command::ListTracks => {
       let tracks = client.list_tracks().await?;
-      for (track, track_artists, album, album_artists) in tracks.iter() {
-        println!("- {:?}", track);
-        for artist in track_artists {
+      for info in tracks.iter() {
+        println!("- {:?}", info.track);
+        for artist in info.track_artists() {
           println!("  * {:?}", artist);
         }
-        println!("  * {:?}", album);
-        for artist in album_artists {
+        println!("  * {:?}", info.album());
+        for artist in info.album_artists() {
           println!("    - {:?}", artist);
         }
       }

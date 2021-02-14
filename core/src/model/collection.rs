@@ -91,18 +91,9 @@ impl Tracks {
     Self { tracks, albums, artists, track_artists, album_artists }
   }
 
-  pub fn iter(&self) -> impl Iterator<Item=(&Track, impl Iterator<Item=&Artist>, &Album, impl Iterator<Item=&Artist>)> + '_ {
+  pub fn iter<'a>(&'a self) -> impl Iterator<Item=TrackInfo<'a>> + ExactSizeIterator + Clone + 'a {
     let Tracks { tracks, albums, artists, track_artists, album_artists } = &self;
-    tracks.into_iter().filter_map(move |track| {
-      let album = albums.get(&track.album_id)?;
-      let album_artists: &Vec<i32> = album_artists.get(&album.id)?;
-      let album_artists: Vec<&Artist> = album_artists.into_iter().filter_map(|aa| artists.get(aa)).collect(); // OPTO: prevent allocation
-
-      let track_artists: &Vec<i32> = track_artists.get(&track.id)?;
-      let track_artists: Vec<&Artist> = track_artists.into_iter().filter_map(|ta| artists.get(ta)).collect(); // OPTO: prevent allocation
-
-      return Some((track, track_artists.into_iter(), album, album_artists.into_iter()));
-    })
+    tracks.into_iter().map(move |track| { TrackInfo { track, albums, artists, track_artists, album_artists } })
   }
 
   pub fn len(&self) -> usize {
@@ -117,5 +108,35 @@ impl Tracks {
 impl From<TracksRaw> for Tracks {
   fn from(tracks: TracksRaw) -> Self {
     Tracks::from(tracks.albums, tracks.tracks, tracks.artists, tracks.album_artists, tracks.track_artists)
+  }
+}
+
+pub struct TrackInfo<'a> {
+  pub track: &'a Track,
+  albums: &'a HashMap<i32, Album>,
+  artists: &'a HashMap<i32, Artist>,
+  album_artists: &'a HashMap<i32, Vec<i32>>,
+  track_artists: &'a HashMap<i32, Vec<i32>>,
+}
+
+impl<'a> TrackInfo<'a> {
+  #[inline]
+  pub fn track(&self) -> &Track {
+    self.track
+  }
+
+  #[inline]
+  pub fn track_artists(&self) -> impl Iterator<Item=&Artist> {
+    self.track_artists.get(&self.track.id).into_iter().flat_map(move |ids| ids.into_iter()).filter_map(move |ta| self.artists.get(ta))
+  }
+
+  #[inline]
+  pub fn album(&self) -> Option<&Album> {
+    self.albums.get(&self.track.album_id)
+  }
+
+  #[inline]
+  pub fn album_artists(&self) -> impl Iterator<Item=&Artist> {
+    self.album_artists.get(&self.track.album_id).into_iter().flat_map(move |ids| ids.into_iter()).filter_map(move |ta| self.artists.get(ta))
   }
 }
