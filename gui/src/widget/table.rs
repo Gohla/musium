@@ -5,7 +5,7 @@ use std::hash::Hash;
 use iced_graphics::{Backend, Primitive, Renderer as ConcreteRenderer};
 use iced_native::{
   Clipboard, Element, Event, event, Hasher, Layout, Length, mouse, overlay, Point, Rectangle, Renderer, Scrollable,
-  scrollable, Size, Widget,
+  scrollable, Size, touch, Widget,
 };
 use iced_native::event::Status;
 use iced_native::layout::{Limits, Node};
@@ -13,6 +13,12 @@ use iced_native::layout::{Limits, Node};
 //
 // Table builder
 //
+
+// OPTO: Instead of rendering rows, render columns. Right now the mapper functions are dynamic dispatch because they
+//       have different types, and we call the mapper on each cell. If we render columns instead, we only need one
+//       dynamic dispatch per column. We can then also turn `&T` into `T` on the mapper. We do have to iterate over the
+//       rows multiple times though, but this is possible because it is `Clone`. It might be a little bit slow because
+//       `skip` on `Iterator` could be slow.
 
 pub struct TableBuilder<'a, T, I, M, R> where
   T: 'a,
@@ -397,6 +403,8 @@ impl<'a, T, I, M, R: TableRowsRenderer<'a, T, I, M>> Widget<M, R> for TableRows<
   fn layout(&self, _renderer: &R, limits: &Limits) -> Node {
     let max = limits.max();
     let total_width = max.width;
+    // HACK: only lay out first row, because laying out the entire table becomes slow for larger tables. Lay out the
+    //       *visible rows* in the draw function.
     let layouts = layout_columns(total_width, self.row_height as f32, &self.column_fill_portions, self.spacing);
     let num_rows = self.rows.len();
     let total_height = num_rows * self.row_height as usize + num_rows.saturating_sub(1) * self.spacing as usize;
@@ -419,23 +427,43 @@ impl<'a, T, I, M, R: TableRowsRenderer<'a, T, I, M>> Widget<M, R> for TableRows<
     std::any::TypeId::of::<Marker>().hash(state);
     self.spacing.hash(state);
     self.row_height.hash(state);
+    for column_fill_portion in &self.column_fill_portions {
+      column_fill_portion.hash(state);
+    }
     self.rows.len().hash(state);
   }
 
-  // fn on_event(
-  //   &mut self,
-  //   event: Event,
-  //   layout: Layout<'_>,
-  //   cursor_position: Point,
-  //   messages: &mut Vec<M>,
-  //   renderer: &R,
-  //   clipboard: Option<&dyn Clipboard>,
-  // ) -> Status {
-  //   let absolute_position = layout.position();
-  //   let relative_cursor_position = Point::new(cursor_position.x - absolute_position.x, cursor_position.y - absolute_position.y);
-  //   println!("{:?}", relative_cursor_position);
-  //   Status::Ignored
-  // }
+  fn on_event(
+    &mut self,
+    event: Event,
+    layout: Layout<'_>,
+    cursor_position: Point,
+    messages: &mut Vec<M>,
+    renderer: &R,
+    clipboard: Option<&dyn Clipboard>,
+  ) -> Status {
+    let absolute_position = layout.position();
+    match event {
+      Event::Keyboard(_) | Event::Window(_) => return Status::Ignored,
+      Event::Mouse(event) => {
+        let mouse_position_absolute = cursor_position;
+        let mouse_position_relative = Point::new(mouse_position_absolute.x - absolute_position.x, mouse_position_absolute.y - absolute_position.y);
+        // TODO: implement picking the correct cell and propagating the event.
+      }
+      Event::Touch(event) => {
+        let touch_position_absolute = match event {
+          touch::Event::FingerPressed { position, .. } => position,
+          touch::Event::FingerMoved { position, .. } => position,
+          touch::Event::FingerLifted { position, .. } => position,
+          touch::Event::FingerLost { position, .. } => position,
+        };
+        let touch_position_relative = Point::new(touch_position_absolute.x - absolute_position.x, touch_position_absolute.y - absolute_position.y);
+        // TODO: implement picking the correct cell and propagating the event.
+      }
+      _ => {}
+    }
+    Status::Ignored
+  }
 }
 
 pub trait TableRowsRenderer<'a, T, I, M>: Renderer where
@@ -481,25 +509,26 @@ impl<'a, T, I, M, B> TableRowsRenderer<'a, T, I, M> for ConcreteRenderer<B> wher
     let last_row_index = num_rows.saturating_sub(1);
     let row_height_plus_spacing = row_height + spacing;
     let start_offset = (((viewport.y - absolute_position.y) / row_height_plus_spacing).floor() as usize).min(last_row_index);
-    // Note: + 1 on next line to ensure that last row is not culled. Not sure why this is needed.
+    // HACK: + 1 on next line to ensure that last partially visible row is not culled.
     let num_rows_to_render = ((viewport.height / row_height_plus_spacing).ceil() as usize + 1).min(last_row_index);
-    let mut y_offset = absolute_position.y + start_offset as f32 * row_height_plus_spacing;
+    let mut y_offset = start_offset as f32 * row_height_plus_spacing;
     for (i, row) in rows.skip(start_offset).take(num_rows_to_render).enumerate() {
       for (mapper, base_layout) in mappers.iter().zip(layout.children()) {
         let element = mapper(&row);
-        // Reconstruct the layout from `base_layout` which has a correct x position, but an incorrect y position which
-        // always points to the first row. This is needed so that we do not have to lay out all the cells of the table
-        // each time the layout changes. Now we only calculate the absolute layout of cells which are in view.
+        // HACK: Reconstruct the layout from `base_layout` which has a correct x position, but an incorrect y position
+        //       which always points to the first row. This is needed so that we do not have to lay out all the cells of
+        //       the table each time the layout changes, because that is slow for larger tables. Instead we now
+        //       calculate the absolute layout of cells which are *in view* as part of primitive generation.
         let bounds = base_layout.bounds();
         let mut node = Node::new(Size::new(bounds.width, bounds.height));
-        node.move_to(Point::new(bounds.x, y_offset));
+        node.move_to(Point::new(bounds.x, absolute_position.y + y_offset));
         let layout = Layout::new(&node);
         let (primitive, new_mouse_cursor) = element.draw(self, defaults, layout, cursor_position, viewport);
         if new_mouse_cursor > mouse_cursor { mouse_cursor = new_mouse_cursor; }
         primitives.push(primitive);
       }
       y_offset += row_height;
-      if i < last_row_index {
+      if i < last_row_index { // Don't add spacing after last row.
         y_offset += spacing;
       }
     }
@@ -524,8 +553,8 @@ impl<'a, T, I, M, R> Into<Element<'a, M, R>> for TableRows<'a, T, I, M, R> where
 
 fn layout_columns(total_width: f32, row_height: f32, width_fill_portions: &Vec<u32>, spacing: u32) -> Vec<Node> {
   let num_columns = width_fill_portions.len();
-  let last_column_index = (num_columns - 1).max(0);
-  let num_spacers = num_columns.saturating_sub(1);
+  let last_column_index = num_columns.saturating_sub(1);
+  let num_spacers = last_column_index;
   let total_spacing = (spacing as usize * num_spacers) as f32;
   let total_space = total_width - total_spacing;
   let total_fill_portion = width_fill_portions.iter().sum::<u32>() as f32;
@@ -537,7 +566,7 @@ fn layout_columns(total_width: f32, row_height: f32, width_fill_portions: &Vec<u
     layout.move_to(Point::new(x_offset, 0f32));
     layouts.push(layout);
     x_offset += width;
-    if i < last_column_index {
+    if i < last_column_index { // Don't add spacing after last column.
       x_offset += spacing as f32;
     }
   }
