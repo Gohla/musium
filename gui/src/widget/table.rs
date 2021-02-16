@@ -443,26 +443,78 @@ impl<'a, T, I, M, R: TableRowsRenderer<'a, T, I, M>> Widget<M, R> for TableRows<
     clipboard: Option<&dyn Clipboard>,
   ) -> Status {
     let absolute_position = layout.position();
-    match event {
+    match &event {
       Event::Keyboard(_) | Event::Window(_) => return Status::Ignored,
-      Event::Mouse(event) => {
-        let mouse_position_absolute = cursor_position;
-        let mouse_position_relative = Point::new(mouse_position_absolute.x - absolute_position.x, mouse_position_absolute.y - absolute_position.y);
-        // TODO: implement picking the correct cell and propagating the event.
+      Event::Mouse(_) => {
+        let mouse_position_relative = Point::new(cursor_position.x - absolute_position.x, cursor_position.y - absolute_position.y);
+        if let Some(mut element) = self.get_element_at(mouse_position_relative, &layout) {
+          // TODO: calculate new layout
+          if element.on_event(event.clone(), layout, cursor_position, messages, renderer, clipboard) == Status::Captured {
+            return Status::Captured;
+          }
+        }
       }
-      Event::Touch(event) => {
-        let touch_position_absolute = match event {
+      Event::Touch(touch_event) => {
+        let touch_position_absolute = match touch_event {
           touch::Event::FingerPressed { position, .. } => position,
           touch::Event::FingerMoved { position, .. } => position,
           touch::Event::FingerLifted { position, .. } => position,
           touch::Event::FingerLost { position, .. } => position,
         };
         let touch_position_relative = Point::new(touch_position_absolute.x - absolute_position.x, touch_position_absolute.y - absolute_position.y);
-        // TODO: implement picking the correct cell and propagating the event.
+        // TODO: reduce code duplication
+        if let Some(mut element) = self.get_element_at(touch_position_relative, &layout) {
+          // TODO: calculate new layout
+          if element.on_event(event.clone(), layout, cursor_position, messages, renderer, clipboard) == Status::Captured {
+            return Status::Captured;
+          }
+        }
       }
-      _ => {}
     }
     Status::Ignored
+  }
+}
+
+impl<'a, T, I, M, R: TableRowsRenderer<'a, T, I, M>> TableRows<'a, T, I, M, R> where
+  T: 'a,
+  I: 'a + Iterator<Item=T> + ExactSizeIterator + Clone,
+{
+  fn get_row_index_at(&self, y: f32) -> Option<usize> {
+    if y < 0f32 { return None; } // Out of bounds
+    let spacing = self.spacing as f32;
+    let row_height = self.row_height as f32;
+    let row_height_plus_spacing = row_height + spacing;
+    let row_index = (y / row_height_plus_spacing).ceil() as usize;
+    let row_offset_without_spacing = (row_index as f32 * row_height_plus_spacing) - spacing;
+    if y > row_offset_without_spacing {
+      None // On row spacing
+    } else {
+      Some(row_index.saturating_sub(1))
+    }
+  }
+
+  fn get_column_index_at(&self, x: f32, layout: &Layout<'_>) -> Option<usize> {
+    let spacing = self.spacing as f32;
+    let mut offset = 0f32;
+    for (column_index, column_layout) in layout.children().enumerate() {
+      if x < offset { return None; } // On column spacing or out of bounds
+      offset += column_layout.bounds().width;
+      if x <= offset { return Some(column_index); }
+      offset += spacing;
+    }
+    None
+  }
+
+  fn get_element_at(&self, point: Point, layout: &Layout<'_>) -> Option<Element<'a, M, R>> {
+    let column_index = self.get_column_index_at(point.x, &layout);
+    let mapper = column_index.and_then(|i| self.mappers.get(i));
+    let row_index = self.get_row_index_at(point.y);
+    let row = row_index.and_then(|i| self.rows.clone().nth(i));
+    if let (Some(mapper), Some(row)) = (mapper, row) {
+      Some(mapper(&row))
+    } else {
+      None
+    }
   }
 }
 
