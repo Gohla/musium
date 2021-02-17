@@ -1,6 +1,7 @@
 use iced::{Application, Command, Element};
 use tracing::error;
 
+use musium_audio::Player;
 use musium_client::{Client, Url};
 use musium_core::model::UserLogin;
 
@@ -11,10 +12,12 @@ pub struct Flags {
   pub initial_url: Url,
   pub initial_user_login: UserLogin,
   pub client: Client,
+  pub audio_player: Player,
 }
 
 pub struct App {
   client: Client,
+  audio_player: Player,
   current_page: Page,
 }
 
@@ -37,7 +40,7 @@ impl Application for App {
 
   fn new(flags: Flags) -> (Self, Command<Message>) {
     let current_page = Page::Login(login::Page::new(flags.initial_url, flags.initial_user_login));
-    let app = Self { client: flags.client, current_page };
+    let app = Self { client: flags.client, audio_player: flags.audio_player, current_page };
     (app, Command::none())
   }
 
@@ -59,7 +62,7 @@ impl Application for App {
           command
         }
       }
-      (Page::Track(p), Message::Track(m)) => p.update(&mut self.client, m).into_command().map(|m| Message::Track(m)),
+      (Page::Track(p), Message::Track(m)) => p.update(&mut self.client, &mut self.audio_player, m).into_command().map(|m| Message::Track(m)),
       (p, m) => {
         error!("[BUG] Requested update with message '{:?}', but that message cannot be handled by the current page '{:?}' or the application itself", m, p);
         Command::none()

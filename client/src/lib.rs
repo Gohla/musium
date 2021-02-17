@@ -136,6 +136,7 @@ impl Client {
 
 // Track
 
+#[derive(Clone, Debug)]
 pub enum PlaySource {
   AudioData(Vec<u8>),
   ExternallyPlayed,

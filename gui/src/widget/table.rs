@@ -447,11 +447,8 @@ impl<'a, T, I, M, R: TableRowsRenderer<'a, T, I, M>> Widget<M, R> for TableRows<
       Event::Keyboard(_) | Event::Window(_) => return Status::Ignored,
       Event::Mouse(_) => {
         let mouse_position_relative = Point::new(cursor_position.x - absolute_position.x, cursor_position.y - absolute_position.y);
-        if let Some(mut element) = self.get_element_at(mouse_position_relative, &layout) {
-          // TODO: calculate new layout
-          if element.on_event(event.clone(), layout, cursor_position, messages, renderer, clipboard) == Status::Captured {
-            return Status::Captured;
-          }
+        if self.propagate_event_to_cell_at(&event, mouse_position_relative, layout, cursor_position, messages, renderer, clipboard) == Status::Captured {
+          return Status::Captured;
         }
       }
       Event::Touch(touch_event) => {
@@ -462,12 +459,8 @@ impl<'a, T, I, M, R: TableRowsRenderer<'a, T, I, M>> Widget<M, R> for TableRows<
           touch::Event::FingerLost { position, .. } => position,
         };
         let touch_position_relative = Point::new(touch_position_absolute.x - absolute_position.x, touch_position_absolute.y - absolute_position.y);
-        // TODO: reduce code duplication
-        if let Some(mut element) = self.get_element_at(touch_position_relative, &layout) {
-          // TODO: calculate new layout
-          if element.on_event(event.clone(), layout, cursor_position, messages, renderer, clipboard) == Status::Captured {
-            return Status::Captured;
-          }
+        if self.propagate_event_to_cell_at(&event, touch_position_relative, layout, cursor_position, messages, renderer, clipboard) == Status::Captured {
+          return Status::Captured;
         }
       }
     }
@@ -484,12 +477,12 @@ impl<'a, T, I, M, R: TableRowsRenderer<'a, T, I, M>> TableRows<'a, T, I, M, R> w
     let spacing = self.spacing as f32;
     let row_height = self.row_height as f32;
     let row_height_plus_spacing = row_height + spacing;
-    let row_index = (y / row_height_plus_spacing).ceil() as usize;
-    let row_offset_without_spacing = (row_index as f32 * row_height_plus_spacing) - spacing;
+    let row_offset = (y / row_height_plus_spacing).ceil() as usize;
+    let row_offset_without_spacing = (row_offset as f32 * row_height_plus_spacing) - spacing;
     if y > row_offset_without_spacing {
       None // On row spacing
     } else {
-      Some(row_index.saturating_sub(1))
+      Some(row_offset.saturating_sub(1)) // NOTE: + 1 because row_offset is 1-based. Should this be the case?
     }
   }
 
@@ -514,6 +507,24 @@ impl<'a, T, I, M, R: TableRowsRenderer<'a, T, I, M>> TableRows<'a, T, I, M, R> w
       Some(mapper(&row))
     } else {
       None
+    }
+  }
+
+  fn propagate_event_to_cell_at(
+    &self,
+    event: &Event,
+    point: Point,
+    layout: Layout<'_>,
+    cursor_position: Point,
+    messages: &mut Vec<M>,
+    renderer: &R,
+    clipboard: Option<&dyn Clipboard>,
+  ) -> Status {
+    if let Some(mut element) = self.get_element_at(point, &layout) {
+      // TODO: calculate new layout
+      element.on_event(event.clone(), layout, cursor_position, messages, renderer, clipboard)
+    } else {
+      Status::Ignored
     }
   }
 }
@@ -561,7 +572,7 @@ impl<'a, T, I, M, B> TableRowsRenderer<'a, T, I, M> for ConcreteRenderer<B> wher
     let last_row_index = num_rows.saturating_sub(1);
     let row_height_plus_spacing = row_height + spacing;
     let start_offset = (((viewport.y - absolute_position.y) / row_height_plus_spacing).floor() as usize).min(last_row_index);
-    // HACK: + 1 on next line to ensure that last partially visible row is not culled.
+    // NOTE: + 1 on next line to ensure that last partially visible row is not culled?
     let num_rows_to_render = ((viewport.height / row_height_plus_spacing).ceil() as usize + 1).min(last_row_index);
     let mut y_offset = start_offset as f32 * row_height_plus_spacing;
     for (i, row) in rows.skip(start_offset).take(num_rows_to_render).enumerate() {
