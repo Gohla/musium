@@ -11,20 +11,35 @@ use tracing::{debug, error, info};
 use musium_audio::Player;
 use musium_client::{Client, HttpRequestError, PlaySource};
 use musium_core::format_error::FormatError;
-use musium_core::model::collection::Tracks;
+use musium_core::model::collection::{Tracks, TrackInfo};
 use musium_core::model::User;
 
 use crate::util::Update;
 use crate::widget::table::TableBuilder;
+use std::cell::RefCell;
+use std::rc::Rc;
+
+#[derive(Default, Debug)]
+pub struct TracksViewModel {
+  tracks: Tracks,
+  play_button_states: HashMap<i32, button::State>,
+}
+
+impl<'a> TracksViewModel {
+  pub fn rows(&'a mut self) -> impl Iterator<Item=(TrackInfo<'a>, &'a mut button::State)> + ExactSizeIterator + Clone + 'a {
+    let Tracks { tracks, albums, artists, track_artists, album_artists } = &self.tracks;
+    tracks.into_iter().map(move |track| { TrackInfo { track, albums, artists, track_artists, album_artists } })
+  }
+}
 
 #[derive(Default, Debug)]
 pub struct Page {
   logged_in_user: User,
 
   scrollable_state: scrollable::State,
-  play_button_states: Arc<Mutex<HashMap<i32, button::State>>>,
+  play_button_states: Rc<RefCell<HashMap<i32, Rc<RefCell<button::State>>>>>,
 
-  tracks: Tracks,
+  tracks: TracksViewModel,
   list_tracks_state: ListTracksState,
 }
 
@@ -42,7 +57,7 @@ enum ListTracksState { Idle, Busy, Failed(Arc<HttpRequestError>) }
 
 impl Default for ListTracksState { fn default() -> Self { Self::Idle } }
 
-impl Page {
+impl<'a> Page {
   pub fn new(logged_in_user: User, client: &mut Client) -> (Self, Command<Message>) {
     let mut page = Self {
       logged_in_user,
@@ -64,7 +79,7 @@ impl Page {
       Message::ReceiveTracks(result) => match result {
         Ok(tracks) => {
           debug!("Received {} tracks", tracks.len());
-          self.tracks = tracks;
+          self.tracks = TracksViewModel { tracks, ..TracksViewModel::default() };
           self.list_tracks_state = ListTracksState::Idle;
         }
         Err(e) => {
@@ -99,28 +114,28 @@ impl Page {
     Update::none()
   }
 
-  pub fn view(&mut self) -> Element<'_, Message> {
+  pub fn view(&'a mut self) -> Element<'a, Message> {
     let play_button_states = self.play_button_states.clone();
     let table: Element<_> = TableBuilder::new(self.tracks.iter())
       .spacing(2)
       .header_row_height(26)
       .row_height(16)
-      .push_column(5, empty(), Box::new(move |t|
-        play_button(play_button_states.clone(), t.track.id)
-      ))
-      .push_column(5, header_text("#"), Box::new(|t|
+      .push_column(5, empty(), Box::new(move |(t, state)| {
+        play_button(&mut state.clone().borrow_mut(), t.track.id)
+      }))
+      .push_column(5, header_text("#"), Box::new(|(t, _)|
         if let Some(track_number) = t.track.track_number { cell_text(track_number.to_string()) } else { empty() }
       ))
-      .push_column(25, header_text("Title"), Box::new(|t|
+      .push_column(25, header_text("Title"), Box::new(|(t, _)|
         cell_text(t.track.title.clone())
       ))
-      .push_column(25, header_text("Track Artists"), Box::new(|t|
+      .push_column(25, header_text("Track Artists"), Box::new(|(t, _)|
         cell_text(t.track_artists().map(|a| a.name.clone()).join(", "))
       ))
-      .push_column(25, header_text("Album"), Box::new(|t|
+      .push_column(25, header_text("Album"), Box::new(|(t, _)|
         if let Some(album) = t.album() { cell_text(album.name.clone()) } else { empty() }
       ))
-      .push_column(25, header_text("Album Artists"), Box::new(|t|
+      .push_column(25, header_text("Album Artists"), Box::new(|(t, _)|
         cell_text(t.album_artists().map(|a| a.name.clone()).join(", "))
       ))
       .build(&mut self.scrollable_state)
@@ -155,9 +170,8 @@ fn header_text<'a, M>(label: impl Into<String>) -> Element<'a, M> {
     .into()
 }
 
-fn play_button(button_states: Arc<Mutex<HashMap<i32, button::State>>>, track_id: i32) -> Element<'static, Message> {
-  let mut button_states = button_states.lock().unwrap();
-  Button::new(button_states.entry(track_id).or_default(), Text::new("Play"))
+fn play_button<'a>(state: &'a mut button::State, track_id: i32) -> Element<'a, Message> {
+  Button::new(state, Text::new("Play"))
     .on_press(Message::RequestPlayTrack(track_id))
     .into()
 }

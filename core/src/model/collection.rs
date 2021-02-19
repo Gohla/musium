@@ -76,7 +76,7 @@ pub struct Tracks {
   pub track_artists: HashMap<i32, Vec<i32>>,
 }
 
-impl Tracks {
+impl<'a> Tracks {
   pub fn from(
     albums: Vec<Album>,
     tracks: Vec<Track>,
@@ -91,7 +91,7 @@ impl Tracks {
     Self { tracks, albums, artists, track_artists, album_artists }
   }
 
-  pub fn iter<'a>(&'a self) -> impl Iterator<Item=TrackInfo<'a>> + ExactSizeIterator + Clone + 'a {
+  pub fn iter(&'a self) -> impl Iterator<Item=TrackInfo<'a>> + ExactSizeIterator + Clone + 'a {
     let Tracks { tracks, albums, artists, track_artists, album_artists } = &self;
     tracks.into_iter().map(move |track| { TrackInfo { track, albums, artists, track_artists, album_artists } })
   }
