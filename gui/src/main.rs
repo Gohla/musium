@@ -63,11 +63,27 @@ fn main() -> Result<()> {
   // Create client
   let client = Client::new(opt.url_base.clone())
     .with_context(|| "Failed to create client")?;
-  let audio_player = Player::new()
-    .with_context(|| "Failed to create audio player")?;
+  // let audio_player = Player::new()
+  //   .with_context(|| "Failed to create audio player")?;
+  let audio_player = None;
   // Run GUI
   let user_login = UserLogin { name: opt.name, password: opt.password };
-  App::run(iced::Settings::with_flags(Flags { client, audio_player, initial_url: opt.url_base, initial_user_login: user_login })).unwrap();
+  let app_settings = iced::Settings {
+    window: iced::window::Settings {
+      min_size: Some((800, 600)),
+      ..iced::window::Settings::default()
+    },
+    flags: Flags {
+      client,
+      audio_player,
+      initial_url: opt.url_base,
+      initial_user_login: user_login,
+    },
+    default_font: None,
+    default_text_size: 20,
+    antialiasing: true,
+  };
+  App::run(app_settings).unwrap();
   // TODO: run takes control of the application, the rest will not run. Should put this in a tread!
   // Print metrics
   if opt.print_metrics {

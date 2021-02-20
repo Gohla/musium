@@ -12,12 +12,12 @@ pub struct Flags {
   pub initial_url: Url,
   pub initial_user_login: UserLogin,
   pub client: Client,
-  pub audio_player: Player,
+  pub audio_player: Option<Player>,
 }
 
 pub struct App {
   client: Client,
-  audio_player: Player,
+  audio_player: Option<Player>,
   current_page: Page,
 }
 

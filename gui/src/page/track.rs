@@ -83,7 +83,7 @@ impl<'a> Page {
     (page, command)
   }
 
-  pub fn update(&mut self, client: &mut Client, audio_player: &mut Player, message: Message) -> Update<Message, Action> {
+  pub fn update(&mut self, client: &mut Client, audio_player: &mut Option<Player>, message: Message) -> Update<Message, Action> {
     match message {
       Message::RequestPlayTrack(id) => {
         let client = client.clone();
@@ -107,11 +107,15 @@ impl<'a> Page {
       Message::ReceivePlaySource(result) => match result {
         Ok(Some(play_source)) => match play_source {
           PlaySource::AudioData(audio_data) => {
-            if let Err(e) = audio_player.play(audio_data, 0.2) {
-              let format_error = FormatError::new(&e);
-              error!("Playing track failed: {:?}", format_error);
+            if let Some(audio_player) = audio_player {
+              if let Err(e) = audio_player.play(audio_data, 0.2) {
+                let format_error = FormatError::new(&e);
+                error!("Playing track failed: {:?}", format_error);
+              } else {
+                info!("Track played locally");
+              }
             } else {
-              info!("Track played locally");
+              error!("Cannot play track, no audio player was set");
             }
           }
           PlaySource::ExternallyPlayed => {
