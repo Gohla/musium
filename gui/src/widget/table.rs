@@ -9,6 +9,49 @@ use iced_native::{
 };
 use iced_native::event::Status;
 use iced_native::layout::{Limits, Node};
+use crate::page::track::TrackViewModel;
+use std::cell::RefCell;
+use std::rc::Rc;
+
+// pub trait TableData<'a> {
+//   type Item: 'a;
+//   type Iterator: 'a + Iterator<Item=&'a mut Self::Item>;
+//
+//   fn get(&'a self, idx: usize) -> Option<&'a Self::Item>;
+//
+//   fn get_mut(&'a mut self, idx: usize) -> Option<&'a mut Self::Item>;
+//
+//   fn len(&self) -> usize;
+//
+//   fn into_iter(&'a mut self) -> Self::Iterator;
+//
+// }
+//
+// impl<'a, T> TableData<'a> for Vec<T> where
+//   T: 'a,
+// // I: 'a + IntoIterator,
+// // I::Item: 'a,
+// // I::IntoIter: 'a + ExactSizeIterator + Iterator<Item=&'a mut I::Item>,
+// {
+//   type Item = T;
+//   type Iterator = std::slice::IterMut<'a, T>;
+//
+//   fn get(&'a self, idx: usize) -> Option<&'a Self::Item> {
+//     self.get(idx)
+//   }
+//
+//   fn get_mut(&'a mut self, idx: usize) -> Option<&'a mut Self::Item> {
+//     self.get_mut(idx)
+//   }
+//
+//   fn len(&self) -> usize {
+//     self.len()
+//   }
+//
+//   fn into_iter(&'a mut self) -> Self::Iterator {
+//     IntoIterator::into_iter(self)
+//   }
+// }
 
 //
 // Table builder
@@ -20,9 +63,8 @@ use iced_native::layout::{Limits, Node};
 //       rows multiple times though, but this is possible because it is `Clone`. It might be a little bit slow because
 //       `skip` on `Iterator` could be slow.
 
-pub struct TableBuilder<'a, T, I, M, R> where
-  T: 'a,
-  I: 'a + Iterator<Item=T> + ExactSizeIterator + Clone,
+pub struct TableBuilder<'a, M, R> where
+// D: 'a + TableData<'a>,
 {
   width: Length,
   height: Length,
@@ -30,14 +72,13 @@ pub struct TableBuilder<'a, T, I, M, R> where
   max_height: u32,
   spacing: u32,
   header: TableHeader<'a, M, R>,
-  rows: TableRows<'a, T, I, M, R>,
+  rows: TableRows<'a, M, R>,
 }
 
-impl<'a, T, I, M, R> TableBuilder<'a, T, I, M, R> where
-  T: 'a,
-  I: 'a + Iterator<Item=T> + ExactSizeIterator + Clone,
+impl<'a, M, R> TableBuilder<'a, M, R> where
+// D: 'a + TableData<'a>,
 {
-  pub fn new(rows: I) -> Self {
+  pub fn new(rows: Rc<RefCell<Vec<TrackViewModel>>>) -> Self {
     let spacing = 0;
     let row_height = 16;
     Self {
@@ -91,7 +132,7 @@ impl<'a, T, I, M, R> TableBuilder<'a, T, I, M, R> where
   }
 
 
-  pub fn push_column<E>(mut self, width_fill_portion: u32, header: E, mapper: Box<dyn 'a + Fn(&T) -> Element<'a, M, R>>) -> Self where
+  pub fn push_column<E>(mut self, width_fill_portion: u32, header: E, mapper: Box<dyn 'a + Fn(&mut TrackViewModel) -> Element<'_, M, R>>) -> Self where
     E: Into<Element<'a, M, R>>
   {
     self.header.column_fill_portions.push(width_fill_portion);
@@ -107,7 +148,7 @@ impl<'a, T, I, M, R> TableBuilder<'a, T, I, M, R> where
     rows_scrollable_state: &'a mut scrollable::State,
   ) -> Table<'a, M, R> where
     M: 'a,
-    R: 'a + TableRenderer + TableRowsRenderer<'a, T, I, M>
+    R: 'a + TableRenderer + TableRowsRenderer<'a, M>
   {
     let rows = Scrollable::new(rows_scrollable_state).push(Element::new(self.rows));
     Table {
@@ -382,20 +423,19 @@ impl<'a, M: 'a, R: 'a + TableHeaderRenderer> Into<Element<'a, M, R>> for TableHe
 // Table rows
 //
 
-struct TableRows<'a, T, I, M, R> where
-  T: 'a,
-  I: 'a + Iterator<Item=T> + ExactSizeIterator + Clone,
+struct TableRows<'a, M, R> where
+// D: 'a + TableData<'a>,
 {
   spacing: u32,
   row_height: u32,
   column_fill_portions: Vec<u32>,
-  mappers: Vec<Box<dyn 'a + Fn(&T) -> Element<'a, M, R>>>,
-  rows: I,
+  mappers: Vec<Box<dyn 'a + Fn(&mut TrackViewModel) -> Element<'_, M, R>>>,
+  // rows: &'a mut D,
+  rows: Rc<RefCell<Vec<TrackViewModel>>>,
 }
 
-impl<'a, T, I, M, R: TableRowsRenderer<'a, T, I, M>> Widget<M, R> for TableRows<'a, T, I, M, R> where
-  T: 'a,
-  I: 'a + Iterator<Item=T> + ExactSizeIterator + Clone,
+impl<'a, M, R: TableRowsRenderer<'a, M>> Widget<M, R> for TableRows<'a, M, R> where
+  // D: 'a + TableData<'a>,
 {
   fn width(&self) -> Length { Length::Fill }
   fn height(&self) -> Length { Length::Fill }
@@ -406,7 +446,7 @@ impl<'a, T, I, M, R: TableRowsRenderer<'a, T, I, M>> Widget<M, R> for TableRows<
     // HACK: only lay out first row, because laying out the entire table becomes slow for larger tables. Lay out the
     //       *visible rows* in the draw function.
     let layouts = layout_columns(total_width, self.row_height as f32, &self.column_fill_portions, self.spacing);
-    let num_rows = self.rows.len();
+    let num_rows = self.rows.borrow().len();
     let total_height = num_rows * self.row_height as usize + num_rows.saturating_sub(1) * self.spacing as usize;
     Node::with_children(Size::new(total_width, total_height as f32), layouts)
   }
@@ -419,7 +459,7 @@ impl<'a, T, I, M, R: TableRowsRenderer<'a, T, I, M>> Widget<M, R> for TableRows<
     cursor_position: Point,
     viewport: &Rectangle<f32>,
   ) -> R::Output {
-    renderer.draw_table_rows(defaults, layout, cursor_position, viewport, self.row_height as f32, self.spacing as f32, &self.mappers, self.rows.clone())
+    renderer.draw_table_rows(defaults, layout, cursor_position, viewport, self.row_height as f32, self.spacing as f32, &self.mappers, &mut self.rows.borrow_mut())
   }
 
   fn hash_layout(&self, state: &mut Hasher) {
@@ -430,7 +470,7 @@ impl<'a, T, I, M, R: TableRowsRenderer<'a, T, I, M>> Widget<M, R> for TableRows<
     for column_fill_portion in &self.column_fill_portions {
       column_fill_portion.hash(state);
     }
-    self.rows.len().hash(state);
+    self.rows.borrow().len().hash(state);
   }
 
   fn on_event(
@@ -468,11 +508,10 @@ impl<'a, T, I, M, R: TableRowsRenderer<'a, T, I, M>> Widget<M, R> for TableRows<
   }
 }
 
-impl<'a, T, I, M, R: TableRowsRenderer<'a, T, I, M>> TableRows<'a, T, I, M, R> where
-  T: 'a,
-  I: 'a + Iterator<Item=T> + ExactSizeIterator + Clone,
+impl<'a, M, R: TableRowsRenderer<'a, M>> TableRows<'a, M, R> where
+  // D: 'a + TableData<'a>,
 {
-  fn get_row_index_at(&self, y: f32) -> Option<usize> {
+  fn get_row_index_at(&mut self, y: f32) -> Option<usize> {
     if y < 0f32 { return None; } // Out of bounds
     let spacing = self.spacing as f32;
     let row_height = self.row_height as f32;
@@ -486,7 +525,7 @@ impl<'a, T, I, M, R: TableRowsRenderer<'a, T, I, M>> TableRows<'a, T, I, M, R> w
     }
   }
 
-  fn get_column_index_at(&self, x: f32, layout: &Layout<'_>) -> Option<usize> {
+  fn get_column_index_at(&mut self, x: f32, layout: &Layout<'_>) -> Option<usize> {
     let spacing = self.spacing as f32;
     let mut offset = 0f32;
     for (column_index, column_layout) in layout.children().enumerate() {
@@ -498,20 +537,8 @@ impl<'a, T, I, M, R: TableRowsRenderer<'a, T, I, M>> TableRows<'a, T, I, M, R> w
     None
   }
 
-  fn get_element_at(&self, point: Point, layout: &Layout<'_>) -> Option<Element<'a, M, R>> {
-    let column_index = self.get_column_index_at(point.x, &layout);
-    let mapper = column_index.and_then(|i| self.mappers.get(i));
-    let row_index = self.get_row_index_at(point.y);
-    let row = row_index.and_then(|i| self.rows.clone().nth(i));
-    if let (Some(mapper), Some(row)) = (mapper, row) {
-      Some(mapper(&row))
-    } else {
-      None
-    }
-  }
-
   fn propagate_event_to_cell_at(
-    &self,
+    &mut self,
     event: &Event,
     point: Point,
     layout: Layout<'_>,
@@ -520,18 +547,27 @@ impl<'a, T, I, M, R: TableRowsRenderer<'a, T, I, M>> TableRows<'a, T, I, M, R> w
     renderer: &R,
     clipboard: Option<&dyn Clipboard>,
   ) -> Status {
-    if let Some(mut element) = self.get_element_at(point, &layout) {
-      // TODO: calculate new layout
-      element.on_event(event.clone(), layout, cursor_position, messages, renderer, clipboard)
+    let column_index = self.get_column_index_at(point.x, &layout);
+    let row_index = self.get_row_index_at(point.y);
+    if let (Some(column_index), Some(row_index)) = (column_index, row_index) {
+      let mapper = self.mappers.get(column_index);
+      let mut rows_borrow = self.rows.borrow_mut();
+      let row = rows_borrow.get_mut(row_index);
+      if let (Some(mapper), Some(row)) = (mapper, row) {
+        let mut element = mapper(row);
+        // TODO: calculate new layout
+        element.on_event(event.clone(), layout, cursor_position, messages, renderer, clipboard)
+      } else {
+        Status::Ignored
+      }
     } else {
       Status::Ignored
     }
   }
 }
 
-pub trait TableRowsRenderer<'a, T, I, M>: Renderer where
-  T: 'a,
-  I: 'a + Iterator<Item=T> + ExactSizeIterator,
+pub trait TableRowsRenderer<'a, M>: Renderer where
+  // D: 'a + TableData<'a>,
 {
   fn draw_table_rows(
     &mut self,
@@ -541,14 +577,13 @@ pub trait TableRowsRenderer<'a, T, I, M>: Renderer where
     viewport: &Rectangle<f32>,
     row_height: f32,
     spacing: f32,
-    mappers: &[Box<dyn 'a + Fn(&T) -> Element<'a, M, Self>>],
-    rows: I,
+    mappers: &[Box<dyn 'a + Fn(&mut TrackViewModel) -> Element<'_, M, Self>>],
+    rows: &mut [TrackViewModel],
   ) -> Self::Output;
 }
 
-impl<'a, T, I, M, B> TableRowsRenderer<'a, T, I, M> for ConcreteRenderer<B> where
-  T: 'a,
-  I: 'a + Iterator<Item=T> + ExactSizeIterator,
+impl<'a, M, B> TableRowsRenderer<'a, M> for ConcreteRenderer<B> where
+  // D: 'a + TableData<'a>,
   B: Backend,
 {
   fn draw_table_rows(
@@ -559,8 +594,8 @@ impl<'a, T, I, M, B> TableRowsRenderer<'a, T, I, M> for ConcreteRenderer<B> wher
     viewport: &Rectangle<f32>,
     row_height: f32,
     spacing: f32,
-    mappers: &[Box<dyn 'a + Fn(&T) -> Element<'a, M, Self>>],
-    rows: I,
+    mappers: &[Box<dyn 'a + Fn(&mut TrackViewModel) -> Element<'_, M, Self>>],
+    rows: &mut [TrackViewModel],
   ) -> Self::Output {
     let absolute_position = layout.position();
     let mut mouse_cursor = mouse::Interaction::default();
@@ -575,9 +610,9 @@ impl<'a, T, I, M, B> TableRowsRenderer<'a, T, I, M> for ConcreteRenderer<B> wher
     // NOTE: + 1 on next line to ensure that last partially visible row is not culled?
     let num_rows_to_render = ((viewport.height / row_height_plus_spacing).ceil() as usize + 1).min(last_row_index);
     let mut y_offset = start_offset as f32 * row_height_plus_spacing;
-    for (i, row) in rows.skip(start_offset).take(num_rows_to_render).enumerate() {
+    for (i, row) in rows.into_iter().skip(start_offset).take(num_rows_to_render).enumerate() {
       for (mapper, base_layout) in mappers.iter().zip(layout.children()) {
-        let element = mapper(&row);
+        let element = mapper(row);
         // HACK: Reconstruct the layout from `base_layout` which has a correct x position, but an incorrect y position
         //       which always points to the first row. This is needed so that we do not have to lay out all the cells of
         //       the table each time the layout changes, because that is slow for larger tables. Instead we now
@@ -599,11 +634,10 @@ impl<'a, T, I, M, B> TableRowsRenderer<'a, T, I, M> for ConcreteRenderer<B> wher
   }
 }
 
-impl<'a, T, I, M, R> Into<Element<'a, M, R>> for TableRows<'a, T, I, M, R> where
-  T: 'a,
-  I: 'a + Iterator<Item=T> + ExactSizeIterator + Clone,
+impl<'a, M, R> Into<Element<'a, M, R>> for TableRows<'a, M, R> where
+  // D: 'a + TableData<'a>,
   M: 'a,
-  R: 'a + TableRowsRenderer<'a, T, I, M>,
+  R: 'a + TableRowsRenderer<'a, M>,
 {
   fn into(self) -> Element<'a, M, R> {
     Element::new(self)

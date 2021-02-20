@@ -1,6 +1,9 @@
 #![allow(dead_code, unused_imports, unused_variables)]
 
+use std::borrow::BorrowMut;
+use std::cell::{Cell, RefCell};
 use std::collections::HashMap;
+use std::rc::Rc;
 use std::sync::{Arc, Mutex};
 
 use iced::{button, Button, Color, Column, Command, Element, Length, Row, scrollable, Text};
@@ -11,24 +14,38 @@ use tracing::{debug, error, info};
 use musium_audio::Player;
 use musium_client::{Client, HttpRequestError, PlaySource};
 use musium_core::format_error::FormatError;
-use musium_core::model::collection::{Tracks, TrackInfo};
-use musium_core::model::User;
+use musium_core::model::{Album, Track, User};
+use musium_core::model::collection::{TrackInfo, Tracks};
 
 use crate::util::Update;
 use crate::widget::table::TableBuilder;
-use std::cell::RefCell;
-use std::rc::Rc;
 
 #[derive(Default, Debug)]
-pub struct TracksViewModel {
-  tracks: Tracks,
-  play_button_states: HashMap<i32, button::State>,
+pub struct TrackViewModel {
+  id: i32,
+  play_button_state: button::State,
+  track_number: Option<String>,
+  title: String,
+  track_artists: Option<String>,
+  album: Option<String>,
+  album_artists: Option<String>,
 }
 
-impl<'a> TracksViewModel {
-  pub fn rows(&'a mut self) -> impl Iterator<Item=(TrackInfo<'a>, &'a mut button::State)> + ExactSizeIterator + Clone + 'a {
-    let Tracks { tracks, albums, artists, track_artists, album_artists } = &self.tracks;
-    tracks.into_iter().map(move |track| { TrackInfo { track, albums, artists, track_artists, album_artists } })
+impl<'a> From<TrackInfo<'a>> for TrackViewModel {
+  fn from(track_info: TrackInfo<'a>) -> Self {
+    let track_artists = track_info.track_artists().map(|a| a.name.clone()).join(", ");
+    let track_artists = if track_artists.is_empty() { None } else { Some(track_artists) };
+    let album_artists = track_info.album_artists().map(|a| a.name.clone()).join(", ");
+    let album_artists = if album_artists.is_empty() { None } else { Some(album_artists) };
+    Self {
+      id: track_info.track.id,
+      track_number: track_info.track.track_number.map(|tn| tn.to_string()),
+      title: track_info.track.title.clone(),
+      track_artists,
+      album: track_info.album().map(|a| a.name.clone()),
+      album_artists,
+      ..Self::default()
+    }
   }
 }
 
@@ -37,9 +54,8 @@ pub struct Page {
   logged_in_user: User,
 
   scrollable_state: scrollable::State,
-  play_button_states: Rc<RefCell<HashMap<i32, Rc<RefCell<button::State>>>>>,
 
-  tracks: TracksViewModel,
+  tracks: Rc<RefCell<Vec<TrackViewModel>>>,
   list_tracks_state: ListTracksState,
 }
 
@@ -79,7 +95,7 @@ impl<'a> Page {
       Message::ReceiveTracks(result) => match result {
         Ok(tracks) => {
           debug!("Received {} tracks", tracks.len());
-          self.tracks = TracksViewModel { tracks, ..TracksViewModel::default() };
+          self.tracks = Rc::new(RefCell::new(tracks.iter().map(|ti| ti.into()).collect()));
           self.list_tracks_state = ListTracksState::Idle;
         }
         Err(e) => {
@@ -115,28 +131,28 @@ impl<'a> Page {
   }
 
   pub fn view(&'a mut self) -> Element<'a, Message> {
-    let play_button_states = self.play_button_states.clone();
-    let table: Element<_> = TableBuilder::new(self.tracks.iter())
+    // self.tracks.to_vec()
+    let table: Element<_> = TableBuilder::new(self.tracks.clone())
       .spacing(2)
       .header_row_height(26)
       .row_height(16)
-      .push_column(5, empty(), Box::new(move |(t, state)| {
-        play_button(&mut state.clone().borrow_mut(), t.track.id)
+      .push_column(5, empty(), Box::new(move |t| {
+        play_button(&mut t.play_button_state, t.id)
       }))
-      .push_column(5, header_text("#"), Box::new(|(t, _)|
-        if let Some(track_number) = t.track.track_number { cell_text(track_number.to_string()) } else { empty() }
+      .push_column(5, header_text("#"), Box::new(|t|
+        if let Some(track_number) = &t.track_number { cell_text(track_number) } else { empty() }
       ))
-      .push_column(25, header_text("Title"), Box::new(|(t, _)|
-        cell_text(t.track.title.clone())
+      .push_column(25, header_text("Title"), Box::new(|t|
+        cell_text(t.title.clone())
       ))
-      .push_column(25, header_text("Track Artists"), Box::new(|(t, _)|
-        cell_text(t.track_artists().map(|a| a.name.clone()).join(", "))
+      .push_column(25, header_text("Track Artists"), Box::new(|t|
+        if let Some(track_artists) = &t.track_artists { cell_text(track_artists.clone()) } else { empty() }
       ))
-      .push_column(25, header_text("Album"), Box::new(|(t, _)|
-        if let Some(album) = t.album() { cell_text(album.name.clone()) } else { empty() }
+      .push_column(25, header_text("Album"), Box::new(|t|
+        if let Some(album) = &t.album { cell_text(album.clone()) } else { empty() }
       ))
-      .push_column(25, header_text("Album Artists"), Box::new(|(t, _)|
-        cell_text(t.album_artists().map(|a| a.name.clone()).join(", "))
+      .push_column(25, header_text("Album Artists"), Box::new(|t|
+        if let Some(album_artists) = &t.album_artists { cell_text(album_artists.clone()) } else { empty() }
       ))
       .build(&mut self.scrollable_state)
       .into();
