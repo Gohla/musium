@@ -252,7 +252,7 @@ async fn run(command: Command, client: &Client) -> Result<()> {
       if let Some(play_source) = client.play_track_by_id(id).await? {
         match play_source {
           PlaySource::AudioData(audio_data) => {
-            let player = musium_audio_output_local::Player::new()
+            let player = musium_audio_output_local::RodioAudioOutput::new()
               .with_context(|| "Failed to create audio player")?;
             player.play(audio_data, volume)
               .with_context(|| "Failed to play audio track")?;

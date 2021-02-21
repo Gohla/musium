@@ -2995,10 +2995,14 @@ dependencies = [
 ]
 
 [[package]]
-name = "musium_audio_output_local"
+name = "musium_audio_output"
+version = "0.1.0"
+
+[[package]]
+name = "musium_audio_output_rodio"
 version = "0.1.0"
 dependencies = [
- "musium_core",
+ "musium_audio_output",
  "rodio",
  "thiserror",
 ]
@@ -3033,7 +3037,7 @@ dependencies = [
  "metrics-core",
  "metrics-observer-yaml",
  "metrics-runtime",
- "musium_audio_output_local",
+ "musium_audio_output_rodio",
  "musium_client_http",
  "musium_core",
  "open",
@@ -3092,7 +3096,7 @@ dependencies = [
  "metrics-core",
  "metrics-observer-yaml",
  "metrics-runtime",
- "musium_audio_output_local",
+ "musium_audio_output_rodio",
  "musium_client_http",
  "musium_core",
  "structopt",

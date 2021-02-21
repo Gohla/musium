@@ -8,7 +8,8 @@ members = [
   "backend",
   "server",
   "client_http",
-  "audio_output_local",
+  "audio_output",
+  "audio_output_rodio",
   "cli",
   "gui"
 ]
@@ -51,7 +52,9 @@ opt-level = 2
 opt-level = 2
 [profile.fastdev.package."musium_client_http"]
 opt-level = 2
-[profile.fastdev.package."musium_audio_output_local"]
+[profile.fastdev.package."musium_audio_output"]
+opt-level = 2
+[profile.fastdev.package."musium_audio_output_rodio"]
 opt-level = 2
 [profile.fastdev.package."musium_cli"]
 opt-level = 2

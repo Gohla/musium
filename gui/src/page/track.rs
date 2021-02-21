@@ -11,7 +11,7 @@ use iced_native::{HorizontalAlignment, Space, VerticalAlignment};
 use itertools::Itertools;
 use tracing::{debug, error, info};
 
-use musium_audio_output_local::Player;
+use musium_audio_output_rodio::{AudioOutput, RodioAudioOutput};
 use musium_client_http::{Client, HttpRequestError, PlaySource};
 use musium_core::format_error::FormatError;
 use musium_core::model::{Album, Track, User};
@@ -83,7 +83,7 @@ impl<'a> Page {
     (page, command)
   }
 
-  pub fn update(&mut self, client: &mut Client, audio_player: &mut Option<Player>, message: Message) -> Update<Message, Action> {
+  pub fn update(&mut self, client: &mut Client, audio_player: &mut Option<RodioAudioOutput>, message: Message) -> Update<Message, Action> {
     match message {
       Message::RequestPlayTrack(id) => {
         let client = client.clone();

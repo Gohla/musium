@@ -1,7 +1,7 @@
 use iced::{Application, Command, Element};
 use tracing::error;
 
-use musium_audio_output_local::Player;
+use musium_audio_output_rodio::RodioAudioOutput;
 use musium_client_http::{Client, Url};
 use musium_core::model::UserLogin;
 
@@ -12,12 +12,12 @@ pub struct Flags {
   pub initial_url: Url,
   pub initial_user_login: UserLogin,
   pub client: Client,
-  pub audio_player: Option<Player>,
+  pub audio_player: Option<RodioAudioOutput>,
 }
 
 pub struct App {
   client: Client,
-  audio_player: Option<Player>,
+  audio_player: Option<RodioAudioOutput>,
   current_page: Page,
 }
 
