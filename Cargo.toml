@@ -7,8 +7,8 @@ members = [
   "filesystem_sync",
   "backend",
   "server",
-  "client",
-  "audio",
+  "client_http",
+  "audio_output_local",
   "cli",
   "gui"
 ]
@@ -49,9 +49,9 @@ opt-level = 2
 opt-level = 2
 [profile.fastdev.package."musium_server"]
 opt-level = 2
-[profile.fastdev.package."musium_client"]
+[profile.fastdev.package."musium_client_http"]
 opt-level = 2
-[profile.fastdev.package."musium_audio"]
+[profile.fastdev.package."musium_audio_output_local"]
 opt-level = 2
 [profile.fastdev.package."musium_cli"]
 opt-level = 2

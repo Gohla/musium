@@ -1,8 +1,8 @@
 use iced::{Application, Command, Element};
 use tracing::error;
 
-use musium_audio::Player;
-use musium_client::{Client, Url};
+use musium_audio_output_local::Player;
+use musium_client_http::{Client, Url};
 use musium_core::model::UserLogin;
 
 use crate::page::{login, track};

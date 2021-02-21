@@ -5,7 +5,7 @@ use std::sync::Arc;
 use iced::{Align, Button, button, Column, Command, Element, HorizontalAlignment, Length, Row, Text, text_input, TextInput};
 use tracing::{error, debug};
 
-use musium_client::{Client, HttpRequestError, Url};
+use musium_client_http::{Client, HttpRequestError, Url};
 use musium_core::format_error::FormatError;
 use musium_core::model::{User, UserLogin};
 

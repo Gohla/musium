@@ -11,8 +11,8 @@ use iced_native::{HorizontalAlignment, Space, VerticalAlignment};
 use itertools::Itertools;
 use tracing::{debug, error, info};
 
-use musium_audio::Player;
-use musium_client::{Client, HttpRequestError, PlaySource};
+use musium_audio_output_local::Player;
+use musium_client_http::{Client, HttpRequestError, PlaySource};
 use musium_core::format_error::FormatError;
 use musium_core::model::{Album, Track, User};
 use musium_core::model::collection::{TrackInfo, Tracks};

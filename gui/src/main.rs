@@ -12,8 +12,7 @@ use tracing_subscriber::{EnvFilter, fmt};
 use tracing_subscriber::prelude::*;
 
 use app::{App, Flags};
-use musium_audio::Player;
-use musium_client::{Client, Url};
+use musium_client_http::{Client, Url};
 use musium_core::model::*;
 
 mod app;
@@ -63,8 +62,6 @@ fn main() -> Result<()> {
   // Create client
   let client = Client::new(opt.url_base.clone())
     .with_context(|| "Failed to create client")?;
-  // let audio_player = Player::new()
-  //   .with_context(|| "Failed to create audio player")?;
   let audio_player = None;
   // Run GUI
   let user_login = UserLogin { name: opt.name, password: opt.password };

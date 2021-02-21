@@ -1,5 +1,5 @@
 [package]
-name = "musium_client"
+name = "musium_audio_output_local"
 version = "0.1.0"
 authors = ["Gabriel Konat <gabrielkonat@gmail.com>"]
 edition = "2018"
@@ -7,7 +7,5 @@ publish = false
 
 [dependencies]
 musium_core = { path = "../core" }
-reqwest = { version = "0.11", features = ["cookies", "json", "gzip"] }
-url = "2"
-serde = { version = "1", features = ["derive"] }
+rodio = "0.13"
 thiserror = "1"
