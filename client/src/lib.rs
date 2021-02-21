@@ -30,7 +30,7 @@ pub enum PlaySource {
 }
 
 #[async_trait]
-pub trait Client {
+pub trait Client: Send + Sync {
   type LoginError: Error;
   async fn login(&self, user_login: &UserLogin) -> Result<User, Self::LoginError>;
 

@@ -1,0 +1,12 @@
+[package]
+name = "musium_player"
+version = "0.1.0"
+authors = ["Gabriel Konat <gabrielkonat@gmail.com>"]
+edition = "2018"
+publish = false
+
+[dependencies]
+musium_core = { path = "../core" }
+musium_client = { path = "../client" }
+musium_audio_output = { path = "../audio_output" }
+async-trait = "0.1"
