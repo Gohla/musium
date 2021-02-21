@@ -12,7 +12,7 @@ use itertools::Itertools;
 use tracing::{debug, error, info};
 
 use musium_audio_output_rodio::{AudioOutput, RodioAudioOutput};
-use musium_client_http::{Client, HttpRequestError, PlaySource};
+use musium_client_http::{Client, HttpClient, HttpRequestError, PlaySource};
 use musium_core::format_error::FormatError;
 use musium_core::model::{Album, Track, User};
 use musium_core::model::collection::{TrackInfo, Tracks};
@@ -74,7 +74,7 @@ enum ListTracksState { Idle, Busy, Failed(Arc<HttpRequestError>) }
 impl Default for ListTracksState { fn default() -> Self { Self::Idle } }
 
 impl<'a> Page {
-  pub fn new(logged_in_user: User, client: &mut Client) -> (Self, Command<Message>) {
+  pub fn new(logged_in_user: User, client: &mut HttpClient) -> (Self, Command<Message>) {
     let mut page = Self {
       logged_in_user,
       ..Self::default()
@@ -83,7 +83,7 @@ impl<'a> Page {
     (page, command)
   }
 
-  pub fn update(&mut self, client: &mut Client, audio_player: &mut Option<RodioAudioOutput>, message: Message) -> Update<Message, Action> {
+  pub fn update(&mut self, client: &mut HttpClient, audio_player: &mut Option<RodioAudioOutput>, message: Message) -> Update<Message, Action> {
     match message {
       Message::RequestPlayTrack(id) => {
         let client = client.clone();
@@ -169,7 +169,7 @@ impl<'a> Page {
     content
   }
 
-  fn update_tracks(&mut self, client: &mut Client) -> Command<Message> {
+  fn update_tracks(&mut self, client: &mut HttpClient) -> Command<Message> {
     self.list_tracks_state = ListTracksState::Busy;
     let client = client.clone();
     Command::perform(

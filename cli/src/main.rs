@@ -8,7 +8,8 @@ use tracing::trace;
 use tracing_subscriber::{EnvFilter, fmt};
 use tracing_subscriber::prelude::*;
 
-use musium_client_http::{Client, PlaySource, Url};
+use musium_audio_output_rodio::AudioOutput;
+use musium_client_http::{Client, HttpClient, PlaySource, Url};
 use musium_core::model::*;
 
 #[derive(Debug, StructOpt)]
@@ -163,7 +164,7 @@ fn main() -> Result<()> {
   let mut observer: YamlObserver = YamlBuilder::new().build();
   metrics_receiver.install();
   // Create client
-  let client: Client = Client::new(opt.url_base)
+  let client: HttpClient = HttpClient::new(opt.url_base)
     .with_context(|| "Failed to create client")?;
   // Create an async runtime
   let runtime = tokio::runtime::Builder::new_current_thread()
@@ -190,7 +191,7 @@ fn main() -> Result<()> {
   Ok(result?)
 }
 
-async fn run(command: Command, client: &Client) -> Result<()> {
+async fn run(command: Command, client: &HttpClient) -> Result<()> {
   match command {
     Command::ListLocalSources => {
       for local_source in client.list_local_sources().await? {
@@ -252,7 +253,7 @@ async fn run(command: Command, client: &Client) -> Result<()> {
       if let Some(play_source) = client.play_track_by_id(id).await? {
         match play_source {
           PlaySource::AudioData(audio_data) => {
-            let player = musium_audio_output_local::RodioAudioOutput::new()
+            let player = musium_audio_output_rodio::RodioAudioOutput::new()
               .with_context(|| "Failed to create audio player")?;
             player.play(audio_data, volume)
               .with_context(|| "Failed to play audio track")?;

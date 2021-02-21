@@ -2,11 +2,13 @@
 
 use std::backtrace::Backtrace;
 
-use reqwest::{Client as HttpClient, header::ToStrError, Method, redirect, RequestBuilder, Response, StatusCode};
+use async_trait::async_trait;
+use reqwest::{Client as ReqwestHttpClient, header::ToStrError, Method, redirect, RequestBuilder, Response, StatusCode};
 pub use reqwest::Url;
 use serde::Serialize;
 use thiserror::Error;
 
+pub use musium_client::{Client, PlaySource};
 use musium_core::{
   api::{InternalServerError, SpotifyMeInfo},
   model::{
@@ -16,22 +18,22 @@ use musium_core::{
 };
 
 #[derive(Clone)]
-pub struct Client {
-  client: HttpClient,
+pub struct HttpClient {
+  client: ReqwestHttpClient,
   url: Url,
 }
 
 // Creation
 
 #[derive(Debug, Error)]
-pub enum ClientCreateError {
+pub enum HttpClientCreateError {
   #[error(transparent)]
   HttpClientCreateFail(#[from] reqwest::Error)
 }
 
-impl Client {
-  pub fn new(url: Url) -> Result<Self, ClientCreateError> {
-    let client: HttpClient = HttpClient::builder()
+impl HttpClient {
+  pub fn new(url: Url) -> Result<Self, HttpClientCreateError> {
+    let client: ReqwestHttpClient = ReqwestHttpClient::builder()
       .cookie_store(true)
       .redirect(redirect::Policy::none())
       .build()?;
@@ -43,7 +45,7 @@ impl Client {
   }
 }
 
-// Generic HTTP request error type for the most common errors
+// Error types
 
 #[derive(Debug, Error)]
 pub enum HttpRequestError {
@@ -57,104 +59,108 @@ pub enum HttpRequestError {
   UnexpectedStatusCode(StatusCode, Backtrace),
 }
 
-// Login
-
-impl Client {
-  pub async fn login(&self, user_login: &UserLogin) -> Result<User, HttpRequestError> {
-    let response = self.post_simple_with_json("login", user_login).await?;
-    Ok(response.json().await?)
-  }
+#[derive(Debug, Error)]
+pub enum SpotifySourceError {
+  #[error(transparent)]
+  CreateSpotifySourceAuthorizationUrlFail(#[from] CreateSpotifySourceAuthorizationUrlError),
+  #[error(transparent)]
+  HttpRequestFail(#[from] HttpRequestError),
 }
-
-// Local source
-
-impl Client {
-  pub async fn list_local_sources(&self) -> Result<Vec<LocalSource>, HttpRequestError> {
-    let response = self.get_simple("source/local").await?;
-    Ok(response.json().await?)
-  }
-
-  pub async fn get_local_source_by_id(&self, id: i32) -> Result<Option<LocalSource>, HttpRequestError> {
-    let response = self.get_simple(format!("source/local/{}", id)).await?;
-    Ok(response.json().await?)
-  }
-
-  pub async fn create_or_enable_local_source(&self, new_local_source: &NewLocalSource) -> Result<LocalSource, HttpRequestError> {
-    let response = self.post_simple_with_json("source/local", new_local_source).await?;
-    Ok(response.json().await?)
-  }
-
-  pub async fn set_local_source_enabled_by_id(&self, id: i32, enabled: bool) -> Result<Option<LocalSource>, HttpRequestError> {
-    let response = self.post_simple_with_json(format!("source/local/set_enabled/{}", id), &enabled).await?;
-    Ok(response.json().await?)
-  }
-}
-
-// Spotify source
 
 #[derive(Debug, Error)]
 pub enum CreateSpotifySourceAuthorizationUrlError {
-  #[error(transparent)]
-  HttpRequestFail(#[from] HttpRequestError),
   #[error("The LOCATION header is missing from the HTTP response")]
   LocationHeaderMissingFail,
   #[error("Failed to convert the LOCATION header in the HTTP response to a string")]
   LocationHeaderToStringFail(#[from] ToStrError),
 }
 
-impl Client {
-  pub async fn create_spotify_source_authorization_url(&self) -> Result<String, CreateSpotifySourceAuthorizationUrlError> {
+#[async_trait]
+impl Client for HttpClient {
+  // Login
+
+  type LoginError = HttpRequestError;
+
+  async fn login(&self, user_login: &UserLogin) -> Result<User, Self::LoginError> {
+    let response = self.post_simple_with_json("login", user_login).await?;
+    Ok(response.json().await?)
+  }
+
+  // Local source
+
+  type LocalSourceError = HttpRequestError;
+
+  async fn list_local_sources(&self) -> Result<Vec<LocalSource>, Self::LocalSourceError> {
+    let response = self.get_simple("source/local").await?;
+    Ok(response.json().await?)
+  }
+
+  async fn get_local_source_by_id(&self, id: i32) -> Result<Option<LocalSource>, Self::LocalSourceError> {
+    let response = self.get_simple(format!("source/local/{}", id)).await?;
+    Ok(response.json().await?)
+  }
+
+  async fn create_or_enable_local_source(&self, new_local_source: &NewLocalSource) -> Result<LocalSource, Self::LocalSourceError> {
+    let response = self.post_simple_with_json("source/local", new_local_source).await?;
+    Ok(response.json().await?)
+  }
+
+  async fn set_local_source_enabled_by_id(&self, id: i32, enabled: bool) -> Result<Option<LocalSource>, Self::LocalSourceError> {
+    let response = self.post_simple_with_json(format!("source/local/set_enabled/{}", id), &enabled).await?;
+    Ok(response.json().await?)
+  }
+
+  // Spotify source
+
+  type SpotifySourceError = SpotifySourceError;
+
+  async fn create_spotify_source_authorization_url(&self) -> Result<String, Self::SpotifySourceError> {
     use CreateSpotifySourceAuthorizationUrlError::*;
+    use SpotifySourceError::*;
     let response = self.get("source/spotify/request_authorization", |r| r, &[StatusCode::TEMPORARY_REDIRECT]).await?;
     if let Some(url) = response.headers().get(reqwest::header::LOCATION) {
-      Ok(url.to_str()?.to_owned())
+      Ok(url.to_str().map_err(|e|LocationHeaderToStringFail(e))?.to_owned())
     } else {
-      Err(LocationHeaderMissingFail)
+      Err(CreateSpotifySourceAuthorizationUrlFail(LocationHeaderMissingFail))
     }
   }
 
-  pub async fn show_spotify_me(&self) -> Result<SpotifyMeInfo, HttpRequestError> {
+  async fn show_spotify_me(&self) -> Result<SpotifyMeInfo, Self::SpotifySourceError> {
     let response = self.get_simple("source/spotify/me").await?;
-    Ok(response.json().await?)
+    Ok(response.json().await.map_err(|e|HttpRequestError::RequestFail(e))?)
   }
-}
 
-// Album
+  // Album
 
-impl Client {
-  pub async fn list_albums(&self) -> Result<Albums, HttpRequestError> {
+  type AlbumError = HttpRequestError;
+
+  async fn list_albums(&self) -> Result<Albums, Self::AlbumError> {
     let response = self.get_simple("album").await?;
     let albums_raw: AlbumsRaw = response.json().await?;
     Ok(albums_raw.into())
   }
 
-  pub async fn get_album_by_id(&self, id: i32) -> Result<Option<LocalAlbum>, HttpRequestError> {
+  async fn get_album_by_id(&self, id: i32) -> Result<Option<LocalAlbum>, Self::AlbumError> {
     let response = self.get_simple(format!("album/{}", id)).await?;
     Ok(response.json().await?)
   }
-}
 
-// Track
+  // Track
 
-#[derive(Clone, Debug)]
-pub enum PlaySource {
-  AudioData(Vec<u8>),
-  ExternallyPlayed,
-}
+  type TrackError = HttpRequestError;
 
-impl Client {
-  pub async fn list_tracks(&self) -> Result<Tracks, HttpRequestError> {
+  async fn list_tracks(&self) -> Result<Tracks, Self::TrackError> {
     let response = self.get_simple("track").await?;
     let tracks_raw: TracksRaw = response.json().await?;
     Ok(tracks_raw.into())
   }
 
-  pub async fn get_track_by_id(&self, id: i32) -> Result<Option<LocalTrack>, HttpRequestError> {
+  async fn get_track_by_id(&self, id: i32) -> Result<Option<LocalTrack>, Self::TrackError> {
     let response = self.get_simple(format!("track/{}", id)).await?;
     Ok(response.json().await?)
   }
 
-  pub async fn play_track_by_id(&self, id: i32) -> Result<Option<PlaySource>, HttpRequestError> {
+  async fn play_track_by_id(&self, id: i32) -> Result<Option<PlaySource>, Self::TrackError> {
     let response = self.get(
       format!("track/play/{}", id),
       |r| r,
@@ -168,79 +174,79 @@ impl Client {
     };
     Ok(play_source)
   }
-}
 
-// Artist
+  // Artist
 
-impl Client {
-  pub async fn list_artists(&self) -> Result<Vec<Artist>, HttpRequestError> {
+  type ArtistError = HttpRequestError;
+
+  async fn list_artists(&self) -> Result<Vec<Artist>, Self::ArtistError> {
     let response = self.get_simple("artist").await?;
     Ok(response.json().await?)
   }
 
-  pub async fn get_artist_by_id(&self, id: i32) -> Result<Option<Artist>, HttpRequestError> {
+  async fn get_artist_by_id(&self, id: i32) -> Result<Option<Artist>, Self::ArtistError> {
     let response = self.get_simple(format!("artist/{}", id)).await?;
     Ok(response.json().await?)
   }
-}
 
-// User
+  // User
 
-impl Client {
-  pub async fn list_users(&self) -> Result<Vec<User>, HttpRequestError> {
+  type UserError = HttpRequestError;
+
+  async fn list_users(&self) -> Result<Vec<User>, Self::UserError> {
     let response = self.get_simple("user").await?;
     Ok(response.json().await?)
   }
 
-  pub async fn get_my_user(&self) -> Result<User, HttpRequestError> {
+  async fn get_my_user(&self) -> Result<User,  Self::UserError> {
     let response = self.get_simple("user/me").await?;
     Ok(response.json().await?)
   }
 
-  pub async fn get_user_by_id(&self, id: i32) -> Result<Option<User>, HttpRequestError> {
+  async fn get_user_by_id(&self, id: i32) -> Result<Option<User>,  Self::UserError> {
     let response = self.get_simple(format!("user/{}", id)).await?;
     Ok(response.json().await?)
   }
 
-  pub async fn create_user(&self, new_user: &NewUser) -> Result<User, HttpRequestError> {
+  async fn create_user(&self, new_user: &NewUser) -> Result<User,  Self::UserError> {
     let response = self.post_simple_with_json("user", new_user).await?;
     Ok(response.json().await?)
   }
 
-  pub async fn delete_user_by_name(&self, name: &String) -> Result<(), HttpRequestError> {
+  async fn delete_user_by_name(&self, name: &String) -> Result<(),  Self::UserError> {
     self.delete_simple_with_json("user", name).await?;
     Ok(())
   }
 
-  pub async fn delete_user_by_id(&self, id: i32) -> Result<(), HttpRequestError> {
+  async fn delete_user_by_id(&self, id: i32) -> Result<(),  Self::UserError> {
     self.delete_simple(format!("user/{}", id)).await?;
     Ok(())
   }
-}
 
-// User data
+  // User data
 
-impl Client {
-  pub async fn set_user_album_rating(&self, album_id: i32, rating: i32) -> Result<UserAlbumRating, HttpRequestError> {
+  type UserDataError = HttpRequestError;
+
+  async fn set_user_album_rating(&self, album_id: i32, rating: i32) -> Result<UserAlbumRating, Self::UserDataError> {
     let response = self.put_simple(format!("user/data/album/{}/rating/{}", album_id, rating)).await?;
     Ok(response.json().await?)
   }
 
-  pub async fn set_user_track_rating(&self, track_id: i32, rating: i32) -> Result<UserTrackRating, HttpRequestError> {
+  async fn set_user_track_rating(&self, track_id: i32, rating: i32) -> Result<UserTrackRating, Self::UserDataError> {
     let response = self.put_simple(format!("user/data/track/{}/rating/{}", track_id, rating)).await?;
     Ok(response.json().await?)
   }
 
-  pub async fn set_user_artist_rating(&self, artist_id: i32, rating: i32) -> Result<UserArtistRating, HttpRequestError> {
+  async fn set_user_artist_rating(&self, artist_id: i32, rating: i32) -> Result<UserArtistRating, Self::UserDataError> {
     let response = self.put_simple(format!("user/data/artist/{}/rating/{}", artist_id, rating)).await?;
     Ok(response.json().await?)
   }
-}
 
-// Sync
+  // Sync
 
-impl Client {
-  pub async fn sync(&self) -> Result<bool, HttpRequestError> {
+  type SyncError = HttpRequestError;
+
+  async fn sync(&self) -> Result<bool, Self::SyncError> {
     let response = self.get(
       "sync",
       |r| r,
@@ -257,7 +263,7 @@ impl Client {
 // Internals
 
 #[allow(dead_code)]
-impl Client {
+impl HttpClient {
   async fn request(
     &self,
     method: Method,

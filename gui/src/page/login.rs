@@ -3,9 +3,9 @@
 use std::sync::Arc;
 
 use iced::{Align, Button, button, Column, Command, Element, HorizontalAlignment, Length, Row, Text, text_input, TextInput};
-use tracing::{error, debug};
+use tracing::{debug, error};
 
-use musium_client_http::{Client, HttpRequestError, Url};
+use musium_client_http::{Client, HttpClient, HttpRequestError, Url};
 use musium_core::format_error::FormatError;
 use musium_core::model::{User, UserLogin};
 
@@ -54,7 +54,7 @@ impl Page {
     }
   }
 
-  pub fn update(&mut self, client: &mut Client, message: Message) -> Update<Message, Action> {
+  pub fn update(&mut self, client: &mut HttpClient, message: Message) -> Update<Message, Action> {
     match message {
       Message::SetUrl(url) => {
         self.url = url.clone();

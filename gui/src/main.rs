@@ -12,7 +12,7 @@ use tracing_subscriber::{EnvFilter, fmt};
 use tracing_subscriber::prelude::*;
 
 use app::{App, Flags};
-use musium_client_http::{Client, Url};
+use musium_client_http::{HttpClient, Url};
 use musium_core::model::*;
 
 mod app;
@@ -60,7 +60,7 @@ fn main() -> Result<()> {
   let mut observer: YamlObserver = YamlBuilder::new().build();
   metrics_receiver.install();
   // Create client
-  let client = Client::new(opt.url_base.clone())
+  let client = HttpClient::new(opt.url_base.clone())
     .with_context(|| "Failed to create client")?;
   let audio_player = None;
   // Run GUI

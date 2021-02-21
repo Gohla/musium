@@ -2,7 +2,7 @@ use iced::{Application, Command, Element};
 use tracing::error;
 
 use musium_audio_output_rodio::RodioAudioOutput;
-use musium_client_http::{Client, Url};
+use musium_client_http::{HttpClient, Url};
 use musium_core::model::UserLogin;
 
 use crate::page::{login, track};
@@ -11,12 +11,12 @@ use crate::util::Update;
 pub struct Flags {
   pub initial_url: Url,
   pub initial_user_login: UserLogin,
-  pub client: Client,
+  pub client: HttpClient,
   pub audio_player: Option<RodioAudioOutput>,
 }
 
 pub struct App {
-  client: Client,
+  client: HttpClient,
   audio_player: Option<RodioAudioOutput>,
   current_page: Page,
 }
