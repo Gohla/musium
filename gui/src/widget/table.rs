@@ -389,7 +389,15 @@ struct TableRows<'a, T, M, R> where
   row_height: u32,
   column_fill_portions: Vec<u32>,
   mappers: Vec<Box<dyn 'a + Fn(&mut T) -> Element<'_, M, R>>>,
-  // rows: &'a mut D,
+  // HACK: store row data as `Rc<RefCell<Vec<T>>>` because I bashed my head in for hours trying to get the lifetimes
+  //       and mutability right with a more general type. The `RefCell` is needed because the `mappers` want a `&mut` to
+  //       row data, so that they can return mutable state such as button states, but we do not have `&mut self` in the
+  //       `draw` method, making it impossible to get an exclusive borrow to `rows`. Therefore, `Rc` is needed to share
+  //       the data with the owner of this widget. The `Vec` is needed because that is what the owner of this widget
+  //       provides, and I could not figure out how to take a more general type/trait inside `Rc`/`RefCell`.
+  //
+  //       Ideally, we want to take something like `T: 'a, I: 'a + IntoIterator, I::Item=&'a mut T,
+  //       I::IntoIter='a + ExactSizeIterator`.
   rows: Rc<RefCell<Vec<T>>>,
 }
 
@@ -402,8 +410,8 @@ impl<'a, T, M, R: TableRowsRenderer<'a, T, M>> Widget<M, R> for TableRows<'a, T,
   fn layout(&self, _renderer: &R, limits: &Limits) -> Node {
     let max = limits.max();
     let total_width = max.width;
-    // HACK: only lay out first row, because laying out the entire table becomes slow for larger tables. Lay out the
-    //       *visible rows* in the draw function.
+    // HACK: only lay out first row, because laying out the entire table becomes slow for larger tables. Reconstruct
+    //       the layout of elements on-demand with `reconstruct_layout_node`.
     let layouts = layout_columns(total_width, self.row_height as f32, &self.column_fill_portions, self.spacing);
     let num_rows = self.rows.borrow().len();
     let total_height = num_rows * self.row_height as usize + num_rows.saturating_sub(1) * self.spacing as usize;
@@ -446,7 +454,7 @@ impl<'a, T, M, R: TableRowsRenderer<'a, T, M>> Widget<M, R> for TableRows<'a, T,
       Event::Keyboard(_) | Event::Window(_) => return Status::Ignored,
       Event::Mouse(_) => {
         let mouse_position_relative = Point::new(cursor_position.x - absolute_position.x, cursor_position.y - absolute_position.y);
-        if self.propagate_event_to_cell_at(&event, mouse_position_relative, layout, cursor_position, messages, renderer, clipboard) == Status::Captured {
+        if self.propagate_event_to_element_at(&event, mouse_position_relative, layout, cursor_position, messages, renderer, clipboard) == Status::Captured {
           return Status::Captured;
         }
       }
@@ -458,7 +466,7 @@ impl<'a, T, M, R: TableRowsRenderer<'a, T, M>> Widget<M, R> for TableRows<'a, T,
           touch::Event::FingerLost { position, .. } => position,
         };
         let touch_position_relative = Point::new(touch_position_absolute.x - absolute_position.x, touch_position_absolute.y - absolute_position.y);
-        if self.propagate_event_to_cell_at(&event, touch_position_relative, layout, cursor_position, messages, renderer, clipboard) == Status::Captured {
+        if self.propagate_event_to_element_at(&event, touch_position_relative, layout, cursor_position, messages, renderer, clipboard) == Status::Captured {
           return Status::Captured;
         }
       }
@@ -480,23 +488,23 @@ impl<'a, T, M, R: TableRowsRenderer<'a, T, M>> TableRows<'a, T, M, R> where
     if y > row_offset_without_spacing {
       None // On row spacing
     } else {
-      Some(row_offset.saturating_sub(1)) // NOTE: + 1 because row_offset is 1-based. Should this be the case?
+      Some(row_offset.saturating_sub(1)) // NOTE: + 1 because row_offset is 1-based. Why is this the case?
     }
   }
 
-  fn get_column_index_at(&mut self, x: f32, layout: &Layout<'_>) -> Option<usize> {
+  fn get_column_index_and_layout_at<'l>(&mut self, x: f32, layout: &Layout<'l>) -> Option<(usize, Layout<'l>)> {
     let spacing = self.spacing as f32;
     let mut offset = 0f32;
     for (column_index, column_layout) in layout.children().enumerate() {
       if x < offset { return None; } // On column spacing or out of bounds
       offset += column_layout.bounds().width;
-      if x <= offset { return Some(column_index); }
+      if x <= offset { return Some((column_index, column_layout)); }
       offset += spacing;
     }
     None
   }
 
-  fn propagate_event_to_cell_at(
+  fn propagate_event_to_element_at(
     &mut self,
     event: &Event,
     point: Point,
@@ -506,15 +514,20 @@ impl<'a, T, M, R: TableRowsRenderer<'a, T, M>> TableRows<'a, T, M, R> where
     renderer: &R,
     clipboard: Option<&dyn Clipboard>,
   ) -> Status {
-    let column_index = self.get_column_index_at(point.x, &layout);
+    let absolute_position = layout.position();
+    let row_height_plus_spacing = self.row_height as f32 + self.spacing as f32;
+    let column_index_and_layout = self.get_column_index_and_layout_at(point.x, &layout);
     let row_index = self.get_row_index_at(point.y);
-    if let (Some(column_index), Some(row_index)) = (column_index, row_index) {
+    if let (Some((column_index, base_layout)), Some(row_index)) = (column_index_and_layout, row_index) {
       let mapper = self.mappers.get(column_index);
       let mut rows_borrow = self.rows.borrow_mut();
       let row = rows_borrow.get_mut(row_index);
       if let (Some(mapper), Some(row)) = (mapper, row) {
         let mut element = mapper(row);
-        // TODO: calculate new layout
+        let y_offset = absolute_position.y + row_index as f32 * row_height_plus_spacing;
+        // HACK: reconstruct layout of element to fix its y position based on `y_offset`.
+        let node = reconstruct_layout_node(base_layout, y_offset, &element, &renderer);
+        let layout = Layout::new(&node);
         element.on_event(event.clone(), layout, cursor_position, messages, renderer, clipboard)
       } else {
         Status::Ignored
@@ -566,21 +579,14 @@ impl<'a, T, M, B> TableRowsRenderer<'a, T, M> for ConcreteRenderer<B> where
     let last_row_index = num_rows.saturating_sub(1);
     let row_height_plus_spacing = row_height + spacing;
     let start_offset = (((viewport.y - absolute_position.y) / row_height_plus_spacing).floor() as usize).min(last_row_index);
-    // NOTE: + 1 on next line to ensure that last partially visible row is not culled?
+    // NOTE: + 1 on next line to ensure that last partially visible row is not culled. Why is this needed?
     let num_rows_to_render = ((viewport.height / row_height_plus_spacing).ceil() as usize + 1).min(last_row_index);
-    let mut y_offset = start_offset as f32 * row_height_plus_spacing;
+    let mut y_offset = absolute_position.y + start_offset as f32 * row_height_plus_spacing;
     for (i, row) in rows.into_iter().skip(start_offset).take(num_rows_to_render).enumerate() {
       for (mapper, base_layout) in mappers.iter().zip(layout.children()) {
         let element: Element<'_, M, Self> = mapper(row);
-        // HACK: Reconstruct the layout from `base_layout` which has a correct x position, but an incorrect y position
-        //       which always points to the first row. This is needed so that we do not have to lay out all the cells of
-        //       the table each time the layout changes, because that is slow for larger tables. Instead we now
-        //       calculate the absolute layout of cells which are *in view* as part of primitive generation.
-        let bounds = base_layout.bounds();
-        let size = Size::new(bounds.width, bounds.height);
-        let limits = Limits::new(size, size);
-        let mut node = element.layout(&self, &limits);
-        node.move_to(Point::new(bounds.x, absolute_position.y + y_offset));
+        // HACK: reconstruct layout of element to fix its y position based on `y_offset`.
+        let node = reconstruct_layout_node(base_layout, y_offset, &element, &self);
         let layout = Layout::new(&node);
         let (primitive, new_mouse_cursor) = element.draw(self, defaults, layout, cursor_position, viewport);
         if new_mouse_cursor > mouse_cursor { mouse_cursor = new_mouse_cursor; }
@@ -606,7 +612,7 @@ impl<'a, T, M, R> Into<Element<'a, M, R>> for TableRows<'a, T, M, R> where
 }
 
 //
-// Column layout calculation
+// Column layout calculation and reconstruction.
 //
 
 fn layout_columns(total_width: f32, row_height: f32, width_fill_portions: &Vec<u32>, spacing: u32) -> Vec<Node> {
@@ -629,4 +635,21 @@ fn layout_columns(total_width: f32, row_height: f32, width_fill_portions: &Vec<u
     }
   }
   layouts
+}
+
+fn reconstruct_layout_node<M, R: Renderer>(
+  base_layout: Layout<'_>,
+  y_offset: f32,
+  element: &Element<'_, M, R>,
+  renderer: &R,
+) -> Node {
+  // HACK: Reconstruct the layout from `base_layout` which has a correct x position, but an incorrect y position
+  //       which always points to the first row. This is needed so that we do not have to lay out all the cells of
+  //       the table each time the layout changes, because that is slow for larger tables.
+  let bounds = base_layout.bounds();
+  let size = Size::new(bounds.width, bounds.height);
+  let limits = Limits::new(Size::ZERO, size);
+  let mut node = element.layout(renderer, &limits);
+  node.move_to(Point::new(bounds.x, y_offset));
+  node
 }

@@ -135,7 +135,6 @@ impl<'a> Page {
   }
 
   pub fn view(&'a mut self) -> Element<'a, Message> {
-    // self.tracks.to_vec()
     let table: Element<_> = TableBuilder::new(self.tracks.clone())
       .spacing(2)
       .header_row_height(26)
