@@ -12,7 +12,7 @@ use serde::{Deserialize, Serialize};
 use thiserror::Error;
 use tracing::{event, instrument, Level};
 
-use crate::PlayError::PlayFail;
+use crate::PlaybackError::PlaybackChangeFail;
 
 #[derive(Clone)]
 pub struct SpotifyClient {
@@ -556,29 +556,41 @@ impl SpotifyClient {
   }
 }
 
+#[derive(Deserialize, Debug)]
+pub struct CurrentlyPlaying {
+  pub is_playing: bool,
+  pub progress_ms: u32,
+}
+
+impl SpotifyClient {
+  #[instrument(level = "trace", skip(self, authorization))]
+  pub async fn get_currently_playing(&self, authorization: &mut Authorization) -> Result<Option<CurrentlyPlaying>, HttpRequestError> {
+    let url = self.api_base_url.join("me/player/currently-playing")?;
+    let request = self.http_client
+      .get(url.clone())
+      ;
+    let response = self.send_request(request, [StatusCode::OK, StatusCode::NO_CONTENT], authorization).await?;
+    if response.status() == StatusCode::NO_CONTENT { return Ok(None); }
+    Ok(response.json().await?)
+  }
+}
+
 #[derive(Debug, Error)]
-pub enum PlayError {
+pub enum PlaybackError {
   #[error("Failed to join URLs")]
   UrlJoinFail(#[from] url::ParseError, Backtrace),
   #[error("HTTP request failed")]
   HttpRequestFail(#[from] HttpRequestError, Backtrace),
   #[error("Failed to deserialize play error")]
   JsonDeserializePlayErrorFail(#[from] reqwest::Error, Backtrace),
-  #[error("Failed to play Spotify track with ID '{0}'; server responded with '{1}', error message '{2}', and reason '{3}'")]
-  PlayFail(String, StatusCode, String, String),
+  #[error("Failed to start/resume/pause playback; server responded with '{0}', error message '{1}', and reason '{2}'")]
+  PlaybackChangeFail(StatusCode, String, String),
 }
 
 impl SpotifyClient {
   #[instrument(level = "trace", skip(self, authorization))]
-  pub async fn play_track(&self, track_id: &String, device_id: Option<&String>, authorization: &mut Authorization) -> Result<(), PlayError> {
-    let device_id = {
-      let devices = self.get_devices(authorization).await?;
-      if let false = devices.iter().any(|d| d.is_active) {
-        devices.first().map(|d| d.id.clone())
-      } else {
-        None
-      }
-    };
+  pub async fn start_or_resume_playback(&self, track_id: &String, device_id: Option<&String>, authorization: &mut Authorization) -> Result<(), PlaybackError> {
+    let device_id = self.get_suitable_playback_device_id(device_id, authorization).await?;
     let url = self.api_base_url.join("me/player/play")?;
     #[derive(Serialize, Debug)]
     struct Body {
@@ -595,6 +607,58 @@ impl SpotifyClient {
       request
     };
     let response = self.send_request(request, [StatusCode::NO_CONTENT, StatusCode::NOT_FOUND, StatusCode::FORBIDDEN], authorization).await?;
+    Self::unwrap_playback_response(response).await
+  }
+
+  #[instrument(level = "trace", skip(self, authorization))]
+  pub async fn pause_playback(&self, device_id: Option<&String>, authorization: &mut Authorization) -> Result<(), PlaybackError> {
+    let device_id = self.get_suitable_playback_device_id(device_id, authorization).await?;
+    let url = self.api_base_url.join("me/player/pause")?;
+    let request = self.http_client
+      .get(url.clone())
+      ;
+    let request = if let Some(device_id) = device_id {
+      request.query(&[("device_id", device_id)])
+    } else {
+      request
+    };
+    let response = self.send_request(request, [StatusCode::NO_CONTENT, StatusCode::NOT_FOUND, StatusCode::FORBIDDEN], authorization).await?;
+    Self::unwrap_playback_response(response).await
+  }
+
+  #[instrument(level = "trace", skip(self, authorization))]
+  pub async fn seek(&self, position_ms: u32, device_id: Option<&String>, authorization: &mut Authorization) -> Result<(), PlaybackError> {
+    let device_id = self.get_suitable_playback_device_id(device_id, authorization).await?;
+    let url = self.api_base_url.join("me/player/seek")?;
+    let request = self.http_client
+      .get(url.clone())
+      .query(&[("position_ms", position_ms)])
+      ;
+    let request = if let Some(device_id) = device_id {
+      request.query(&[("device_id", device_id)])
+    } else {
+      request
+    };
+    let response = self.send_request(request, [StatusCode::NO_CONTENT, StatusCode::NOT_FOUND, StatusCode::FORBIDDEN], authorization).await?;
+    Self::unwrap_playback_response(response).await
+  }
+
+  #[instrument(level = "trace", skip(self, authorization))]
+  async fn get_suitable_playback_device_id(&self, device_id: Option<&String>, authorization: &mut Authorization) -> Result<Option<String>, HttpRequestError> {
+    let device_id = if let Some(device_id) = device_id {
+      Some(device_id.clone())
+    } else {
+      let devices = self.get_devices(authorization).await?;
+      if !devices.iter().any(|d| d.is_active) {
+        devices.first().map(|d| d.id.clone())
+      } else {
+        None
+      }
+    };
+    Ok(device_id)
+  }
+
+  async fn unwrap_playback_response(response: Response) -> Result<(), PlaybackError> {
     match response.status() {
       StatusCode::NO_CONTENT => Ok(()),
       c @ StatusCode::NOT_FOUND | c @ StatusCode::FORBIDDEN => {
@@ -608,7 +672,7 @@ impl SpotifyClient {
           reason: String,
         }
         let play_error: PlayError = response.json().await?;
-        Err(PlayFail(track_id.clone(), c, play_error.error.message, play_error.error.reason))
+        Err(PlaybackChangeFail(c, play_error.error.message, play_error.error.reason))
       }
       _ => unreachable!()
     }
