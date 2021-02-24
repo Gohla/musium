@@ -8,4 +8,6 @@ publish = false
 [dependencies]
 musium_audio_output = { path = "../audio_output" }
 rodio = "0.13"
+futures = "0.3"
+async-trait = "0.1"
 thiserror = "1"
