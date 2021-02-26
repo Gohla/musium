@@ -48,7 +48,7 @@ pub trait Client: Send + Sync {
   async fn list_albums(&self) -> Result<Albums, Self::AlbumError>;
   async fn get_album_by_id(&self, id: i32) -> Result<Option<LocalAlbum>, Self::AlbumError>;
 
-  type TrackError: Error;
+  type TrackError: 'static + Error + Send + Sync;
   async fn list_tracks(&self) -> Result<Tracks, Self::TrackError>;
   async fn get_track_by_id(&self, id: i32) -> Result<Option<LocalTrack>, Self::TrackError>;
   async fn play_track_by_id(&self, id: i32) -> Result<Option<PlaySource>, Self::TrackError>;

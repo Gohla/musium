@@ -4,10 +4,11 @@ use std::sync::Arc;
 
 use iced::{Align, Button, button, Column, Command, Element, HorizontalAlignment, Length, Row, Text, text_input, TextInput};
 use tracing::{debug, error};
+use url::Url;
 
-use musium_client_http::{Client, HttpClient, HttpRequestError, Url};
 use musium_core::format_error::FormatError;
 use musium_core::model::{User, UserLogin};
+use musium_player::{Client, HttpRequestError, Player, PlayerT};
 
 use crate::util::Update;
 
@@ -54,7 +55,7 @@ impl Page {
     }
   }
 
-  pub fn update(&mut self, client: &mut HttpClient, message: Message) -> Update<Message, Action> {
+  pub fn update(&mut self, player: &mut Player, message: Message) -> Update<Message, Action> {
     match message {
       Message::SetUrl(url) => {
         self.url = url.clone();
@@ -72,7 +73,7 @@ impl Page {
       Message::SetName(name) => self.user_login.name = name,
       Message::SetPassword(password) => self.user_login.password = password,
       Message::SendLoginRequest(user_login) => {
-        let client = client.clone();
+        let client = player.get_client().clone();
         let command = Command::perform(
           async move { client.login(&user_login).await },
           |r| Message::LoginResponseReceived(r.map_err(|e| Arc::new(e))),

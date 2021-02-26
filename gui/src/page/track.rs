@@ -11,11 +11,11 @@ use iced_native::{HorizontalAlignment, Space, VerticalAlignment};
 use itertools::Itertools;
 use tracing::{debug, error, info};
 
-use musium_audio_output_rodio::{AudioOutput, RodioAudioOutput};
-use musium_client_http::{Client, HttpClient, HttpRequestError, PlaySource};
 use musium_core::format_error::FormatError;
 use musium_core::model::{Album, Track, User};
 use musium_core::model::collection::{TrackInfo, Tracks};
+use musium_player::{Client, HttpRequestError, Player, PlayerT, RodioPlayError};
+use musium_player::player::PlayError;
 
 use crate::util::Update;
 use crate::widget::table::TableBuilder;
@@ -63,7 +63,7 @@ pub struct Page {
 pub enum Message {
   RequestPlayTrack(i32),
   ReceiveTracks(Result<Tracks, Arc<HttpRequestError>>),
-  ReceivePlaySource(Result<Option<PlaySource>, Arc<HttpRequestError>>),
+  ReceivePlayResult(Result<(), Arc<PlayError<HttpRequestError, RodioPlayError>>>),
 }
 
 pub enum Action {}
@@ -74,22 +74,22 @@ enum ListTracksState { Idle, Busy, Failed(Arc<HttpRequestError>) }
 impl Default for ListTracksState { fn default() -> Self { Self::Idle } }
 
 impl<'a> Page {
-  pub fn new(logged_in_user: User, client: &mut HttpClient) -> (Self, Command<Message>) {
+  pub fn new(logged_in_user: User, player: &mut Player) -> (Self, Command<Message>) {
     let mut page = Self {
       logged_in_user,
       ..Self::default()
     };
-    let command = page.update_tracks(client);
+    let command = page.update_tracks(player);
     (page, command)
   }
 
-  pub fn update(&mut self, client: &mut HttpClient, audio_player: &mut Option<RodioAudioOutput>, message: Message) -> Update<Message, Action> {
+  pub fn update(&mut self, player: &mut Player, message: Message) -> Update<Message, Action> {
     match message {
       Message::RequestPlayTrack(id) => {
-        let client = client.clone();
+        //let client = client.clone();
         return Update::command(Command::perform(
-          async move { client.play_track_by_id(id).await },
-          |r| Message::ReceivePlaySource(r.map_err(|e| Arc::new(e))),
+          async move { player.play_track_by_id(id, 0.1).await },
+          |r| Message::ReceivePlayResult(r.map_err(|e| Arc::new(e))),
         ));
       }
       Message::ReceiveTracks(result) => match result {
@@ -104,30 +104,30 @@ impl<'a> Page {
           self.list_tracks_state = ListTracksState::Failed(e);
         }
       },
-      Message::ReceivePlaySource(result) => match result {
-        Ok(Some(play_source)) => match play_source {
-          PlaySource::AudioData(audio_data) => {
-            if let Some(audio_player) = audio_player {
-              if let Err(e) = audio_player.play(audio_data, 0.2) {
-                let format_error = FormatError::new(&e);
-                error!("Playing track failed: {:?}", format_error);
-              } else {
-                info!("Track played locally");
-              }
-            } else {
-              error!("Cannot play track, no audio player was set");
-            }
-          }
-          PlaySource::ExternallyPlayed => {
-            info!("Track played externally");
-          }
-        }
-        Ok(none) => {
-          error!("Received None play source");
+      Message::ReceivePlayResult(result) => match result {
+        // Ok(Some(play_source)) => match play_source {
+        //   PlaySource::AudioData(audio_data) => {
+        //     if let Some(audio_player) = audio_player {
+        //       if let Err(e) = audio_player.play(audio_data, 0.2) {
+        //         let format_error = FormatError::new(&e);
+        //         error!("Playing track failed: {:?}", format_error);
+        //       } else {
+        //         info!("Track played locally");
+        //       }
+        //     } else {
+        //       error!("Cannot play track, no audio player was set");
+        //     }
+        //   }
+        //   PlaySource::ExternallyPlayed => {
+        //     info!("Track played externally");
+        //   }
+        // }
+        Ok(_) => {
+          error!("Track played successfully");
         }
         Err(e) => {
           let format_error = FormatError::new(e.as_ref());
-          error!("Receiving play source failed: {:?}", format_error);
+          error!("Playing track failed: {:?}", format_error);
         }
       }
     }
@@ -169,9 +169,9 @@ impl<'a> Page {
     content
   }
 
-  fn update_tracks(&mut self, client: &mut HttpClient) -> Command<Message> {
+  fn update_tracks(&mut self, player: &mut Player) -> Command<Message> {
     self.list_tracks_state = ListTracksState::Busy;
-    let client = client.clone();
+    let client = player.get_client().clone();
     Command::perform(
       async move { client.list_tracks().await },
       |r| Message::ReceiveTracks(r.map_err(|e| Arc::new(e))),

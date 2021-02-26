@@ -7,8 +7,7 @@ publish = false
 
 [dependencies]
 musium_core = { path = "../core" }
-musium_client_http = { path = "../client_http" }
-musium_audio_output_rodio = { path = "../audio_output_rodio" }
+musium_player = { path = "../player" }
 structopt = "0.3"
 dotenv = "0.15"
 open = "1.4"

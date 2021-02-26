@@ -10,10 +10,11 @@ use structopt::StructOpt;
 use tracing::trace;
 use tracing_subscriber::{EnvFilter, fmt};
 use tracing_subscriber::prelude::*;
+use url::Url;
 
 use app::{App, Flags};
-use musium_client_http::{HttpClient, Url};
 use musium_core::model::*;
+use musium_player::{HttpClient, RodioAudioOutput, Player};
 
 mod app;
 mod page;
@@ -59,10 +60,12 @@ fn main() -> Result<()> {
   let controller: Controller = metrics_receiver.controller();
   let mut observer: YamlObserver = YamlBuilder::new().build();
   metrics_receiver.install();
-  // Create client
+  // Create player
   let client = HttpClient::new(opt.url_base.clone())
-    .with_context(|| "Failed to create client")?;
-  let audio_player = None;
+    .with_context(|| "Failed to create Musium HTTP client")?;
+  let audio_output = RodioAudioOutput::new()
+    .with_context(|| "Failed to create Rodio audio output")?;
+  let player = Player::new(client, audio_output);
   // Run GUI
   let user_login = UserLogin { name: opt.name, password: opt.password };
   let app_settings = iced::Settings {
@@ -71,8 +74,7 @@ fn main() -> Result<()> {
       ..iced::window::Settings::default()
     },
     flags: Flags {
-      client,
-      audio_player,
+      player,
       initial_url: opt.url_base,
       initial_user_login: user_login,
     },

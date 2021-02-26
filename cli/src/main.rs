@@ -8,9 +8,8 @@ use tracing::trace;
 use tracing_subscriber::{EnvFilter, fmt};
 use tracing_subscriber::prelude::*;
 
-use musium_audio_output_rodio::AudioOutput;
-use musium_client_http::{Client, HttpClient, PlaySource, Url};
 use musium_core::model::*;
+use musium_player::{HttpClient, Player, PlayerT, RodioAudioOutput, Url, Client};
 
 #[derive(Debug, StructOpt)]
 #[structopt(name = "cli", about = "Musium CLI")]
@@ -163,23 +162,26 @@ fn main() -> Result<()> {
   let controller: Controller = metrics_receiver.controller();
   let mut observer: YamlObserver = YamlBuilder::new().build();
   metrics_receiver.install();
-  // Create client
-  let client: HttpClient = HttpClient::new(opt.url_base)
-    .with_context(|| "Failed to create client")?;
   // Create an async runtime
   let runtime = tokio::runtime::Builder::new_current_thread()
-    .enable_io()
+    .enable_all()
     .build()
     .unwrap();
+  // Create player
+  let client = HttpClient::new(opt.url_base)
+    .with_context(|| "Failed to create Musium HTTP client")?;
+  let audio_output = RodioAudioOutput::new()
+    .with_context(|| "Failed to create Rodio audio output")?;
+  let mut player = Player::new(client, audio_output);
   // Login
   let user_login = UserLogin { name: opt.name, password: opt.password };
   runtime.block_on(async {
-    client.login(&user_login).await
+    player.login(&user_login).await
   }).with_context(|| "Failed to login to server")?;
   // Run command
   let command = opt.command;
   let result = runtime.block_on(async {
-    run(command, &client).await
+    run(command, &mut player).await
   });
   // Print metrics
   if opt.print_metrics {
@@ -191,36 +193,36 @@ fn main() -> Result<()> {
   Ok(result?)
 }
 
-async fn run(command: Command, client: &HttpClient) -> Result<()> {
+async fn run(command: Command, player: &mut Player) -> Result<()> {
   match command {
     Command::ListLocalSources => {
-      for local_source in client.list_local_sources().await? {
+      for local_source in player.get_client().list_local_sources().await? {
         println!("{:?}", local_source);
       }
     }
     Command::ShowLocalSourceById { id } => {
-      let local_source = client.get_local_source_by_id(id).await?;
+      let local_source = player.get_client().get_local_source_by_id(id).await?;
       println!("{:?}", local_source);
     }
     Command::CreateOrEnableLocalSource { directory } => {
-      let local_source = client.create_or_enable_local_source(&NewLocalSource { enabled: true, directory }).await?;
+      let local_source = player.get_client().create_or_enable_local_source(&NewLocalSource { enabled: true, directory }).await?;
       println!("{:?}", local_source);
     }
     Command::SetLocalSourceEnabledById { id, enabled } => {
-      client.set_local_source_enabled_by_id(id, enabled).await?;
+      player.get_client().set_local_source_enabled_by_id(id, enabled).await?;
     }
 
     Command::CreateSpotifySource => {
-      let url = client.create_spotify_source_authorization_url().await?;
+      let url = player.get_client().create_spotify_source_authorization_url().await?;
       open::that(url)?;
     }
     Command::ShowSpotifyMe => {
-      let me_info = client.show_spotify_me().await?;
+      let me_info = player.get_client().show_spotify_me().await?;
       println!("{:?}", me_info);
     }
 
     Command::ListAlbums => {
-      for (album, album_artists) in client.list_albums().await?.iter() {
+      for (album, album_artists) in player.get_client().list_albums().await?.iter() {
         println!("{:?}", album);
         for artist in album_artists {
           println!("- {:?}", artist);
@@ -228,12 +230,12 @@ async fn run(command: Command, client: &HttpClient) -> Result<()> {
       }
     }
     Command::ShowAlbumById { id } => {
-      let album = client.get_album_by_id(id).await?;
+      let album = player.get_client().get_album_by_id(id).await?;
       println!("{:?}", album);
     }
 
     Command::ListTracks => {
-      let tracks = client.list_tracks().await?;
+      let tracks = player.get_client().list_tracks().await?;
       for info in tracks.iter() {
         println!("- {:?}", info.track);
         for artist in info.track_artists() {
@@ -246,76 +248,63 @@ async fn run(command: Command, client: &HttpClient) -> Result<()> {
       }
     }
     Command::ShowTrackById { id } => {
-      let track = client.get_track_by_id(id).await?;
+      let track = player.get_client().get_track_by_id(id).await?;
       println!("{:?}", track);
     }
     Command::PlayTrack { id, volume } => {
-      if let Some(play_source) = client.play_track_by_id(id).await? {
-        match play_source {
-          PlaySource::AudioData(audio_data) => {
-            let player = musium_audio_output_rodio::RodioAudioOutput::new()
-              .with_context(|| "Failed to create audio player")?;
-            player.play(audio_data, volume)
-              .with_context(|| "Failed to play audio track")?;
-          }
-          PlaySource::ExternallyPlayed => {
-            println!("Track has been played externally");
-          }
-        }
-      } else {
-        eprintln!("Could not play track, no track with ID '{}' was found", id);
-      }
+      player.play_track_by_id(id, volume).await
+        .with_context(|| "Failed to play audio track")?;
     }
 
     Command::ListArtists => {
-      for artist in client.list_artists().await? {
+      for artist in player.get_client().list_artists().await? {
         println!("{:?}", artist);
       }
     }
     Command::ShowArtistById { id } => {
-      let artist = client.get_artist_by_id(id).await?;
+      let artist = player.get_client().get_artist_by_id(id).await?;
       println!("{:?}", artist);
     }
 
     Command::ListUsers => {
-      for user in client.list_users().await? {
+      for user in player.get_client().list_users().await? {
         println!("{:?}", user);
       }
     }
     Command::ShowMyUser => {
-      let user = client.get_my_user().await?;
+      let user = player.get_client().get_my_user().await?;
       println!("{:?}", user);
     }
     Command::ShowUserById { id } => {
-      let user = client.get_user_by_id(id).await?;
+      let user = player.get_client().get_user_by_id(id).await?;
       println!("{:?}", user);
     }
     Command::CreateUser { name, password } => {
-      let user = client.create_user(&NewUser { name, password }).await?;
+      let user = player.get_client().create_user(&NewUser { name, password }).await?;
       println!("{:?}", user);
     }
     Command::DeleteUserByName { name } => {
-      client.delete_user_by_name(&name).await?;
+      player.get_client().delete_user_by_name(&name).await?;
     }
     Command::DeleteUserById { id } => {
-      client.delete_user_by_id(id).await?;
+      player.get_client().delete_user_by_id(id).await?;
     }
 
     Command::SetUserAlbumRating { album_id, rating } => {
-      let rating = client.set_user_album_rating(album_id, rating).await?;
+      let rating = player.get_client().set_user_album_rating(album_id, rating).await?;
       println!("{:?}", rating);
     }
     Command::SetUserTrackRating { track_id, rating } => {
-      let rating = client.set_user_track_rating(track_id, rating).await?;
+      let rating = player.get_client().set_user_track_rating(track_id, rating).await?;
       println!("{:?}", rating);
     }
     Command::SetUserArtistRating { artist_id, rating } => {
-      let rating = client.set_user_artist_rating(artist_id, rating).await?;
+      let rating = player.get_client().set_user_artist_rating(artist_id, rating).await?;
       println!("{:?}", rating);
     }
 
     Command::Sync => {
-      let started_sync = client.sync().await?;
+      let started_sync = player.get_client().sync().await?;
       if started_sync {
         println!("Started synchronizing");
       } else {

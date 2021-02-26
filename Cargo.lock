@@ -3042,9 +3042,8 @@ dependencies = [
  "metrics-core",
  "metrics-observer-yaml",
  "metrics-runtime",
- "musium_audio_output_rodio",
- "musium_client_http",
  "musium_core",
+ "musium_player",
  "open",
  "structopt",
  "thiserror",
@@ -3111,9 +3110,8 @@ dependencies = [
  "metrics-core",
  "metrics-observer-yaml",
  "metrics-runtime",
- "musium_audio_output_rodio",
- "musium_client_http",
  "musium_core",
+ "musium_player",
  "structopt",
  "thiserror",
  "tracing",
@@ -3128,8 +3126,11 @@ version = "0.1.0"
 dependencies = [
  "async-trait",
  "musium_audio_output",
+ "musium_audio_output_rodio",
  "musium_client",
+ "musium_client_http",
  "musium_core",
+ "thiserror",
 ]
 
 [[package]]

@@ -1,31 +1,38 @@
-use async_trait::async_trait;
+pub use musium_audio_output::AudioOutput;
+#[cfg(feature = "musium_audio_output_rodio")]
+pub use musium_audio_output_rodio::{RodioAudioOutput, RodioPlayError};
+pub use musium_client::Client;
+#[cfg(feature = "musium_client_http")]
+pub use musium_client_http::{HttpClient, HttpRequestError, Url};
 
-use musium_audio_output::AudioOutput;
-use musium_client::Client;
-use musium_core::model::{User, UserLogin};
+pub use crate::player::PlayerT;
 
-#[async_trait]
-pub trait PlayerT {
-  type Client: Client;
-  type AudioOutput: AudioOutput;
+pub mod player;
 
-  fn get_client(&self) -> &Self::Client;
+#[cfg(feature = "musium_client_http")]
+pub type ConcreteClient = HttpClient;
 
-  fn get_audio_output(&self) -> &Self::AudioOutput;
+#[cfg(feature = "musium_audio_output_rodio")]
+pub type ConcreteAudioOutput = RodioAudioOutput;
 
+pub struct Player {
+  client: ConcreteClient,
+  audio_output: ConcreteAudioOutput,
+}
 
-  async fn login(&self, user_login: &UserLogin) -> Result<User, <Self::Client as Client>::LoginError> {
-    self.get_client().login(user_login).await
-  }
+impl Player {
+  pub fn new(client: ConcreteClient, audio_output: ConcreteAudioOutput) -> Self { Self { client, audio_output } }
+}
 
-  async fn play_track_by_id(&self, id: i32, volume: f32) -> Result<(), <Self::Client as Client>::LoginError> {
-    use musium_client::PlaySource::*;
-    let play_source = self.get_client().play_track_by_id(id).await?;
-    match play_source {
-      Some(AudioData(audio_data)) => self.get_audio_output().play(audio_data, volume).await?,
-      Some(ExternallyPlayed) => {}
-      None => {}
-    };
-    Ok(())
-  }
+impl PlayerT for Player {
+  type Client = ConcreteClient;
+  type AudioOutput = ConcreteAudioOutput;
+  #[inline]
+  fn get_client(&self) -> &Self::Client { &self.client }
+  #[inline]
+  fn get_client_mut(&mut self) -> &mut Self::Client { &mut self.client }
+  #[inline]
+  fn get_audio_output(&self) -> &Self::AudioOutput { &self.audio_output }
+  #[inline]
+  fn get_audio_output_mut(&mut self) -> &mut Self::AudioOutput { &mut self.audio_output }
 }

@@ -7,8 +7,7 @@ publish = false
 
 [dependencies]
 musium_core = { path = "../core" }
-musium_client_http = { path = "../client_http" }
-musium_audio_output_rodio = { path = "../audio_output_rodio" }
+musium_player = { path = "../player" }
 iced = { version = "0.2.0", features = ["tokio", "debug"] }
 iced_graphics = "0.1.0"
 iced_native = "0.3.0"

@@ -41,6 +41,11 @@ impl RodioAudioOutput {
     create_result_rx.recv().unwrap()?;
     Ok(Self { tx, thread_join_handle })
   }
+
+  pub fn stop(self) -> std::thread::Result<()> {
+    let RodioAudioOutput { thread_join_handle, .. } = self;
+    thread_join_handle.join()
+  }
 }
 
 // Play
@@ -51,15 +56,18 @@ pub enum RodioPlayError {
   ReadFail(#[from] std::io::Error),
   #[error(transparent)]
   PlayFail(#[from] rodio::PlayError),
+  #[error("Failed to send the play command; thread handling the command was stopped")]
+  CommandSendFail,
 }
 
 #[async_trait]
 impl AudioOutput for RodioAudioOutput {
   type PlayError = RodioPlayError;
-  async fn play(&self, audio_data: Vec<u8>, volume: f32) -> Result<(), Self::PlayError> {
-    let (tx, rx) = futures::channel::oneshot::channel();
-    self.tx.send(Command::Play { audio_data, volume, tx });
-    rx.await?
+  async fn play(&mut self, audio_data: Vec<u8>, volume: f32) -> Result<(), Self::PlayError> {
+    let tx = self.tx.clone();
+    let (once_tx, once_rx) = futures::channel::oneshot::channel();
+    tx.send(Command::Play { audio_data, volume, tx: once_tx }).map_err(|_| RodioPlayError::CommandSendFail)?;
+    once_rx.await.unwrap() // CORRECTNESS: unwrap the result from awaiting, because it can never be cancelled.
   }
 }
 
@@ -70,14 +78,14 @@ enum Command {
 }
 
 impl RodioAudioOutput {
-  fn message_loop(output_stream: OutputStream, output_stream_handle: OutputStreamHandle, rx: mpsc::Receiver<Command>) {
+  fn message_loop(_output_stream: OutputStream, output_stream_handle: OutputStreamHandle, rx: mpsc::Receiver<Command>) {
     loop {
       match rx.recv() {
         Ok(message) => match message {
-          Command::Play { audio_data, volume, tx } => tx.send(Self::play(audio_data, volume, &output_stream_handle)),
+          Command::Play { audio_data, volume, tx } => tx.send(Self::play(audio_data, volume, &output_stream_handle)).ok(),
         }
         Err(_) => break, // Sender has disconnected, stop the loop.
-      }
+      };
     }
   }
 

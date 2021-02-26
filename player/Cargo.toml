@@ -8,5 +8,11 @@ publish = false
 [dependencies]
 musium_core = { path = "../core" }
 musium_client = { path = "../client" }
+musium_client_http = { path = "../client_http", optional = true }
 musium_audio_output = { path = "../audio_output" }
+musium_audio_output_rodio = { path = "../audio_output_rodio", optional = true }
 async-trait = "0.1"
+thiserror = "1"
+
+[features]
+default = ["musium_client_http", "musium_audio_output_rodio"]
