@@ -1,16 +1,22 @@
 use std::io::Cursor;
-use std::sync::mpsc;
+use std::sync::Arc;
 use std::thread;
 
 use async_trait::async_trait;
+use futures::channel::oneshot;
 use rodio::{OutputStream, OutputStreamHandle};
 use thiserror::Error;
 
 pub use musium_audio_output::AudioOutput;
 
+#[derive(Clone)]
 pub struct RodioAudioOutput {
+  inner: Arc<Inner>,
+}
+
+struct Inner {
   thread_join_handle: thread::JoinHandle<()>,
-  tx: mpsc::Sender<Command>,
+  tx: crossbeam_channel::Sender<Command>,
 }
 
 // Creation
@@ -23,8 +29,8 @@ pub enum RodioCreateError {
 
 impl RodioAudioOutput {
   pub fn new() -> Result<Self, RodioCreateError> {
-    let (tx, rx) = mpsc::channel();
-    let (create_result_tx, create_result_rx) = mpsc::channel();
+    let (tx, rx) = crossbeam_channel::unbounded();
+    let (create_result_tx, create_result_rx) = crossbeam_channel::bounded(0);
     let thread_join_handle = thread::spawn(move || {
       let (output_stream, output_stream_handle) = match rodio::OutputStream::try_default().map_err(|_| RodioCreateError::NoDefaultOutputDevice) {
         Ok(v) => {
@@ -39,12 +45,38 @@ impl RodioAudioOutput {
       Self::message_loop(output_stream, output_stream_handle, rx)
     });
     create_result_rx.recv().unwrap()?;
-    Ok(Self { tx, thread_join_handle })
+    let inner = Arc::new(Inner { tx, thread_join_handle });
+    Ok(Self { inner })
   }
+}
 
-  pub fn stop(self) -> std::thread::Result<()> {
-    let RodioAudioOutput { thread_join_handle, .. } = self;
-    thread_join_handle.join()
+// Destruction
+
+#[derive(Debug, Error)]
+pub enum RodioDestroyError {
+  #[error("Cannot destroy the Rodio audio output because one or more clones still exist. All clones must be dropped before stopping so that the worker thread can stop")]
+  ClonesStillExist,
+  #[error("Rodio audio output was destroyed, but the worker thread panicked before stopping with message: {0}")]
+  ThreadPanicked(String),
+  #[error("Rodio audio output was destroyed, but the worker thread panicked before stopping without a message")]
+  ThreadPanickedSilently,
+}
+
+impl RodioAudioOutput {
+  pub fn stop(self) -> Result<(), RodioDestroyError> {
+    use RodioDestroyError::*;
+    let Inner { thread_join_handle, .. } = Arc::try_unwrap(self.inner).map_err(|_| ClonesStillExist)?;
+    // Because we did not match on Inner.tx, it is dropped and the thread will stop.
+    match thread_join_handle.join() {
+      Err(e) => if let Some(msg) = e.downcast_ref::<&'static str>() {
+        Err(ThreadPanicked(msg.to_string()))
+      } else if let Some(msg) = e.downcast_ref::<String>() {
+        Err(ThreadPanicked(msg.to_string()))
+      } else {
+        Err(ThreadPanickedSilently)
+      }
+      Ok(_) => Ok(()),
+    }
   }
 }
 
@@ -63,22 +95,21 @@ pub enum RodioPlayError {
 #[async_trait]
 impl AudioOutput for RodioAudioOutput {
   type PlayError = RodioPlayError;
-  async fn play(&mut self, audio_data: Vec<u8>, volume: f32) -> Result<(), Self::PlayError> {
-    let tx = self.tx.clone();
-    let (once_tx, once_rx) = futures::channel::oneshot::channel();
-    tx.send(Command::Play { audio_data, volume, tx: once_tx }).map_err(|_| RodioPlayError::CommandSendFail)?;
-    once_rx.await.unwrap() // CORRECTNESS: unwrap the result from awaiting, because it can never be cancelled.
+  async fn play(&self, audio_data: Vec<u8>, volume: f32) -> Result<(), RodioPlayError> {
+    let (tx, rx) = oneshot::channel();
+    self.inner.tx.send(Command::Play { audio_data, volume, tx }).map_err(|_| RodioPlayError::CommandSendFail)?;
+    rx.await.unwrap() // CORRECTNESS: unwrap the result from awaiting, because it can never be cancelled.
   }
 }
 
 // Internals that run the message loop and perform commands.
 
 enum Command {
-  Play { audio_data: Vec<u8>, volume: f32, tx: futures::channel::oneshot::Sender<Result<(), RodioPlayError>> }
+  Play { audio_data: Vec<u8>, volume: f32, tx: oneshot::Sender<Result<(), RodioPlayError>> }
 }
 
 impl RodioAudioOutput {
-  fn message_loop(_output_stream: OutputStream, output_stream_handle: OutputStreamHandle, rx: mpsc::Receiver<Command>) {
+  fn message_loop(_output_stream: OutputStream, output_stream_handle: OutputStreamHandle, rx: crossbeam_channel::Receiver<Command>) {
     loop {
       match rx.recv() {
         Ok(message) => match message {

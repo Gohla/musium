@@ -55,7 +55,7 @@ impl Page {
     }
   }
 
-  pub fn update(&mut self, player: &mut Player, message: Message) -> Update<Message, Action> {
+  pub fn update(&mut self, player: &Player, message: Message) -> Update<Message, Action> {
     match message {
       Message::SetUrl(url) => {
         self.url = url.clone();
@@ -73,9 +73,9 @@ impl Page {
       Message::SetName(name) => self.user_login.name = name,
       Message::SetPassword(password) => self.user_login.password = password,
       Message::SendLoginRequest(user_login) => {
-        let client = player.get_client().clone();
+        let player = player.clone();
         let command = Command::perform(
-          async move { client.login(&user_login).await },
+          async move { player.login(&user_login).await },
           |r| Message::LoginResponseReceived(r.map_err(|e| Arc::new(e))),
         );
         self.state = State::Busy;

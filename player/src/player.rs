@@ -1,11 +1,11 @@
-use musium_audio_output::AudioOutput;
-use musium_client::Client;
-use musium_core::model::{User, UserLogin};
+use std::error::Error as StdError;
 
 use async_trait::async_trait;
 use thiserror::Error;
 
-use std::error::Error as StdError;
+use musium_audio_output::AudioOutput;
+use musium_client::Client;
+use musium_core::model::{User, UserLogin};
 
 #[async_trait]
 pub trait PlayerT {
@@ -13,23 +13,17 @@ pub trait PlayerT {
   type AudioOutput: AudioOutput;
 
   fn get_client(&self) -> &Self::Client;
-
-  fn get_client_mut(&mut self) -> &mut Self::Client;
-
   fn get_audio_output(&self) -> &Self::AudioOutput;
 
-  fn get_audio_output_mut(&mut self) -> &mut Self::AudioOutput;
-
-
-  async fn login(&mut self, user_login: &UserLogin) -> Result<User, <Self::Client as Client>::LoginError> {
-    self.get_client_mut().login(user_login).await
+  async fn login(&self, user_login: &UserLogin) -> Result<User, <Self::Client as Client>::LoginError> {
+    self.get_client().login(user_login).await
   }
 
-  async fn play_track_by_id(&mut self, id: i32, volume: f32) -> Result<(), PlayError<<Self::Client as Client>::TrackError, <Self::AudioOutput as AudioOutput>::PlayError>> {
+  async fn play_track_by_id(&self, id: i32, volume: f32) -> Result<(), PlayError<<Self::Client as Client>::TrackError, <Self::AudioOutput as AudioOutput>::PlayError>> {
     use musium_client::PlaySource::*;
-    let play_source = self.get_client_mut().play_track_by_id(id).await.map_err(|e| PlayError::ClientFail(e))?;
+    let play_source = self.get_client().play_track_by_id(id).await.map_err(|e| PlayError::ClientFail(e))?;
     match play_source {
-      Some(AudioData(audio_data)) => self.get_audio_output_mut().play(audio_data, volume).await.map_err(|e| PlayError::AudioOutputFail(e))?,
+      Some(AudioData(audio_data)) => self.get_audio_output().play(audio_data, volume).await.map_err(|e| PlayError::AudioOutputFail(e))?,
       Some(ExternallyPlayed) => {}
       None => {}
     };

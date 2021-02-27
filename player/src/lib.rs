@@ -15,6 +15,7 @@ pub type ConcreteClient = HttpClient;
 #[cfg(feature = "musium_audio_output_rodio")]
 pub type ConcreteAudioOutput = RodioAudioOutput;
 
+#[derive(Clone)]
 pub struct Player {
   client: ConcreteClient,
   audio_output: ConcreteAudioOutput,
@@ -30,9 +31,5 @@ impl PlayerT for Player {
   #[inline]
   fn get_client(&self) -> &Self::Client { &self.client }
   #[inline]
-  fn get_client_mut(&mut self) -> &mut Self::Client { &mut self.client }
-  #[inline]
   fn get_audio_output(&self) -> &Self::AudioOutput { &self.audio_output }
-  #[inline]
-  fn get_audio_output_mut(&mut self) -> &mut Self::AudioOutput { &mut self.audio_output }
 }

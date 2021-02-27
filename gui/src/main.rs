@@ -14,7 +14,7 @@ use url::Url;
 
 use app::{App, Flags};
 use musium_core::model::*;
-use musium_player::{HttpClient, RodioAudioOutput, Player};
+use musium_player::{HttpClient, Player, RodioAudioOutput};
 
 mod app;
 mod page;

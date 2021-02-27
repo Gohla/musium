@@ -74,7 +74,7 @@ enum ListTracksState { Idle, Busy, Failed(Arc<HttpRequestError>) }
 impl Default for ListTracksState { fn default() -> Self { Self::Idle } }
 
 impl<'a> Page {
-  pub fn new(logged_in_user: User, player: &mut Player) -> (Self, Command<Message>) {
+  pub fn new(logged_in_user: User, player: &Player) -> (Self, Command<Message>) {
     let mut page = Self {
       logged_in_user,
       ..Self::default()
@@ -83,10 +83,10 @@ impl<'a> Page {
     (page, command)
   }
 
-  pub fn update(&mut self, player: &mut Player, message: Message) -> Update<Message, Action> {
+  pub fn update(&mut self, player: &Player, message: Message) -> Update<Message, Action> {
     match message {
       Message::RequestPlayTrack(id) => {
-        //let client = client.clone();
+        let player = player.clone();
         return Update::command(Command::perform(
           async move { player.play_track_by_id(id, 0.1).await },
           |r| Message::ReceivePlayResult(r.map_err(|e| Arc::new(e))),
@@ -105,25 +105,8 @@ impl<'a> Page {
         }
       },
       Message::ReceivePlayResult(result) => match result {
-        // Ok(Some(play_source)) => match play_source {
-        //   PlaySource::AudioData(audio_data) => {
-        //     if let Some(audio_player) = audio_player {
-        //       if let Err(e) = audio_player.play(audio_data, 0.2) {
-        //         let format_error = FormatError::new(&e);
-        //         error!("Playing track failed: {:?}", format_error);
-        //       } else {
-        //         info!("Track played locally");
-        //       }
-        //     } else {
-        //       error!("Cannot play track, no audio player was set");
-        //     }
-        //   }
-        //   PlaySource::ExternallyPlayed => {
-        //     info!("Track played externally");
-        //   }
-        // }
         Ok(_) => {
-          error!("Track played successfully");
+          debug!("Track played successfully");
         }
         Err(e) => {
           let format_error = FormatError::new(e.as_ref());
@@ -169,7 +152,7 @@ impl<'a> Page {
     content
   }
 
-  fn update_tracks(&mut self, player: &mut Player) -> Command<Message> {
+  fn update_tracks(&mut self, player: &Player) -> Command<Message> {
     self.list_tracks_state = ListTracksState::Busy;
     let client = player.get_client().clone();
     Command::perform(
