@@ -52,7 +52,7 @@ impl DatabaseConnection<'_> {
       let artist_ids = artist_ids?;
       self.sync_track_artists(&track, artist_ids)?;
     }
-    self.sync_local_removed_tracks(synced_file_paths)?;
+    self.cleanup_local_tracks(synced_file_paths)?;
     Ok(filesystem_sync_errors)
   }
 
@@ -286,7 +286,7 @@ impl DatabaseConnection<'_> {
     //       create a local artist for it, and emit a persistent warning that the user may have to disambiguate manually.
   }
 
-  fn sync_local_removed_tracks(&self, non_synced_tracks_per_local_source: HashMap::<i32, HashSet<String>>) -> Result<(), LocalSyncError> {
+  fn cleanup_local_tracks(&self, synced_file_paths: HashMap::<i32, HashSet<String>>) -> Result<(), LocalSyncError> {
     let db_local_track_data: Vec<(i32, i32, Option<String>)> = {
       use schema::local_track::dsl::*;
       local_track
@@ -295,8 +295,8 @@ impl DatabaseConnection<'_> {
         .load::<(i32, i32, Option<String>)>(&self.connection)?
     };
     for (db_track_id, db_local_source_id, db_file_path) in db_local_track_data {
-      if let (Some(db_file_path), Some(non_synced_file_paths)) = (db_file_path, non_synced_tracks_per_local_source.get(&db_local_source_id)) {
-        if !non_synced_file_paths.contains(&db_file_path) {
+      if let (Some(db_file_path), Some(synced_file_paths)) = (db_file_path, synced_file_paths.get(&db_local_source_id)) {
+        if !synced_file_paths.contains(&db_file_path) {
           event!(Level::DEBUG, ?db_track_id, ?db_file_path, "Local track '{}' at '{}' was not seen during synchronization: setting it as removed in the database", db_track_id, db_file_path);
           let update_query = {
             use schema::local_track::dsl::*;
