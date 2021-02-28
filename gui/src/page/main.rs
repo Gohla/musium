@@ -140,7 +140,7 @@ impl<'a> Page {
       .header_row_height(26)
       .row_height(16)
       .push_column(5, empty(), Box::new(move |t| {
-        play_button(&mut t.play_button_state, t.id).map(|track_id| Message::RequestPlayTrack(track_id))
+        play_button(&mut t.play_button_state, t.id)
       }))
       .push_column(5, header_text("#"), Box::new(|t|
         if let Some(track_number) = &t.track_number { cell_text(track_number) } else { empty() }
@@ -200,10 +200,20 @@ fn header_text<'a, M>(label: impl Into<String>) -> Element<'a, M> {
     .into()
 }
 
-fn play_button<'a>(state: &'a mut button::State, track_id: i32) -> Element<'a, i32> {
+pub trait ButtonEx<'a> {
+  fn on_press_into<M: 'static>(self, message: impl 'static + Fn() -> M) -> Element<'a, M>;
+}
+
+impl<'a> ButtonEx<'a> for Button<'a, ()> {
+  fn on_press_into<M: 'static>(self, message: impl 'static + Fn() -> M) -> Element<'a, M> {
+    let button: Element<_> = self.on_press(()).into();
+    button.map(move |_| message())
+  }
+}
+
+fn play_button<'a>(state: &'a mut button::State, track_id: i32) -> Element<'a, Message> {
   Button::new(state, Text::new("Play"))
-    .on_press(track_id)
-    .into()
+    .on_press_into(move || Message::RequestPlayTrack(track_id))
 }
 
 fn cell_text<'a, M>(label: impl Into<String>) -> Element<'a, M> {
