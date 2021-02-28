@@ -6,8 +6,8 @@ use std::collections::HashMap;
 use std::rc::Rc;
 use std::sync::{Arc, Mutex};
 
-use iced::{button, Button, Color, Column, Command, Element, Length, Row, scrollable, Text};
-use iced_native::{HorizontalAlignment, Space, VerticalAlignment};
+use iced::{button, Button, Color, Column, Command, Element, Length, Row, Rule, scrollable, Text};
+use iced_native::{Align, HorizontalAlignment, Space, VerticalAlignment};
 use itertools::Itertools;
 use tracing::{debug, error, info};
 
@@ -52,25 +52,23 @@ impl<'a> From<TrackInfo<'a>> for TrackViewModel {
 pub struct Page {
   logged_in_user: User,
 
+  refresh_library_button_state: button::State,
+  refreshing_library: bool,
+
   scrollable_state: scrollable::State,
 
   tracks: Rc<RefCell<Vec<TrackViewModel>>>,
-  list_tracks_state: ListTracksState,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Debug)]
 pub enum Message {
+  RequestLibraryRefresh,
+  ReceiveLibraryRefresh(Result<Vec<TrackViewModel>, Arc<HttpRequestError>>),
   RequestPlayTrack(i32),
-  ReceiveTracks(Result<Tracks, Arc<HttpRequestError>>),
   ReceivePlayResult(Result<(), Arc<PlayError>>),
 }
 
 pub enum Action {}
-
-#[derive(Debug)]
-enum ListTracksState { Idle, Busy, Failed(Arc<HttpRequestError>) }
-
-impl Default for ListTracksState { fn default() -> Self { Self::Idle } }
 
 impl<'a> Page {
   pub fn new(logged_in_user: User, player: &Player) -> (Self, Command<Message>) {
@@ -78,12 +76,29 @@ impl<'a> Page {
       logged_in_user,
       ..Self::default()
     };
-    let command = page.update_tracks(player);
+    let command = page.refresh_library(player);
     (page, command)
   }
 
   pub fn update(&mut self, player: &Player, message: Message) -> Update<Message, Action> {
     match message {
+      Message::RequestLibraryRefresh => {
+        self.refreshing_library = true;
+        return Update::command(self.refresh_library(player));
+      }
+      Message::ReceiveLibraryRefresh(result) => {
+        match result {
+          Ok(tracks_view_models) => {
+            debug!("Received {} tracks", tracks_view_models.len());
+            self.tracks = Rc::new(RefCell::new(tracks_view_models));
+          }
+          Err(e) => {
+            let format_error = FormatError::new(e.as_ref());
+            error!("Receiving tracks failed: {:?}", format_error);
+          }
+        }
+        self.refreshing_library = false;
+      }
       Message::RequestPlayTrack(id) => {
         let player = player.clone();
         return Update::command(Command::perform(
@@ -91,18 +106,6 @@ impl<'a> Page {
           |r| Message::ReceivePlayResult(r.map_err(|e| Arc::new(e))),
         ));
       }
-      Message::ReceiveTracks(result) => match result {
-        Ok(tracks) => {
-          debug!("Received {} tracks", tracks.len());
-          self.tracks = Rc::new(RefCell::new(tracks.iter().map(|ti| ti.into()).collect()));
-          self.list_tracks_state = ListTracksState::Idle;
-        }
-        Err(e) => {
-          let format_error = FormatError::new(e.as_ref());
-          error!("Receiving tracks failed: {:?}", format_error);
-          self.list_tracks_state = ListTracksState::Failed(e);
-        }
-      },
       Message::ReceivePlayResult(result) => match result {
         Ok(_) => {
           debug!("Track played successfully");
@@ -117,12 +120,27 @@ impl<'a> Page {
   }
 
   pub fn view(&'a mut self) -> Element<'a, Message> {
+    let top = Row::new()
+      .spacing(2)
+      .width(Length::Fill)
+      .push(Row::new().width(Length::Fill).align_items(Align::Start)
+        .push(Text::new("Musium").color([0.5, 0.5, 0.5]))
+        .push(Text::new("|"))
+        .push(Text::new("all tracks"))
+      )
+      .push(Row::new().width(Length::Shrink).align_items(Align::End).push({
+        let mut button = Button::new(&mut self.refresh_library_button_state, Text::new("Refresh library"));
+        if !self.refreshing_library { button = button.on_press(()) }
+        let element: Element<_> = button.into();
+        element.map(|_| Message::RequestLibraryRefresh)
+      }))
+      ;
     let table: Element<_> = TableBuilder::new(self.tracks.clone())
       .spacing(2)
       .header_row_height(26)
       .row_height(16)
       .push_column(5, empty(), Box::new(move |t| {
-        play_button(&mut t.play_button_state, t.id)
+        play_button(&mut t.play_button_state, t.id).map(|track_id| Message::RequestPlayTrack(track_id))
       }))
       .push_column(5, header_text("#"), Box::new(|t|
         if let Some(track_number) = &t.track_number { cell_text(track_number) } else { empty() }
@@ -141,22 +159,33 @@ impl<'a> Page {
       ))
       .build(&mut self.scrollable_state)
       .into();
+    let player_controls = Row::new()
+      .spacing(2)
+      .width(Length::Fill)
+      ;
     let content: Element<_> = Column::new()
       .width(Length::Fill)
       .height(Length::Fill)
       .padding(4)
       .spacing(4)
+      .push(top)
+      .push(Rule::horizontal(1))
       .push(table)
+      .push(Rule::horizontal(1))
+      .push(player_controls)
       .into();
-    content
+    content//.explain([0.5, 0.5, 0.5])
   }
 
-  fn update_tracks(&mut self, player: &Player) -> Command<Message> {
-    self.list_tracks_state = ListTracksState::Busy;
-    let client = player.get_client().clone();
+  fn refresh_library(&mut self, player: &Player) -> Command<Message> {
+    let player = player.clone();
     Command::perform(
-      async move { client.list_tracks().await },
-      |r| Message::ReceiveTracks(r.map_err(|e| Arc::new(e))),
+      async move {
+        let library_ref = player.refresh_library().await?;
+        let tracks_view_models: Vec<_> = library_ref.iter().map(|ti| ti.into()).collect();
+        Ok(tracks_view_models)
+      },
+      |r| Message::ReceiveLibraryRefresh(r.map_err(|e| Arc::new(e))),
     )
   }
 }
@@ -171,9 +200,9 @@ fn header_text<'a, M>(label: impl Into<String>) -> Element<'a, M> {
     .into()
 }
 
-fn play_button<'a>(state: &'a mut button::State, track_id: i32) -> Element<'a, Message> {
+fn play_button<'a>(state: &'a mut button::State, track_id: i32) -> Element<'a, i32> {
   Button::new(state, Text::new("Play"))
-    .on_press(Message::RequestPlayTrack(track_id))
+    .on_press(track_id)
     .into()
 }
 

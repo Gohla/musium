@@ -5,7 +5,7 @@ use url::Url;
 use musium_core::model::UserLogin;
 use musium_player::Player;
 
-use crate::page::{login, track};
+use crate::page::{login, main};
 use crate::util::Update;
 
 pub struct Flags {
@@ -22,13 +22,13 @@ pub struct App {
 #[derive(Debug)]
 enum Page {
   Login(login::Page),
-  Track(track::Page),
+  Main(main::Page),
 }
 
-#[derive(Clone, Debug)]
+#[derive(Debug)]
 pub enum Message {
   Login(login::Message),
-  Track(track::Message),
+  Main(main::Message),
 }
 
 impl Application for App {
@@ -52,15 +52,15 @@ impl Application for App {
         let Update { action, command } = p.update(&mut self.player, m);
         let command = command.map(|m| Message::Login(m));
         if let Some(login::Action::LoggedIn(user)) = action {
-          let (track_page, track_command) = track::Page::new(user, &mut self.player);
-          let track_command = track_command.map(|m| Message::Track(m));
-          self.current_page = Page::Track(track_page);
-          Command::batch(vec![command, track_command])
+          let (main_page, main_command) = main::Page::new(user, &mut self.player);
+          let main_command = main_command.map(|m| Message::Main(m));
+          self.current_page = Page::Main(main_page);
+          Command::batch(vec![command, main_command])
         } else {
           command
         }
       }
-      (Page::Track(p), Message::Track(m)) => p.update(&mut self.player, m).into_command().map(|m| Message::Track(m)),
+      (Page::Main(p), Message::Main(m)) => p.update(&mut self.player, m).into_command().map(|m| Message::Main(m)),
       (p, m) => {
         error!("[BUG] Requested update with message '{:?}', but that message cannot be handled by the current page '{:?}' or the application itself", m, p);
         Command::none()
@@ -71,7 +71,7 @@ impl Application for App {
   fn view(&mut self) -> Element<'_, Message> {
     match &mut self.current_page {
       Page::Login(p) => p.view().map(|m| Message::Login(m)),
-      Page::Track(p) => p.view().map(|m| Message::Track(m)),
+      Page::Main(p) => p.view().map(|m| Message::Main(m)),
     }
   }
 }

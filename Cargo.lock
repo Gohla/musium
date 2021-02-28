@@ -3115,6 +3115,7 @@ dependencies = [
  "musium_player",
  "structopt",
  "thiserror",
+ "tokio",
  "tracing",
  "tracing-log",
  "tracing-subscriber",
@@ -3131,6 +3132,7 @@ dependencies = [
  "musium_client_http",
  "musium_core",
  "thiserror",
+ "tokio",
 ]
 
 [[package]]

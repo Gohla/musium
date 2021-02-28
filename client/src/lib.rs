@@ -1,12 +1,14 @@
 use std::error::Error;
 
+use async_trait::async_trait;
+
 use musium_core::{
   api::SpotifyMeInfo,
   model::{
     Artist,
     collection::{
-      Albums,
-      Tracks,
+      AlbumsRaw,
+      TracksRaw,
     },
     LocalAlbum,
     LocalSource,
@@ -20,8 +22,6 @@ use musium_core::{
     UserTrackRating,
   },
 };
-
-use async_trait::async_trait;
 
 #[derive(Clone, Debug)]
 pub enum PlaySource {
@@ -45,11 +45,11 @@ pub trait Client: Send + Sync {
   async fn show_spotify_me(&self) -> Result<SpotifyMeInfo, Self::SpotifySourceError>;
 
   type AlbumError: Error;
-  async fn list_albums(&self) -> Result<Albums, Self::AlbumError>;
+  async fn list_albums(&self) -> Result<AlbumsRaw, Self::AlbumError>;
   async fn get_album_by_id(&self, id: i32) -> Result<Option<LocalAlbum>, Self::AlbumError>;
 
   type TrackError: 'static + Error + Send + Sync;
-  async fn list_tracks(&self) -> Result<Tracks, Self::TrackError>;
+  async fn list_tracks(&self) -> Result<TracksRaw, Self::TrackError>;
   async fn get_track_by_id(&self, id: i32) -> Result<Option<LocalTrack>, Self::TrackError>;
   async fn play_track_by_id(&self, id: i32) -> Result<Option<PlaySource>, Self::TrackError>;
 

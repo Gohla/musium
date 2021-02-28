@@ -13,7 +13,7 @@ use musium_core::{
   api::{InternalServerError, SpotifyMeInfo},
   model::{
     *,
-    collection::{Albums, AlbumsRaw, Tracks, TracksRaw},
+    collection::{AlbumsRaw, TracksRaw},
   },
 };
 
@@ -119,7 +119,7 @@ impl Client for HttpClient {
     use SpotifySourceError::*;
     let response = self.get("source/spotify/request_authorization", |r| r, &[StatusCode::TEMPORARY_REDIRECT]).await?;
     if let Some(url) = response.headers().get(reqwest::header::LOCATION) {
-      Ok(url.to_str().map_err(|e|LocationHeaderToStringFail(e))?.to_owned())
+      Ok(url.to_str().map_err(|e| LocationHeaderToStringFail(e))?.to_owned())
     } else {
       Err(CreateSpotifySourceAuthorizationUrlFail(LocationHeaderMissingFail))
     }
@@ -127,17 +127,17 @@ impl Client for HttpClient {
 
   async fn show_spotify_me(&self) -> Result<SpotifyMeInfo, Self::SpotifySourceError> {
     let response = self.get_simple("source/spotify/me").await?;
-    Ok(response.json().await.map_err(|e|HttpRequestError::RequestFail(e))?)
+    Ok(response.json().await.map_err(|e| HttpRequestError::RequestFail(e))?)
   }
 
   // Album
 
   type AlbumError = HttpRequestError;
 
-  async fn list_albums(&self) -> Result<Albums, Self::AlbumError> {
+  async fn list_albums(&self) -> Result<AlbumsRaw, Self::AlbumError> {
     let response = self.get_simple("album").await?;
     let albums_raw: AlbumsRaw = response.json().await?;
-    Ok(albums_raw.into())
+    Ok(albums_raw)
   }
 
   async fn get_album_by_id(&self, id: i32) -> Result<Option<LocalAlbum>, Self::AlbumError> {
@@ -149,10 +149,10 @@ impl Client for HttpClient {
 
   type TrackError = HttpRequestError;
 
-  async fn list_tracks(&self) -> Result<Tracks, Self::TrackError> {
+  async fn list_tracks(&self) -> Result<TracksRaw, Self::TrackError> {
     let response = self.get_simple("track").await?;
     let tracks_raw: TracksRaw = response.json().await?;
-    Ok(tracks_raw.into())
+    Ok(tracks_raw)
   }
 
   async fn get_track_by_id(&self, id: i32) -> Result<Option<LocalTrack>, Self::TrackError> {
@@ -198,27 +198,27 @@ impl Client for HttpClient {
     Ok(response.json().await?)
   }
 
-  async fn get_my_user(&self) -> Result<User,  Self::UserError> {
+  async fn get_my_user(&self) -> Result<User, Self::UserError> {
     let response = self.get_simple("user/me").await?;
     Ok(response.json().await?)
   }
 
-  async fn get_user_by_id(&self, id: i32) -> Result<Option<User>,  Self::UserError> {
+  async fn get_user_by_id(&self, id: i32) -> Result<Option<User>, Self::UserError> {
     let response = self.get_simple(format!("user/{}", id)).await?;
     Ok(response.json().await?)
   }
 
-  async fn create_user(&self, new_user: &NewUser) -> Result<User,  Self::UserError> {
+  async fn create_user(&self, new_user: &NewUser) -> Result<User, Self::UserError> {
     let response = self.post_simple_with_json("user", new_user).await?;
     Ok(response.json().await?)
   }
 
-  async fn delete_user_by_name(&self, name: &String) -> Result<(),  Self::UserError> {
+  async fn delete_user_by_name(&self, name: &String) -> Result<(), Self::UserError> {
     self.delete_simple_with_json("user", name).await?;
     Ok(())
   }
 
-  async fn delete_user_by_id(&self, id: i32) -> Result<(),  Self::UserError> {
+  async fn delete_user_by_id(&self, id: i32) -> Result<(), Self::UserError> {
     self.delete_simple(format!("user/{}", id)).await?;
     Ok(())
   }

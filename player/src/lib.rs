@@ -1,3 +1,5 @@
+use std::sync::{Arc, RwLock, RwLockReadGuard};
+
 use thiserror::Error;
 
 pub use musium_audio_output::AudioOutput as AudioOutputT;
@@ -7,6 +9,7 @@ pub use musium_client::Client as ClientT;
 #[cfg(feature = "musium_client_http")]
 pub use musium_client_http::{HttpClient, HttpRequestError, Url};
 use musium_core::model::{User, UserLogin};
+use musium_core::model::collection::Tracks;
 
 #[cfg(feature = "musium_client_http")]
 pub type Client = HttpClient;
@@ -17,12 +20,19 @@ pub type AudioOutput = RodioAudioOutput;
 pub struct Player {
   client: Client,
   audio_output: AudioOutput,
+  library: Arc<RwLock<Tracks>>,
 }
 
 // Creation
 
 impl Player {
-  pub fn new(client: Client, audio_output: AudioOutput) -> Self { Self { client, audio_output } }
+  pub fn new(client: Client, audio_output: AudioOutput) -> Self {
+    Self {
+      client,
+      audio_output,
+      library: Arc::new(RwLock::new(Tracks::default())),
+    }
+  }
 }
 
 // Getters
@@ -40,6 +50,21 @@ impl Player {
 impl Player {
   pub async fn login(&self, user_login: &UserLogin) -> Result<User, <Client as ClientT>::LoginError> {
     self.get_client().login(user_login).await
+  }
+}
+
+// Library
+
+impl<'a> Player {
+  pub async fn refresh_library(&'a self) -> Result<RwLockReadGuard<'a, Tracks>, <Client as ClientT>::TrackError> {
+    let library_raw = self.get_client().list_tracks().await?;
+    let library: Tracks = tokio::task::spawn_blocking(|| { library_raw.into() }).await.unwrap();
+    {
+      let mut library_write_locked = self.library.write().unwrap();
+      *library_write_locked = library;
+    }
+    let library_read_locked = self.library.read().unwrap();
+    Ok(library_read_locked)
   }
 }
 
