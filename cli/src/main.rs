@@ -9,7 +9,7 @@ use tracing_subscriber::{EnvFilter, fmt};
 use tracing_subscriber::prelude::*;
 
 use musium_core::model::*;
-use musium_player::{HttpClient, Player, PlayerT, RodioAudioOutput, Url, Client};
+use musium_player::*;
 
 #[derive(Debug, StructOpt)]
 #[structopt(name = "cli", about = "Musium CLI")]

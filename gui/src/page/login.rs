@@ -8,7 +8,7 @@ use url::Url;
 
 use musium_core::format_error::FormatError;
 use musium_core::model::{User, UserLogin};
-use musium_player::{Client, HttpRequestError, Player, PlayerT};
+use musium_player::*;
 
 use crate::util::Update;
 

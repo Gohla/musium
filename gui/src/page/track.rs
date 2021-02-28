@@ -14,8 +14,7 @@ use tracing::{debug, error, info};
 use musium_core::format_error::FormatError;
 use musium_core::model::{Album, Track, User};
 use musium_core::model::collection::{TrackInfo, Tracks};
-use musium_player::{Client, HttpRequestError, Player, PlayerT, RodioPlayError};
-use musium_player::player::PlayError;
+use musium_player::*;
 
 use crate::util::Update;
 use crate::widget::table::TableBuilder;
@@ -63,7 +62,7 @@ pub struct Page {
 pub enum Message {
   RequestPlayTrack(i32),
   ReceiveTracks(Result<Tracks, Arc<HttpRequestError>>),
-  ReceivePlayResult(Result<(), Arc<PlayError<HttpRequestError, RodioPlayError>>>),
+  ReceivePlayResult(Result<(), Arc<PlayError>>),
 }
 
 pub enum Action {}
