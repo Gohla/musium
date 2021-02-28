@@ -55,14 +55,24 @@ impl Player {
 
 // Library
 
+#[derive(Debug, Error)]
+pub enum RefreshLibraryFail {
+  #[error("Failed to get library from the client")]
+  ClientFail(#[source] <Client as ClientT>::TrackError),
+}
+
 impl<'a> Player {
-  pub async fn refresh_library(&'a self) -> Result<RwLockReadGuard<'a, Tracks>, <Client as ClientT>::TrackError> {
-    let library_raw = self.get_client().list_tracks().await?;
+  pub async fn refresh_library(&'a self) -> Result<RwLockReadGuard<'a, Tracks>, RefreshLibraryFail> {
+    use RefreshLibraryFail::*;
+    let library_raw = self.get_client().list_tracks().await.map_err(|e| ClientFail(e))?;
+    // UNWRAP: returns error when thread panicked. In that case we also panic.
     let library: Tracks = tokio::task::spawn_blocking(|| { library_raw.into() }).await.unwrap();
     {
+      // UNWRAP: returns error when lock is poisoned, which is caused by a panic. In that case we also panic.
       let mut library_write_locked = self.library.write().unwrap();
       *library_write_locked = library;
     }
+    // UNWRAP: returns error when lock is poisoned, which is caused by a panic. In that case we also panic.
     let library_read_locked = self.library.read().unwrap();
     Ok(library_read_locked)
   }

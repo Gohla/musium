@@ -88,17 +88,20 @@ pub enum RodioPlayError {
   ReadFail(#[from] std::io::Error),
   #[error(transparent)]
   PlayFail(#[from] rodio::PlayError),
-  #[error("Failed to send the play command; thread handling the command was stopped")]
-  CommandSendFail,
+  #[error("Failed to send command; worker thread was stopped")]
+  SendCommandFail,
+  #[error("Failed to receive command feedback; worker thread was stopped")]
+  ReceiveCommandFeedbackFail,
 }
 
 #[async_trait]
 impl AudioOutput for RodioAudioOutput {
   type PlayError = RodioPlayError;
   async fn play(&self, audio_data: Vec<u8>, volume: f32) -> Result<(), RodioPlayError> {
+    use RodioPlayError::*;
     let (tx, rx) = oneshot::channel();
-    self.inner.tx.send(Command::Play { audio_data, volume, tx }).map_err(|_| RodioPlayError::CommandSendFail)?;
-    rx.await.unwrap() // CORRECTNESS: unwrap the result from awaiting, because it can never be cancelled.
+    self.inner.tx.send(Command::Play { audio_data, volume, tx }).map_err(|_| SendCommandFail)?;
+    rx.await.map_err(|_| ReceiveCommandFeedbackFail)?
   }
 }
 

@@ -63,7 +63,7 @@ pub struct Page {
 #[derive(Debug)]
 pub enum Message {
   RequestLibraryRefresh,
-  ReceiveLibraryRefresh(Result<Vec<TrackViewModel>, Arc<HttpRequestError>>),
+  ReceiveLibraryRefresh(Result<Vec<TrackViewModel>, Arc<RefreshLibraryFail>>),
   RequestPlayTrack(i32),
   ReceivePlayResult(Result<(), Arc<PlayError>>),
 }
