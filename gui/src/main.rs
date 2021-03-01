@@ -82,14 +82,13 @@ fn main() -> Result<()> {
     default_text_size: 20,
     antialiasing: true,
   };
-  App::run(app_settings).unwrap();
-  // TODO: run takes control of the application, the rest will not run. Should put this in a tread!
-  // Print metrics
+  App::run(app_settings)
+    .with_context(|| "Failed to create application")?;
+  // Note: code past this comment will never be executed, as winit hijacks the main thread!
   if opt.print_metrics {
     controller.observe(&mut observer);
     let output = observer.drain();
     trace!(metrics = %output);
   }
-  // Exit
   Ok(())
 }

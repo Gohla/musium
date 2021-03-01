@@ -35,6 +35,22 @@ impl Player {
   }
 }
 
+// Graceful stop
+
+#[derive(Debug, Error)]
+pub enum StopError {
+  #[error("Failed to stop audio output")]
+  AudioOutputFail(#[source] <AudioOutput as AudioOutputT>::StopError),
+}
+
+impl Player {
+  pub fn stop(self) -> Result<(), StopError> {
+    use StopError::*;
+    self.audio_output.stop().map_err(|e| AudioOutputFail(e))?;
+    Ok(())
+  }
+}
+
 // Getters
 
 impl Player {

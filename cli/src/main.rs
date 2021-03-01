@@ -9,6 +9,7 @@ use tracing_subscriber::{EnvFilter, fmt};
 use tracing_subscriber::prelude::*;
 
 use musium_core::model::*;
+use musium_core::model::collection::{Albums, Tracks};
 use musium_player::*;
 
 #[derive(Debug, StructOpt)]
@@ -183,6 +184,9 @@ fn main() -> Result<()> {
   let result = runtime.block_on(async {
     run(command, &mut player).await
   });
+  // Stop player
+  player.stop()
+    .with_context(|| "Failed to stop player")?;
   // Print metrics
   if opt.print_metrics {
     controller.observe(&mut observer);
@@ -222,7 +226,9 @@ async fn run(command: Command, player: &mut Player) -> Result<()> {
     }
 
     Command::ListAlbums => {
-      for (album, album_artists) in player.get_client().list_albums().await?.iter() {
+      let albums_raw = player.get_client().list_albums().await?;
+      let albums: Albums = albums_raw.into();
+      for (album, album_artists) in albums.iter() {
         println!("{:?}", album);
         for artist in album_artists {
           println!("- {:?}", artist);
@@ -235,7 +241,8 @@ async fn run(command: Command, player: &mut Player) -> Result<()> {
     }
 
     Command::ListTracks => {
-      let tracks = player.get_client().list_tracks().await?;
+      let tracks_raw = player.get_client().list_tracks().await?;
+      let tracks: Tracks = tracks_raw.into();
       for info in tracks.iter() {
         println!("- {:?}", info.track);
         for artist in info.track_artists() {
