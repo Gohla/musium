@@ -35,19 +35,16 @@ impl Player {
   }
 }
 
-// Graceful stop
-
-#[derive(Debug, Error)]
-pub enum StopError {
-  #[error("Failed to stop audio output")]
-  AudioOutputFail(#[source] <AudioOutput as AudioOutputT>::StopError),
-}
+// Destruction
 
 impl Player {
-  pub fn stop(self) -> Result<(), StopError> {
-    use StopError::*;
-    self.audio_output.stop().map_err(|e| AudioOutputFail(e))?;
-    Ok(())
+  /// Converts this player into its client and audio output, effectively destroying the player. The client and audio
+  /// output can then be manually destroyed.
+  ///
+  /// Dropping this player and all its clones will also properly destroy this player, but may ignore panics in the
+  /// worker threads of the client and audio output (if any).
+  pub fn into_client_and_audio_output(self) -> (Client, AudioOutput) {
+    (self.client, self.audio_output)
   }
 }
 

@@ -50,7 +50,42 @@ impl RodioAudioOutput {
   }
 }
 
-// AudioOutput implementation
+// Destruction
+
+#[derive(Debug, Error)]
+pub enum RodioDestroyError {
+  #[error("Cannot destroy the Rodio audio output because one or more clones still exist. All clones must be dropped before stopping so that the worker thread can stop")]
+  ClonesStillExist,
+  #[error("Rodio audio output was destroyed, but the worker thread panicked before stopping with message: {0}")]
+  ThreadPanicked(String),
+  #[error("Rodio audio output was destroyed, but the worker thread panicked before stopping without a message")]
+  ThreadPanickedSilently,
+}
+
+impl RodioAudioOutput {
+  /// Destroys this audio output. Returns an error if it cannot be destroyed because there are still clones around, or
+  /// if the worker thread was stopped but panicked.
+  ///
+  /// Dropping this audio output and all its clones will also properly destroy this audio output, but ignores the panic
+  /// produced by the worker thread (if any).
+  pub fn destroy(self) -> Result<(), RodioDestroyError> {
+    use RodioDestroyError::*;
+    let Inner { thread_join_handle, .. } = Arc::try_unwrap(self.inner).map_err(|_| ClonesStillExist)?;
+    // Because we did not match on Inner.tx, it is dropped and the thread will stop.
+    match thread_join_handle.join() {
+      Err(e) => if let Some(msg) = e.downcast_ref::<&'static str>() {
+        Err(ThreadPanicked(msg.to_string()))
+      } else if let Some(msg) = e.downcast_ref::<String>() {
+        Err(ThreadPanicked(msg.to_string()))
+      } else {
+        Err(ThreadPanickedSilently)
+      }
+      Ok(_) => Ok(()),
+    }
+  }
+}
+
+// Play
 
 #[derive(Debug, Error)]
 pub enum RodioPlayError {
@@ -64,48 +99,14 @@ pub enum RodioPlayError {
   ReceiveCommandFeedbackFail,
 }
 
-#[derive(Debug, Error)]
-pub enum RodioStopError {
-  #[error("Cannot destroy the Rodio audio output because one or more clones still exist. All clones must be dropped before stopping so that the worker thread can stop")]
-  ClonesStillExist,
-  #[error("Rodio audio output was destroyed, but the worker thread panicked before stopping with message: {0}")]
-  ThreadPanicked(String),
-  #[error("Rodio audio output was destroyed, but the worker thread panicked before stopping without a message")]
-  ThreadPanickedSilently,
-}
-
 #[async_trait]
 impl AudioOutput for RodioAudioOutput {
   type PlayError = RodioPlayError;
-
   async fn play(&self, audio_data: Vec<u8>, volume: f32) -> Result<(), RodioPlayError> {
     use RodioPlayError::*;
     let (tx, rx) = oneshot::channel();
     self.inner.tx.send(Command::Play { audio_data, volume, tx }).map_err(|_| SendCommandFail)?;
     rx.await.map_err(|_| ReceiveCommandFeedbackFail)?
-  }
-
-  type StopError = RodioStopError;
-
-  /// Gracefully stops the audio output worker thread. Return an error if it cannot be gracefully stopped because
-  /// there are still clones around, or if it was stopped but panicked.
-  ///
-  /// Dropping this audio output and all its clones will also stop the worker thread, but ignores the panic produced
-  /// by the worker thread (if any).
-  fn stop(self) -> Result<(), RodioStopError> {
-    use RodioStopError::*;
-    let Inner { thread_join_handle, .. } = Arc::try_unwrap(self.inner).map_err(|_| ClonesStillExist)?;
-    // Because we did not match on Inner.tx, it is dropped and the thread will stop.
-    match thread_join_handle.join() {
-      Err(e) => if let Some(msg) = e.downcast_ref::<&'static str>() {
-        Err(ThreadPanicked(msg.to_string()))
-      } else if let Some(msg) = e.downcast_ref::<String>() {
-        Err(ThreadPanicked(msg.to_string()))
-      } else {
-        Err(ThreadPanickedSilently)
-      }
-      Ok(_) => Ok(()),
-    }
   }
 }
 

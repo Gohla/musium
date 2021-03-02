@@ -185,8 +185,9 @@ fn main() -> Result<()> {
     run(command, &mut player).await
   });
   // Stop player
-  player.stop()
-    .with_context(|| "Failed to stop player")?;
+  let (_, audio_output) = player.into_client_and_audio_output();
+  audio_output.destroy()
+    .with_context(|| "Failed to destroy audio output")?;
   // Print metrics
   if opt.print_metrics {
     controller.observe(&mut observer);
