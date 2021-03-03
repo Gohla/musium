@@ -63,9 +63,9 @@ pub struct Page {
 #[derive(Debug)]
 pub enum Message {
   RequestLibraryRefresh,
-  ReceiveLibraryRefresh(Result<Vec<TrackViewModel>, Arc<RefreshLibraryFail>>),
+  ReceiveLibraryRefresh(Result<Vec<TrackViewModel>, RefreshLibraryFail>),
   RequestPlayTrack(i32),
-  ReceivePlayResult(Result<(), Arc<PlayError>>),
+  ReceivePlayResult(Result<(), PlayError>),
 }
 
 pub enum Action {}
@@ -93,7 +93,7 @@ impl<'a> Page {
             self.tracks = Rc::new(RefCell::new(tracks_view_models));
           }
           Err(e) => {
-            let format_error = FormatError::new(e.as_ref());
+            let format_error = FormatError::new(&e);
             error!("Receiving tracks failed: {:?}", format_error);
           }
         }
@@ -103,7 +103,7 @@ impl<'a> Page {
         let player = player.clone();
         return Update::command(Command::perform(
           async move { player.play_track_by_id(id, 0.1).await },
-          |r| Message::ReceivePlayResult(r.map_err(|e| Arc::new(e))),
+          |r| Message::ReceivePlayResult(r),
         ));
       }
       Message::ReceivePlayResult(result) => match result {
@@ -111,7 +111,7 @@ impl<'a> Page {
           debug!("Track played successfully");
         }
         Err(e) => {
-          let format_error = FormatError::new(e.as_ref());
+          let format_error = FormatError::new(&e);
           error!("Playing track failed: {:?}", format_error);
         }
       }
@@ -185,7 +185,7 @@ impl<'a> Page {
         let tracks_view_models: Vec<_> = library_ref.iter().map(|ti| ti.into()).collect();
         Ok(tracks_view_models)
       },
-      |r| Message::ReceiveLibraryRefresh(r.map_err(|e| Arc::new(e))),
+      |r| Message::ReceiveLibraryRefresh(r),
     )
   }
 }
