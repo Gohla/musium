@@ -21,6 +21,7 @@ use crate::util::{ButtonEx, Update};
 use crate::widget::table::TableBuilder;
 
 mod tracks;
+mod source;
 
 #[derive(Default, Debug)]
 pub struct Page {
@@ -153,6 +154,37 @@ impl<'a> Page {
       |r| Message::ReceiveLibraryRefresh(r),
     )
   }
+}
+
+// Common widget functions
+
+fn h1(label: impl Into<String>) -> Text { Text::new(label).size(36) }
+fn h2(label: impl Into<String>) -> Text { Text::new(label).size(32) }
+fn h3(label: impl Into<String>) -> Text { Text::new(label).size(28) }
+fn h4(label: impl Into<String>) -> Text { Text::new(label).size(24) }
+fn h5(label: impl Into<String>) -> Text { Text::new(label).size(20) }
+fn txt(label: impl Into<String>) -> Text { Text::new(label).size(16) }
+
+fn header_text<'a, M>(label: impl Into<String>) -> Element<'a, M> {
+  h3(label)
+    .width(Length::Fill)
+    .height(Length::Fill)
+    .horizontal_alignment(HorizontalAlignment::Left)
+    .vertical_alignment(VerticalAlignment::Center)
+    .into()
+}
+
+fn cell_text<'a, M>(label: impl Into<String>) -> Element<'a, M> {
+  txt(label)
+    .width(Length::Fill)
+    .height(Length::Fill)
+    .horizontal_alignment(HorizontalAlignment::Left)
+    .vertical_alignment(VerticalAlignment::Center)
+    .into()
+}
+
+fn empty<'a, M: 'a>() -> Element<'a, M> {
+  Space::new(Length::Shrink, Length::Shrink).into()
 }
 
 
