@@ -58,6 +58,10 @@ pub struct Page {
   scrollable_state: scrollable::State,
 
   tracks: Rc<RefCell<Vec<TrackViewModel>>>,
+
+  prev_track_button_state: button::State,
+  playpause_button_state: button::State,
+  next_track_button_state: button::State,
 }
 
 #[derive(Debug)]
@@ -66,6 +70,9 @@ pub enum Message {
   ReceiveLibraryRefresh(Result<Vec<TrackViewModel>, RefreshLibraryFail>),
   RequestPlayTrack(i32),
   ReceivePlayResult(Result<(), PlayError>),
+  RequestPrevTrack,
+  RequestPlayPause,
+  RequestNextTrack,
 }
 
 pub enum Action {}
@@ -115,6 +122,7 @@ impl<'a> Page {
           error!("Playing track failed: {:?}", format_error);
         }
       }
+      m => debug!("Unhandled message: {:?}", m)
     }
     Update::none()
   }
@@ -123,17 +131,19 @@ impl<'a> Page {
     let top = Row::new()
       .spacing(2)
       .width(Length::Fill)
-      .push(Row::new().width(Length::Fill).align_items(Align::Start)
+      .push(Row::new()
+        .width(Length::Fill)
         .push(Text::new("Musium").color([0.5, 0.5, 0.5]))
         .push(Text::new("|"))
         .push(Text::new("all tracks"))
       )
-      .push(Row::new().width(Length::Shrink).align_items(Align::End).push({
-        let mut button = Button::new(&mut self.refresh_library_button_state, Text::new("Refresh library"));
-        if !self.refreshing_library { button = button.on_press(()) }
-        let element: Element<_> = button.into();
-        element.map(|_| Message::RequestLibraryRefresh)
-      }))
+      .push(Row::new()
+        .width(Length::Shrink)
+        .align_items(Align::End)
+        .push(Button::new(&mut self.refresh_library_button_state, Text::new("Refresh library"))
+          .on_press_into(|| Message::RequestLibraryRefresh, !self.refreshing_library)
+        )
+      )
       ;
     let table: Element<_> = TableBuilder::new(self.tracks.clone())
       .spacing(2)
@@ -161,11 +171,14 @@ impl<'a> Page {
       .into();
     let player_controls = Row::new()
       .spacing(2)
-      .width(Length::Fill)
+      .push(Button::new(&mut self.prev_track_button_state, Text::new("Prev track")).on_press_into(|| Message::RequestPrevTrack, true))
+      .push(Button::new(&mut self.playpause_button_state, Text::new("Play/pause")).on_press_into(|| Message::RequestPlayPause, true))
+      .push(Button::new(&mut self.next_track_button_state, Text::new("Next track")).on_press_into(|| Message::RequestNextTrack, true))
       ;
     let content: Element<_> = Column::new()
       .width(Length::Fill)
       .height(Length::Fill)
+      .align_items(Align::Center)
       .padding(4)
       .spacing(4)
       .push(top)
@@ -201,19 +214,23 @@ fn header_text<'a, M>(label: impl Into<String>) -> Element<'a, M> {
 }
 
 pub trait ButtonEx<'a> {
-  fn on_press_into<M: 'static>(self, message: impl 'static + Fn() -> M) -> Element<'a, M>;
+  fn on_press_into<M: 'static>(self, message: impl 'static + Fn() -> M, enabled: bool) -> Element<'a, M>;
 }
 
 impl<'a> ButtonEx<'a> for Button<'a, ()> {
-  fn on_press_into<M: 'static>(self, message: impl 'static + Fn() -> M) -> Element<'a, M> {
-    let button: Element<_> = self.on_press(()).into();
+  fn on_press_into<M: 'static>(self, message: impl 'static + Fn() -> M, enabled: bool) -> Element<'a, M> {
+    let button: Element<_> = if enabled {
+      self.on_press(()).into()
+    } else {
+      self.into()
+    };
     button.map(move |_| message())
   }
 }
 
 fn play_button<'a>(state: &'a mut button::State, track_id: i32) -> Element<'a, Message> {
   Button::new(state, Text::new("Play"))
-    .on_press_into(move || Message::RequestPlayTrack(track_id))
+    .on_press_into(move || Message::RequestPlayTrack(track_id), true)
 }
 
 fn cell_text<'a, M>(label: impl Into<String>) -> Element<'a, M> {
