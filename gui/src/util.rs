@@ -2,7 +2,7 @@
 
 use std::fmt::Debug;
 
-use iced::Command;
+use iced::{Button, Command, Element};
 
 pub struct Update<M, A> {
   pub command: Command<M>,
@@ -47,5 +47,20 @@ impl<M: Debug + Send, A> Update<M, A> {
 
   pub fn map_action<AA>(self, f: impl Fn(A) -> AA) -> Update<M, AA> {
     Update::new(self.command, self.action.map(f))
+  }
+}
+
+pub trait ButtonEx<'a> {
+  fn on_press_into<M: 'static>(self, message: impl 'static + Fn() -> M, enabled: bool) -> Element<'a, M>;
+}
+
+impl<'a> ButtonEx<'a> for Button<'a, ()> {
+  fn on_press_into<M: 'static>(self, message: impl 'static + Fn() -> M, enabled: bool) -> Element<'a, M> {
+    let button: Element<_> = if enabled {
+      self.on_press(()).into()
+    } else {
+      self.into()
+    };
+    button.map(move |_| message())
   }
 }
