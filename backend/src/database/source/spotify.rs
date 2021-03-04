@@ -102,6 +102,32 @@ impl DatabaseConnection<'_> {
   }
 }
 
+// Enable/disable
+
+impl DatabaseConnection<'_> {
+  pub fn set_spotify_source_enabled_by_id(&self, spotify_source_id: i32, enabled: bool) -> Result<Option<SpotifySource>, DatabaseQueryError> {
+    let spotify_source = {
+      use schema::spotify_source::dsl::*;
+      time!("set_spotify_source_enabled_by_id.select", spotify_source.find(spotify_source_id).first::<SpotifySource>(&self.connection).optional()?)
+    };
+    if let Some(mut spotify_source) = spotify_source {
+      spotify_source.enabled = enabled;
+      time!("set_spotify_source_enabled_by_id.update", spotify_source.save_changes::<SpotifySource>(&*self.connection)?);
+      Ok(Some(spotify_source))
+    } else {
+      Ok(None)
+    }
+  }
+
+  pub fn enable_spotify_source_by_id(&self, spotify_source_id: i32) -> Result<Option<SpotifySource>, DatabaseQueryError> {
+    self.set_spotify_source_enabled_by_id(spotify_source_id, true)
+  }
+
+  pub fn disable_spotify_source_by_id(&self, spotify_source_id: i32) -> Result<Option<SpotifySource>, DatabaseQueryError> {
+    self.set_spotify_source_enabled_by_id(spotify_source_id, false)
+  }
+}
+
 // Me info
 
 #[derive(Debug, Error)]

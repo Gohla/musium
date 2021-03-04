@@ -16,6 +16,7 @@ actix-http = "= 3.0.0-beta.1"
 actix-tls = "= 3.0.0-beta.2"
 actix-service = "= 2.0.0-beta.2"
 actix-identity = { git = "https://github.com/andy128k/actix-extras.git", rev = "d7ac6473c7101088bcc448a74df6a0b2c19c6e1f" } # To work tokio 1. See: https://github.com/actix/actix-extras/issues/146
+tokio = { version = "1", features = ["rt"], default-features = false }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 structopt = "0.3"

@@ -22,6 +22,8 @@ use musium_core::{
     UserTrackRating,
   },
 };
+use musium_core::api::SyncStatus;
+use musium_core::model::SpotifySource;
 
 #[derive(Clone, Debug)]
 pub enum PlaySource {
@@ -34,6 +36,7 @@ pub trait Client: Send + Sync {
   type LoginError: Error;
   async fn login(&self, user_login: &UserLogin) -> Result<User, Self::LoginError>;
 
+
   type LocalSourceError: Error;
   async fn list_local_sources(&self) -> Result<Vec<LocalSource>, Self::LocalSourceError>;
   async fn get_local_source_by_id(&self, id: i32) -> Result<Option<LocalSource>, Self::LocalSourceError>;
@@ -41,8 +44,12 @@ pub trait Client: Send + Sync {
   async fn set_local_source_enabled_by_id(&self, id: i32, enabled: bool) -> Result<Option<LocalSource>, Self::LocalSourceError>;
 
   type SpotifySourceError: Error;
+  async fn list_spotify_sources(&self) -> Result<Vec<SpotifySource>, Self::SpotifySourceError>;
+  async fn get_spotify_source_by_id(&self, id: i32) -> Result<Option<SpotifySource>, Self::SpotifySourceError>;
   async fn create_spotify_source_authorization_url(&self) -> Result<String, Self::SpotifySourceError>;
+  async fn set_spotify_source_enabled_by_id(&self, id: i32, enabled: bool) -> Result<Option<SpotifySource>, Self::SpotifySourceError>;
   async fn show_spotify_me(&self) -> Result<SpotifyMeInfo, Self::SpotifySourceError>;
+
 
   type AlbumError: Error;
   async fn list_albums(&self) -> Result<AlbumsRaw, Self::AlbumError>;
@@ -57,6 +64,7 @@ pub trait Client: Send + Sync {
   async fn list_artists(&self) -> Result<Vec<Artist>, Self::ArtistError>;
   async fn get_artist_by_id(&self, id: i32) -> Result<Option<Artist>, Self::ArtistError>;
 
+
   type UserError: Error;
   async fn list_users(&self) -> Result<Vec<User>, Self::UserError>;
   async fn get_my_user(&self) -> Result<User, Self::UserError>;
@@ -65,11 +73,18 @@ pub trait Client: Send + Sync {
   async fn delete_user_by_name(&self, name: &String) -> Result<(), Self::UserError>;
   async fn delete_user_by_id(&self, id: i32) -> Result<(), Self::UserError>;
 
+
   type UserDataError: Error;
   async fn set_user_album_rating(&self, album_id: i32, rating: i32) -> Result<UserAlbumRating, Self::UserDataError>;
   async fn set_user_track_rating(&self, track_id: i32, rating: i32) -> Result<UserTrackRating, Self::UserDataError>;
   async fn set_user_artist_rating(&self, artist_id: i32, rating: i32) -> Result<UserArtistRating, Self::UserDataError>;
 
-  type SyncError: Error;
-  async fn sync(&self) -> Result<bool, Self::SyncError>;
+
+  type SyncError: 'static + Error + Send + Sync;
+  async fn get_sync_status(&self) -> Result<SyncStatus, Self::SyncError>;
+  async fn sync_all_sources(&self) -> Result<SyncStatus, Self::SyncError>;
+  async fn sync_local_sources(&self) -> Result<SyncStatus, Self::SyncError>;
+  async fn sync_local_source(&self, local_source_id: i32) -> Result<SyncStatus, Self::SyncError>;
+  async fn sync_spotify_sources(&self) -> Result<SyncStatus, Self::SyncError>;
+  async fn sync_spotify_source(&self, spotify_source_id: i32) -> Result<SyncStatus, Self::SyncError>;
 }

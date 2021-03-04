@@ -34,11 +34,14 @@ pub async fn serve<A: net::ToSocketAddrs, C: Into<Vec<u8>>>(database: Database, 
       .route("/source/local", web::post().to(create_or_enable_local_source))
       .route("/source/local/set_enabled/{id}", web::post().to(set_local_source_enabled))
       // Spotify source
+      .route("/source/spotify", web::get().to(list_spotify_sources))
+      .route("/source/spotify/{id}", web::get().to(show_spotify_source_by_id))
       .route("/source/spotify/request_authorization", web::get().to(request_spotify_authorization))
       .service(web::resource("/source/spotify/request_authorization/callback")
         .name("spotify_authorization_callback")
         .route(web::get().to(spotify_authorization_callback))
       )
+      .route("/source/spotify/set_enabled/{id}", web::post().to(set_spotify_source_enabled))
       .route("/source/spotify/me", web::get().to(show_spotify_me))
       // Album
       .route("/album", web::get().to(list_albums))

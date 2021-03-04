@@ -5,9 +5,10 @@ use std::rc::Rc;
 use iced::{Align, button, Button, Column, Element, Length, Row, Rule, scrollable, Text};
 
 use musium_core::model::{LocalSource, SpotifySource};
+use musium_player::Player;
 
-use crate::page::main::{cell_text, h1, header_text, h2};
-use crate::util::ButtonEx;
+use crate::page::main::{cell_text, h1, h2, header_text};
+use crate::util::{ButtonEx, Update};
 use crate::widget::table::TableBuilder;
 
 #[derive(Default, Debug)]
@@ -22,6 +23,8 @@ pub struct Tab {
 
   syncing: bool,
   sync_all_button_state: button::State,
+  sync_local_sources_button_state: button::State,
+  sync_spotify_sources_button_state: button::State,
 }
 
 #[derive(Debug)]
@@ -46,6 +49,20 @@ impl<'a> Tab {
     self.spotify_sources = Rc::new(RefCell::new(spotify_sources));
   }
 
+  pub fn update(&mut self, player: &Player, message: Message) -> Update<Message, super::Action> {
+    match message {
+      Message::RequestRefresh => {}
+      Message::ReceiveRefresh(r) => {}
+      Message::RequestSync => {}
+      Message::RequestLocalSourcesSync => {}
+      Message::RequestLocalSourceSync(_) => {}
+      Message::RequestSpotifySourcesSync => {}
+      Message::RequestSpotifySourceSync(_) => {}
+      Message::ReceiveSyncResult => {}
+    }
+    Update::none()
+  }
+
   pub fn view(&'a mut self) -> Element<'a, Message> {
     let header = Row::new()
       .width(Length::Fill)
@@ -58,7 +75,25 @@ impl<'a> Tab {
         .on_press_into(|| Message::RequestSync, !self.syncing),
       ))
       ;
-    let local_sources_table = TableBuilder::new(self.local_sources.clone())
+    let local_sources = self.view_local_sources();
+    let spotify_sources = self.view_spotify_sources();
+
+    Column::new()
+      .width(Length::Fill)
+      .height(Length::Fill)
+      .align_items(Align::Center)
+      .padding(4)
+      .spacing(4)
+      .push(header)
+      .push(Rule::horizontal(1))
+      .push(local_sources)
+      .push(Rule::horizontal(1))
+      .push(spotify_sources)
+      .into()
+  }
+
+  fn view_local_sources(&'a mut self) -> Element<'a, Message> {
+    let table = TableBuilder::new(self.local_sources.clone())
       .spacing(2)
       .header_row_height(26)
       .row_height(16)
@@ -76,30 +111,61 @@ impl<'a> Tab {
         Button::new(state, Text::new("Sync"))
           .on_press_into(move || Message::RequestLocalSourceSync(t.source.id), !self.syncing)
       ))
-      .build(&mut self.scrollable_state)
+      .build(&mut self.spotify_sources_scrollable_state)
       .into();
-    let local_sources = Column::new()
+
+    Column::new()
       .width(Length::Fill)
       .align_items(Align::Center)
       .spacing(2)
       .push(Row::new()
         .spacing(2)
         .push(h2("Local sources"))
-        .push()
+        .push(Button::new(&mut self.sync_local_sources_button_state, Text::new("Sync local sources"))
+          .on_press_into(|| Message::RequestLocalSourcesSync, !self.syncing)
+        )
       )
       .push(Rule::horizontal(1))
-      .push(local_sources_table)
-      ;
-    let content: Element<_> = Column::new()
-      .width(Length::Fill)
-      .height(Length::Fill)
-      .align_items(Align::Center)
-      .padding(4)
-      .spacing(4)
-      .push(header)
-      .push(local_sources)
+      .push(table)
+      .into()
+  }
+
+  fn view_spotify_sources(&'a mut self) -> Element<'a, Message> {
+    let table = TableBuilder::new(self.spotify_sources.clone())
+      .spacing(2)
+      .header_row_height(26)
+      .row_height(16)
+      .push_column(5, header_text("ID"), Box::new(move |t| {
+        cell_text(t.source.id)
+      }))
+      .push_column(5, header_text("User ID"), Box::new(|t|
+        cell_text(t.source.user_id)
+      ))
+      .push_column(25, header_text("Enabled"), Box::new(|t|
+        // TODO: change into toggle and send messages
+        cell_text(t.source.enabled)
+      ))
+      .push_column(25, header_text("Sync"), Box::new(|t|
+        Button::new(state, Text::new("Sync"))
+          .on_press_into(move || Message::RequestSpotifySourceSync(t.source.id), !self.syncing)
+      ))
+      .build(&mut self.scrollable_state)
       .into();
-    content//.explain([0.5, 0.5, 0.5])
+
+    Column::new()
+      .width(Length::Fill)
+      .align_items(Align::Center)
+      .spacing(2)
+      .push(Row::new()
+        .spacing(2)
+        .push(h2("Local sources"))
+        .push(Button::new(&mut self.sync_spotify_sources_button_state, Text::new("Sync local sources"))
+          .on_press_into(|| Message::RequestLocalSourcesSync, !self.syncing)
+        )
+      )
+      .push(Rule::horizontal(1))
+      .push(table)
+      .into()
   }
 }
 

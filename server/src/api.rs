@@ -20,9 +20,11 @@ use musium_core::model::{NewLocalSource, NewUser};
 use crate::auth::LoggedInUser;
 use crate::sync::Sync;
 
+// TODO: all async functions that touch the database are blocking! this should not be the case!
+
 // Local source
 
-pub async fn list_local_sources(
+pub(crate) async fn list_local_sources(
   database: web::Data<Database>,
   _logged_in_user: LoggedInUser,
 ) -> Result<HttpResponse, InternalError> {
@@ -30,7 +32,7 @@ pub async fn list_local_sources(
   Ok(HttpResponse::Ok().json(local_sources))
 }
 
-pub async fn show_local_source_by_id(
+pub(crate) async fn show_local_source_by_id(
   id: web::Path<i32>,
   database: web::Data<Database>,
   _logged_in_user: LoggedInUser,
@@ -39,7 +41,7 @@ pub async fn show_local_source_by_id(
   Ok(HttpResponse::Ok().json(local_source))
 }
 
-pub async fn create_or_enable_local_source(
+pub(crate) async fn create_or_enable_local_source(
   new_local_source: web::Json<NewLocalSource>,
   database: web::Data<Database>,
   _logged_in_user: LoggedInUser,
@@ -47,7 +49,7 @@ pub async fn create_or_enable_local_source(
   Ok(HttpResponse::Ok().json(database.connect()?.create_or_enable_local_source(&new_local_source)?))
 }
 
-pub async fn set_local_source_enabled(
+pub(crate) async fn set_local_source_enabled(
   id: web::Path<i32>,
   enabled: web::Json<bool>,
   database: web::Data<Database>,
@@ -58,7 +60,24 @@ pub async fn set_local_source_enabled(
 
 // Spotify source
 
-pub async fn request_spotify_authorization(
+pub(crate) async fn list_spotify_sources(
+  database: web::Data<Database>,
+  _logged_in_user: LoggedInUser,
+) -> Result<HttpResponse, InternalError> {
+  let local_sources = database.connect()?.list_spotify_sources()?;
+  Ok(HttpResponse::Ok().json(local_sources))
+}
+
+pub(crate) async fn show_spotify_source_by_id(
+  id: web::Path<i32>,
+  database: web::Data<Database>,
+  _logged_in_user: LoggedInUser,
+) -> Result<HttpResponse, InternalError> {
+  let local_source = database.connect()?.get_spotify_source_by_id(*id)?;
+  Ok(HttpResponse::Ok().json(local_source))
+}
+
+pub(crate) async fn request_spotify_authorization(
   request: HttpRequest,
   database: web::Data<Database>,
   logged_in_user: LoggedInUser,
@@ -98,6 +117,15 @@ pub(crate) async fn spotify_authorization_callback(
       Err(SpotifyAuthorizationCallbackUnexpectedFail)
     }
   }
+}
+
+pub(crate) async fn set_spotify_source_enabled(
+  id: web::Path<i32>,
+  enabled: web::Json<bool>,
+  database: web::Data<Database>,
+  _logged_in_user: LoggedInUser,
+) -> Result<HttpResponse, InternalError> {
+  Ok(HttpResponse::Ok().json(database.connect()?.set_spotify_source_enabled_by_id(*id, *enabled)?))
 }
 
 pub(crate) async fn show_spotify_me(

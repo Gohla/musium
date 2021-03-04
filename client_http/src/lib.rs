@@ -9,6 +9,7 @@ use serde::Serialize;
 use thiserror::Error;
 
 pub use musium_client::{Client, PlaySource};
+use musium_client::SyncStatus;
 use musium_core::{
   api::{InternalServerError, SpotifyMeInfo},
   model::{
@@ -114,6 +115,16 @@ impl Client for HttpClient {
 
   type SpotifySourceError = SpotifySourceError;
 
+  async fn list_spotify_sources(&self) -> Result<Vec<SpotifySource>, Self::SpotifySourceError> {
+    let response = self.get_simple("source/spotify").await?;
+    Ok(response.json().await?)
+  }
+
+  async fn get_spotify_source_by_id(&self, id: i32) -> Result<Option<SpotifySource>, Self::SpotifySourceError> {
+    let response = self.get_simple(format!("source/spotify/{}", id)).await?;
+    Ok(response.json().await?)
+  }
+
   async fn create_spotify_source_authorization_url(&self) -> Result<String, Self::SpotifySourceError> {
     use CreateSpotifySourceAuthorizationUrlError::*;
     use SpotifySourceError::*;
@@ -123,6 +134,11 @@ impl Client for HttpClient {
     } else {
       Err(CreateSpotifySourceAuthorizationUrlFail(LocationHeaderMissingFail))
     }
+  }
+
+  async fn set_spotify_source_enabled_by_id(&self, id: i32, enabled: bool) -> Result<Option<SpotifySource>, Self::SpotifySourceError> {
+    let response = self.post_simple_with_json(format!("source/spotify/set_enabled/{}", id), &enabled).await?;
+    Ok(response.json().await?)
   }
 
   async fn show_spotify_me(&self) -> Result<SpotifyMeInfo, Self::SpotifySourceError> {
@@ -245,8 +261,13 @@ impl Client for HttpClient {
   // Sync
 
   type SyncError = HttpRequestError;
+  type SyncRequestError = ;
 
-  async fn sync(&self) -> Result<bool, Self::SyncError> {
+  async fn get_sync_status(&self) -> Result<SyncStatus<Self::SyncError>, Self::SyncRequestError> {
+
+  }
+
+  async fn sync_all_sources(&self) -> Result<bool, Self::SyncError> {
     let response = self.get(
       "sync",
       |r| r,
@@ -257,6 +278,22 @@ impl Client for HttpClient {
       StatusCode::ACCEPTED => Ok(true),
       _ => unreachable!(),
     }
+  }
+
+  async fn sync_local_sources(&self) -> Result<SyncStatus<Self::SyncError>, Self::SyncRequestError> {
+
+  }
+
+  async fn sync_local_source(&self, local_source_id: i32) -> Result<SyncStatus<Self::SyncError>, Self::SyncRequestError> {
+
+  }
+
+  async fn sync_spotify_sources(&self) -> Result<SyncStatus<Self::SyncError>, Self::SyncRequestError> {
+
+  }
+
+  async fn sync_spotify_source(&self, spotify_source_id: i32) -> Result<SyncStatus<Self::SyncError>, Self::SyncRequestError> {
+
   }
 }
 

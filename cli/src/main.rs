@@ -312,7 +312,7 @@ async fn run(command: Command, player: &mut Player) -> Result<()> {
     }
 
     Command::Sync => {
-      let started_sync = player.get_client().sync().await?;
+      let started_sync = player.get_client().sync_all_sources().await?;
       if started_sync {
         println!("Started synchronizing");
       } else {
