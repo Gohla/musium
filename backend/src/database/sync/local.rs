@@ -26,7 +26,7 @@ pub enum LocalSyncError {
   HashCollisionFail(FilesystemSyncTrack, Vec<LocalTrack>),
 }
 
-impl DatabaseConnection<'_> {
+impl DatabaseConnection {
   #[instrument(skip(self, local_sources))]
   pub(crate) fn local_sync(&self, local_sources: Vec<LocalSource>) -> Result<Vec<FilesystemSyncError>, LocalSyncError> {
     let (filesystem_sync_tracks, filesystem_sync_errors) = self.get_filesystem_sync_tracks(local_sources)?;

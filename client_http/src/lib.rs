@@ -9,7 +9,6 @@ use serde::Serialize;
 use thiserror::Error;
 
 pub use musium_client::{Client, PlaySource};
-use musium_client::SyncStatus;
 use musium_core::{
   api::{InternalServerError, SpotifyMeInfo},
   model::{
@@ -17,6 +16,7 @@ use musium_core::{
     collection::{AlbumsRaw, TracksRaw},
   },
 };
+use musium_core::api::SyncStatus;
 
 #[derive(Clone)]
 pub struct HttpClient {
@@ -261,11 +261,8 @@ impl Client for HttpClient {
   // Sync
 
   type SyncError = HttpRequestError;
-  type SyncRequestError = ;
 
-  async fn get_sync_status(&self) -> Result<SyncStatus<Self::SyncError>, Self::SyncRequestError> {
-
-  }
+  async fn get_sync_status(&self) -> Result<SyncStatus, Self::SyncError> {}
 
   async fn sync_all_sources(&self) -> Result<bool, Self::SyncError> {
     let response = self.get(
@@ -280,21 +277,13 @@ impl Client for HttpClient {
     }
   }
 
-  async fn sync_local_sources(&self) -> Result<SyncStatus<Self::SyncError>, Self::SyncRequestError> {
+  async fn sync_local_sources(&self) -> Result<SyncStatus, Self::SyncError> {}
 
-  }
+  async fn sync_local_source(&self, local_source_id: i32) -> Result<SyncStatus, Self::SyncError> {}
 
-  async fn sync_local_source(&self, local_source_id: i32) -> Result<SyncStatus<Self::SyncError>, Self::SyncRequestError> {
+  async fn sync_spotify_sources(&self) -> Result<SyncStatus, Self::SyncError> {}
 
-  }
-
-  async fn sync_spotify_sources(&self) -> Result<SyncStatus<Self::SyncError>, Self::SyncRequestError> {
-
-  }
-
-  async fn sync_spotify_source(&self, spotify_source_id: i32) -> Result<SyncStatus<Self::SyncError>, Self::SyncRequestError> {
-
-  }
+  async fn sync_spotify_source(&self, spotify_source_id: i32) -> Result<SyncStatus, Self::SyncError> {}
 }
 
 // Internals

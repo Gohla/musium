@@ -5,7 +5,7 @@ use musium_core::schema;
 
 use super::{DatabaseConnection, DatabaseQueryError};
 
-impl DatabaseConnection<'_> {
+impl DatabaseConnection {
   pub fn list_artists(&self) -> Result<Vec<Artist>, DatabaseQueryError> {
     use schema::artist::dsl::*;
     Ok(artist.load::<Artist>(&self.connection)?)

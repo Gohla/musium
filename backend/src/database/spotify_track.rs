@@ -19,7 +19,7 @@ pub enum SpotifyPlayError {
   SpotifyApiFail(#[from] musium_spotify_client::PlaybackError, Backtrace),
 }
 
-impl DatabaseConnection<'_> {
+impl DatabaseConnection {
   pub async fn play_spotify_track(&self, input_track_id: i32, input_user_id: i32) -> Result<bool, SpotifyPlayError> {
     let spotify_track: Option<SpotifyTrack> = {
       use schema::spotify_track::dsl::*;
@@ -37,7 +37,7 @@ impl DatabaseConnection<'_> {
     };
     if let (Some(spotify_track), Some(mut spotify_source)) = (spotify_track, spotify_source) {
       let mut authorization = spotify_source.to_spotify_authorization();
-      self.database.spotify_sync.start_or_resume_playback(&spotify_track.spotify_id, None, &mut authorization).await?;
+      self.inner.spotify_sync.start_or_resume_playback(&spotify_track.spotify_id, None, &mut authorization).await?;
       if spotify_source.update_from_spotify_authorization(authorization) {
         event!(Level::DEBUG, ?spotify_source, "Spotify source has changed, updating the database");
         spotify_source.save_changes::<SpotifySource>(&*self.connection)?;

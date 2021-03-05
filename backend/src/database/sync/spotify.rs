@@ -34,13 +34,13 @@ impl From<DatabaseQueryError> for SpotifySyncError {
   }
 }
 
-impl DatabaseConnection<'_> {
+impl DatabaseConnection {
   #[instrument(skip(self, spotify_sources))]
   pub(crate) async fn spotify_sync(&self, spotify_sources: Vec<SpotifySource>) -> Result<(), SpotifySyncError> {
     for mut spotify_source in spotify_sources {
       let mut authorization = spotify_source.to_spotify_authorization();
 
-      let spotify_albums = self.database.spotify_sync.get_albums_of_followed_artists(&mut authorization).await?;
+      let spotify_albums = self.inner.spotify_sync.get_albums_of_followed_artists(&mut authorization).await?;
       let mut synced_album_ids = HashSet::<i32>::new();
       let mut synced_track_ids = HashSet::<i32>::new();
       let mut synced_artist_ids = HashSet::<i32>::new();
@@ -300,7 +300,7 @@ impl DatabaseConnection<'_> {
 
 // Spotify Album (source)
 
-impl DatabaseConnection<'_> {
+impl DatabaseConnection {
   fn select_spotify_album_by_album_id(&self, input_album_id: i32) -> Result<Option<SpotifyAlbum>, diesel::result::Error> {
     use schema::spotify_album::dsl::*;
     Ok(spotify_album.filter(album_id.eq(input_album_id)).first::<SpotifyAlbum>(&self.connection).optional()?)
@@ -350,7 +350,7 @@ impl DatabaseConnection<'_> {
 
 // Spotify Track (source)
 
-impl DatabaseConnection<'_> {
+impl DatabaseConnection {
   fn select_spotify_track(&self, input_spotify_id: &String) -> Result<Option<SpotifyTrack>, diesel::result::Error> {
     use schema::spotify_track::dsl::*;
     Ok(spotify_track.filter(spotify_id.eq(input_spotify_id)).first::<SpotifyTrack>(&self.connection).optional()?)
@@ -395,7 +395,7 @@ impl DatabaseConnection<'_> {
 
 // Spotify Artist (source)
 
-impl DatabaseConnection<'_> {
+impl DatabaseConnection {
   fn select_spotify_artist_by_spotify_id(&self, input_spotify_id: &String) -> Result<Option<SpotifyArtist>, diesel::result::Error> {
     use schema::spotify_artist::dsl::*;
     Ok(spotify_artist.filter(spotify_id.eq(input_spotify_id)).first::<SpotifyArtist>(&self.connection).optional()?)

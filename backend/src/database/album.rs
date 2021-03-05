@@ -6,7 +6,7 @@ use musium_core::schema;
 
 use super::{DatabaseConnection, DatabaseQueryError};
 
-impl DatabaseConnection<'_> {
+impl DatabaseConnection {
   pub fn list_albums(&self) -> Result<AlbumsRaw, DatabaseQueryError> {
     let albums = schema::album::table.load::<Album>(&self.connection)?;
     let artists = schema::artist::table.load::<Artist>(&self.connection)?;

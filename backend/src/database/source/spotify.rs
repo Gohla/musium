@@ -11,7 +11,7 @@ use musium_core::schema;
 use crate::database::{DatabaseConnection, DatabaseQueryError};
 use crate::model::SpotifySourceEx;
 
-impl DatabaseConnection<'_> {
+impl DatabaseConnection {
   pub fn list_spotify_sources(&self) -> Result<Vec<SpotifySource>, DatabaseQueryError> {
     use schema::spotify_source::dsl::*;
     Ok(time!("list_spotify_sources.select", spotify_source.load::<SpotifySource>(&self.connection)?))
@@ -38,7 +38,7 @@ pub enum CreateAuthorizationUrlError {
   AlreadyExistsFail(User),
 }
 
-impl DatabaseConnection<'_> {
+impl DatabaseConnection {
   pub fn create_spotify_authorization_url<S1: Into<String>>(
     &self,
     user: &User,
@@ -55,7 +55,7 @@ impl DatabaseConnection<'_> {
     if db_spotify_source.is_some() {
       return Err(AlreadyExistsFail(user.clone()));
     }
-    Ok(self.database.spotify_sync.create_authorization_url(redirect_uri, state)?)
+    Ok(self.inner.spotify_sync.create_authorization_url(redirect_uri, state)?)
   }
 }
 
@@ -69,7 +69,7 @@ pub enum CreateError {
   DatabaseQueryFail(#[from] diesel::result::Error, Backtrace),
 }
 
-impl DatabaseConnection<'_> {
+impl DatabaseConnection {
   pub async fn create_spotify_source_from_authorization_callback<S1: Into<String>, S2: Into<String>>(
     &self,
     user_id: i32, // TODO: should be an &User.
@@ -77,7 +77,7 @@ impl DatabaseConnection<'_> {
     redirect_uri: S2,
     state: Option<String>,
   ) -> Result<SpotifySource, CreateError> {
-    let authorization_info = self.database.spotify_sync.authorization_callback(code, redirect_uri, state).await?;
+    let authorization_info = self.inner.spotify_sync.authorization_callback(code, redirect_uri, state).await?;
     event!(Level::DEBUG, ?authorization_info, "Callback from Spotify with authorization info");
     let new_spotify_source = NewSpotifySource {
       user_id,
@@ -104,7 +104,7 @@ impl DatabaseConnection<'_> {
 
 // Enable/disable
 
-impl DatabaseConnection<'_> {
+impl DatabaseConnection {
   pub fn set_spotify_source_enabled_by_id(&self, spotify_source_id: i32, enabled: bool) -> Result<Option<SpotifySource>, DatabaseQueryError> {
     let spotify_source = {
       use schema::spotify_source::dsl::*;
@@ -140,7 +140,7 @@ pub enum MeInfoError {
   DatabaseQueryFail(#[from] diesel::result::Error, Backtrace),
 }
 
-impl DatabaseConnection<'_> {
+impl DatabaseConnection {
   pub async fn show_spotify_me(&self, user: &User) -> Result<SpotifyMeInfo, MeInfoError> {
     use MeInfoError::*;
     let spotify_source: Option<SpotifySource> = {
@@ -150,7 +150,7 @@ impl DatabaseConnection<'_> {
     };
     if let Some(mut spotify_source) = spotify_source {
       let mut authorization = spotify_source.to_spotify_authorization();
-      let spotify_sync_me_info = self.database.spotify_sync.me(&mut authorization).await?;
+      let spotify_sync_me_info = self.inner.spotify_sync.me(&mut authorization).await?;
       if spotify_source.update_from_spotify_authorization(authorization) {
         event!(Level::DEBUG, ?spotify_source, "Spotify source has changed, updating the database");
         spotify_source.save_changes::<SpotifySource>(&*self.connection)?;

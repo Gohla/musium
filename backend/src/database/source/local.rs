@@ -5,7 +5,7 @@ use musium_core::schema;
 
 use crate::database::{DatabaseConnection, DatabaseQueryError};
 
-impl DatabaseConnection<'_> {
+impl DatabaseConnection {
   pub fn list_local_sources(&self) -> Result<Vec<LocalSource>, DatabaseQueryError> {
     use schema::local_source::dsl::*;
     Ok(time!("list_local_sources.select", local_source.load::<LocalSource>(&self.connection)?))

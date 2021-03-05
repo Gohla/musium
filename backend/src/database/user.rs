@@ -20,7 +20,7 @@ pub enum UserAddVerifyError {
   PasswordHashFail(#[from] crate::password::HashError, Backtrace),
 }
 
-impl DatabaseConnection<'_> {
+impl DatabaseConnection {
   pub fn list_users(&self) -> Result<Vec<User>, DatabaseQueryError> {
     use schema::user::dsl::*;
     Ok(user.select((id, name)).load::<User>(&self.connection)?)
@@ -40,7 +40,7 @@ impl DatabaseConnection<'_> {
         .optional()?
     };
     if let Some(user) = user {
-      if self.database.password_hasher.verify(&user_login.password, &user.salt, &user.hash)? {
+      if self.inner.password_hasher.verify(&user_login.password, &user.salt, &user.hash)? {
         Ok(Some(user.into()))
       } else {
         Ok(None)
@@ -52,8 +52,8 @@ impl DatabaseConnection<'_> {
 
   pub fn create_user(&self, new_user: NewUser) -> Result<User, UserAddVerifyError> {
     use schema::user;
-    let salt = self.database.password_hasher.generate_salt();
-    let hash = self.database.password_hasher.hash(new_user.password, &salt)?;
+    let salt = self.inner.password_hasher.generate_salt();
+    let hash = self.inner.password_hasher.hash(new_user.password, &salt)?;
     let internal_new_user = InternalNewUser {
       name: new_user.name.clone(),
       hash,
@@ -87,7 +87,7 @@ impl DatabaseConnection<'_> {
 
 // User data database queries
 
-impl DatabaseConnection<'_> {
+impl DatabaseConnection {
   pub fn set_user_album_rating(&self, user_id: i32, album_id: i32, rating: i32) -> Result<UserAlbumRating, DatabaseQueryError> {
     use schema::user_album_rating;
     let select_query = user_album_rating::table

@@ -12,7 +12,7 @@ use crate::database::spotify_track::SpotifyPlayError;
 
 use super::{DatabaseConnection, DatabaseQueryError};
 
-impl DatabaseConnection<'_> {
+impl DatabaseConnection {
   pub fn list_tracks(&self) -> Result<TracksRaw, DatabaseQueryError> {
     let tracks = schema::track::table.load::<Track>(&self.connection)?;
     let albums = schema::album::table.load::<Album>(&self.connection)?;
@@ -41,7 +41,7 @@ pub enum PlayError {
   SpotifyPlayFail(#[from] SpotifyPlayError, Backtrace),
 }
 
-impl DatabaseConnection<'_> {
+impl DatabaseConnection {
   pub async fn play_track(&self, input_id: i32, user_id: i32) -> Result<Option<PlaySource>, PlayError> {
     let source = if let Some(path) = self.get_local_track_path_by_track_id(input_id)? { // TODO: fix blocking code in async
       Some(PlaySource::AudioData(path))

@@ -1,8 +1,9 @@
 <component name="ProjectRunConfigurationManager">
-  <configuration default="false" name="B spotify_sync" type="CargoCommandRunConfiguration" factoryName="Cargo Command">
-    <option name="command" value="build --package musium_spotify_sync -Z unstable-options --profile=fastdev" />
+  <configuration default="false" name="B server" type="CargoCommandRunConfiguration" factoryName="Cargo Command">
+    <option name="command" value="build --package musium_server -Z unstable-options --profile=fastdev" />
     <option name="workingDirectory" value="file://$PROJECT_DIR$" />
     <option name="channel" value="DEFAULT" />
+    <option name="requiredFeatures" value="true" />
     <option name="allFeatures" value="false" />
     <option name="emulateTerminal" value="false" />
     <option name="backtrace" value="SHORT" />

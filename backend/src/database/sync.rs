@@ -11,7 +11,7 @@ use musium_core::model::{Album, AlbumArtist, Artist, LocalSource, NewAlbum, NewA
 use musium_core::schema;
 use musium_filesystem_sync::FilesystemSyncError;
 
-use crate::database::{DatabaseConnection, DatabaseQueryError};
+use crate::database::{DatabaseConnection, DatabaseQueryError, TransactionError};
 use crate::database::sync::local::LocalSyncError;
 use crate::database::sync::spotify::SpotifySyncError;
 
@@ -34,43 +34,28 @@ pub enum SyncError {
   SpotifySyncFail(#[from] SpotifySyncError, Backtrace),
 }
 
-impl DatabaseConnection<'_> {
-  #[instrument(skip(self))]
+impl DatabaseConnection {
   /// Synchronize with all sources, adding/removing/changing tracks/albums/artists in the database. When a LocalSyncFail
   /// error is returned, the database has already received a partial update.
-  pub fn sync(&self) -> Result<(), SyncError> {
+  #[instrument(skip(self))]
+  pub async fn sync_all_sources(&self) -> Result<(), TransactionError<SyncError>> {
     use SyncError::*;
-
-    event!(Level::INFO, "Starting synchronization...");
-
-    // Local source sync
-    let local_sync_errors = self.connection.transaction::<_, SyncError, _>(|| {
-      event!(Level::INFO, "Starting local filesystem synchronization...");
-      let local_sources: Vec<LocalSource> = self.list_local_sources()?;
-      let local_sync_errors = self.local_sync(local_sources)?;
+    let local_sync_errors = self.run_in_transaction(async move {
+      let result: Result<_, SyncError> = tokio::task::spawn_blocking(move || {
+        let local_sources: Vec<LocalSource> = self.list_local_sources()?;
+        let local_sync_errors = self.local_sync(local_sources)?;
+        let spotify_sources: Vec<SpotifySource> = self.list_spotify_sources()?;
+        Ok((local_sync_errors, spotify_sources))
+      }).await.unwrap();
+      let (local_sync_errors, spotify_sources) = result?;
+      //self.spotify_sync(spotify_sources).await?; // TODO: UNCOMMENT!
       Ok(local_sync_errors)
-    })?;
-    event!(Level::INFO, "... successfully completed local filesystem synchronization");
-
-    // Spotify source sync
-    self.connection.transaction::<_, SyncError, _>(|| {
-      event!(Level::INFO, "Starting Spotify synchronization...");
-      let spotify_sources: Vec<SpotifySource> = self.list_spotify_sources()?;
-      let runtime = tokio::runtime::Builder::new_current_thread()
-        .enable_all()
-        .build()
-        .unwrap();
-      runtime.block_on(self.spotify_sync(spotify_sources))?;
-      Ok(())
-    })?;
-    event!(Level::INFO, "... successfully completed Spotify synchronization");
-
-    event!(Level::INFO, "... successfully completed synchronization");
-
+    }).await?;
     if !local_sync_errors.is_empty() {
-      return Err(LocalSyncNonFatalFail(local_sync_errors));
+      Err(TransactionError::InsideTransactionFail(LocalSyncNonFatalFail(local_sync_errors)))
+    } else {
+      Ok(())
     }
-    Ok(())
   }
 }
 
@@ -106,7 +91,7 @@ pub enum SelectAlbumError {
   MultipleAlbumsSameName(Vec<Album>, Backtrace),
 }
 
-impl DatabaseConnection<'_> {
+impl DatabaseConnection {
   pub(crate) fn select_album_by_id(&self, input_id: i32) -> Result<Album, diesel::result::Error> {
     use schema::album::dsl::*;
     Ok(album.find(input_id).first(&self.connection)?)
@@ -168,7 +153,7 @@ pub enum SelectTrackError {
   MultipleTracksSameAlbumAndTitle(Vec<Track>, Backtrace),
 }
 
-impl DatabaseConnection<'_> {
+impl DatabaseConnection {
   pub(crate) fn select_track_by_id(&self, input_id: i32) -> Result<Track, diesel::result::Error> {
     use schema::track::dsl::*;
     Ok(track.find(input_id).first(&self.connection)?)
@@ -255,7 +240,7 @@ pub enum SelectArtistError {
   MultipleArtistsSameName(Vec<Artist>, Backtrace),
 }
 
-impl DatabaseConnection<'_> {
+impl DatabaseConnection {
   pub(crate) fn select_artist_by_id(&self, input_id: i32) -> Result<Artist, diesel::result::Error> {
     use schema::artist::dsl::*;
     Ok(artist.find(input_id).first(&self.connection)?)
@@ -309,7 +294,7 @@ impl DatabaseConnection<'_> {
 
 // Album and track artist associations.
 
-impl DatabaseConnection<'_> {
+impl DatabaseConnection {
   fn sync_album_artists(&self, album: &Album, mut artist_ids: HashSet<i32>) -> Result<(), diesel::result::Error> {
     let select_query = {
       use schema::album_artist::dsl::*;

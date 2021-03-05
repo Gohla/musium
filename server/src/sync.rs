@@ -73,6 +73,17 @@ pub struct SyncClient {
   server_task: tokio::task::JoinHandle<()>,
 }
 
+impl SyncClient {
+  pub fn new() -> Self {
+    let (tx, mut rx) = mpsc::channel(32);
+    let server_task = tokio::spawn(async move {
+      SyncServer { rx, sync_task: None }.run().await;
+    });
+    Self { tx, server_task: server_task }
+  }
+}
+
+
 struct SyncServer {
   rx: mpsc::Receiver<Request>,
   sync_task: Option<SyncTask>,
@@ -80,6 +91,7 @@ struct SyncServer {
 
 struct Request {
   command: Command,
+  database: Arc<Database>,
   tx: oneshot::Sender<SyncStatus>,
 }
 
@@ -94,37 +106,39 @@ enum Command {
 
 struct SyncTask {
   handle: tokio::task::JoinHandle<Result<(), SyncError>>,
-  progress: watch::Receiver<SyncStatus>,
-}
-
-impl SyncClient {
-  pub fn new() -> Self {
-    let (tx, mut rx) = mpsc::channel(32);
-    let server_task = tokio::spawn(async move {
-      SyncServer { rx, sync_task: None }.run().await;
-    });
-    Self { tx, server_task: server_task }
-  }
+  rx: watch::Receiver<SyncStatus>,
 }
 
 impl SyncServer {
   async fn run(mut self) {
     while let Some(request) = self.rx.recv().await {
       let tx = request.tx;
+      let db = request.database;
       match request.command {
         Command::GetStatus => {
           match &self.sync_task {
             None => tx.send(SyncStatus::Idle),
             Some(sync_task) => {
-              tx.send(sync_task.progress.borrow().clone());
+              tx.send(sync_task.rx.borrow().clone());
             }
           }
         }
         Command::SyncAll => {
           if let Some(sync_task) = &self.sync_task {
-            tx.send(sync_task.progress.borrow().clone());
+            tx.send(sync_task.rx.borrow().clone());
           } else {
-            
+            let (progress_tx, rx) = watch::channel(SyncStatus::Busy(None));
+            let handle = tokio::spawn(async move {
+              match (|| -> Result<(), SyncError> { Ok(db.connect()?.sync_all_sources().await?) })() {
+                Ok(_) => progress_tx.send(SyncStatus::Completed),
+                Err(e) => {
+                  let format_error = FormatError::new(&e);
+                  event!(Level::ERROR, "{:?}", format_error);
+                  progress_tx.send(SyncStatus::Failed)
+                }
+              };
+            });
+            self.sync_task = Some(SyncTask { handle, rx });
           }
         }
         Command::SyncLocalSources => {}

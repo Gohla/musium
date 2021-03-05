@@ -1,6 +1,5 @@
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
-use std::error::Error as StdError;
 
 #[derive(Serialize, Deserialize, Debug, Error)]
 #[error("Internal server error")]
