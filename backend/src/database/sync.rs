@@ -4,58 +4,127 @@ use std::backtrace::Backtrace;
 use std::collections::HashSet;
 
 use diesel::prelude::*;
+use itertools::Itertools;
 use thiserror::Error;
 use tracing::{event, instrument, Level};
 
-use musium_core::model::{Album, AlbumArtist, Artist, LocalSource, NewAlbum, NewAlbumArtist, NewArtist, NewTrack, NewTrackArtist, SpotifySource, Track, TrackArtist};
+use musium_core::model::{Album, AlbumArtist, Artist, NewAlbum, NewAlbumArtist, NewArtist, NewTrack, NewTrackArtist, Track, TrackArtist};
 use musium_core::schema;
 use musium_filesystem_sync::FilesystemSyncError;
 
-use crate::database::{DatabaseConnection, DatabaseQueryError, TransactionError};
+use crate::database::{DatabaseConnection, DatabaseQueryError};
 use crate::database::sync::local::LocalSyncError;
 use crate::database::sync::spotify::SpotifySyncError;
 
 pub mod local;
 pub mod spotify;
 
-// Sync
+// All sources sync
 
 #[derive(Debug, Error)]
-pub enum SyncError {
-  #[error("Failed to list sources")]
-  ListSourcesFail(#[from] DatabaseQueryError, Backtrace),
-  #[error("Failed to query database")]
-  DatabaseQueryFail(#[from] diesel::result::Error, Backtrace),
-  #[error("Local filesystem synchronization failed")]
-  LocalSyncFail(#[from] LocalSyncError, Backtrace),
-  #[error("One or more errors occurred during local filesystem synchronization, but the database has already received a partial update")]
-  LocalSyncNonFatalFail(Vec<FilesystemSyncError>),
-  #[error("Spotify synchronization failed")]
-  SpotifySyncFail(#[from] SpotifySyncError, Backtrace),
+pub enum SyncAllSourcesError {
+  #[error("Failed to sync local sources")]
+  SyncLocalSourcesFail(#[from] SyncLocalSourcesError, Backtrace),
+  #[error("Failed to sync Spotify sources")]
+  SyncSpotifySourcesFail(#[from] SyncSpotifySourcesError, Backtrace),
+  #[error("Failed to perform database operation")]
+  DatabaseOperationFail(#[from] diesel::result::Error, Backtrace),
 }
 
 impl DatabaseConnection {
   /// Synchronize with all sources, adding/removing/changing tracks/albums/artists in the database. When a LocalSyncFail
   /// error is returned, the database has already received a partial update.
   #[instrument(skip(self))]
-  pub async fn sync_all_sources(&self) -> Result<(), TransactionError<SyncError>> {
-    use SyncError::*;
-    let local_sync_errors = self.run_in_transaction(async move {
-      let result: Result<_, SyncError> = tokio::task::spawn_blocking(move || {
-        let local_sources: Vec<LocalSource> = self.list_local_sources()?;
-        let local_sync_errors = self.local_sync(local_sources)?;
-        let spotify_sources: Vec<SpotifySource> = self.list_spotify_sources()?;
-        Ok((local_sync_errors, spotify_sources))
-      }).await.unwrap();
-      let (local_sync_errors, spotify_sources) = result?;
-      //self.spotify_sync(spotify_sources).await?; // TODO: UNCOMMENT!
-      Ok(local_sync_errors)
-    }).await?;
-    if !local_sync_errors.is_empty() {
-      Err(TransactionError::InsideTransactionFail(LocalSyncNonFatalFail(local_sync_errors)))
-    } else {
+  pub fn sync_all_sources(&self) -> Result<(), SyncAllSourcesError> {
+    self.connection.transaction::<_, SyncAllSourcesError, _>(|| {
+      self.sync_all_local_sources()?;
+      self.sync_all_spotify_sources()?;
       Ok(())
-    }
+    })
+  }
+}
+
+// Local sources sync
+
+#[derive(Debug, Error)]
+pub enum SyncLocalSourcesError {
+  #[error("Failed to query for local source(s)")]
+  QuerySourceFail(#[from] DatabaseQueryError, Backtrace),
+  #[error("Failed to perform database operation")]
+  DatabaseOperationFail(#[from] diesel::result::Error, Backtrace),
+  #[error("Local filesystem synchronization failed")]
+  SyncFail(#[from] LocalSyncError, Backtrace),
+  #[error("One or more errors occurred during local filesystem synchronization, but the database has received a partial update")]
+  SyncNonFatalFail(Vec<FilesystemSyncError>),
+}
+
+impl DatabaseConnection {
+  #[instrument(skip(self))]
+  pub fn sync_all_local_sources(&self) -> Result<(), SyncLocalSourcesError> {
+    use SyncLocalSourcesError::*;
+    self.connection.transaction::<_, SyncLocalSourcesError, _>(|| {
+      let local_sources = self.list_local_sources()?;
+      let local_sync_errors = self.local_sync(local_sources)?;
+      if !local_sync_errors.is_empty() {
+        Err(SyncNonFatalFail(local_sync_errors))
+      } else {
+        Ok(())
+      }
+    })
+  }
+
+  #[instrument(skip(self))]
+  pub fn sync_local_source(&self, local_source_id: i32) -> Result<(), SyncLocalSourcesError> {
+    use SyncLocalSourcesError::*;
+    self.connection.transaction::<_, SyncLocalSourcesError, _>(|| {
+      let local_source = self.get_local_source_by_id(local_source_id)?;
+      let local_sync_errors = self.local_sync(local_source.into_iter().collect_vec())?;
+      if !local_sync_errors.is_empty() {
+        Err(SyncNonFatalFail(local_sync_errors))
+      } else {
+        Ok(())
+      }
+    })
+  }
+}
+
+// Spotify sources sync
+
+#[derive(Debug, Error)]
+pub enum SyncSpotifySourcesError {
+  #[error("Failed to query for Spotify source(s)")]
+  QuerySourceFail(#[from] DatabaseQueryError, Backtrace),
+  #[error("Failed to perform database operation")]
+  DatabaseOperationFail(#[from] diesel::result::Error, Backtrace),
+  #[error("Spotify synchronization failed")]
+  SpotifySyncFail(#[from] SpotifySyncError, Backtrace),
+}
+
+impl DatabaseConnection {
+  #[instrument(skip(self))]
+  pub fn sync_all_spotify_sources(&self) -> Result<(), SyncSpotifySourcesError> {
+    self.connection.transaction::<_, SyncSpotifySourcesError, _>(|| {
+      let spotify_sources = self.list_spotify_sources()?;
+      let runtime = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .unwrap();
+      runtime.block_on(self.spotify_sync(spotify_sources))?;
+      Ok(())
+    })
+  }
+
+  #[instrument(skip(self))]
+  pub fn sync_spotify_source(&self, spotify_source_id: i32) -> Result<(), SyncSpotifySourcesError> {
+    self.connection.transaction::<_, SyncSpotifySourcesError, _>(|| {
+      let spotify_source = self.get_spotify_source_by_id(spotify_source_id)?;
+      let runtime = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .unwrap();
+      runtime.block_on(self.spotify_sync(spotify_source.into_iter().collect_vec()))?;
+      Ok(())
+    })
   }
 }
 

@@ -1,10 +1,7 @@
 use std::backtrace::Backtrace;
-use std::error::Error as StdError;
 use std::fmt::{Debug, Formatter};
-use std::future::Future;
 use std::sync::Arc;
 
-use diesel::connection::TransactionManager;
 use diesel::prelude::*;
 use diesel::r2d2::{self, ConnectionManager, Pool, PooledConnection};
 use thiserror::Error;
@@ -95,30 +92,6 @@ impl Database {
 pub enum DatabaseQueryError {
   #[error("Failed to execute a database query")]
   DatabaseQueryFail(#[from] diesel::result::Error, Backtrace),
-}
-
-
-// Async transaction
-
-#[derive(Debug, Error)]
-pub enum TransactionError<E: 'static + StdError + Send> {
-  #[error("Failed to begin, commit, or roll back a transaction")]
-  TransactionFail(#[source] diesel::result::Error),
-  #[error("Failure during transaction")]
-  InsideTransactionFail(#[source] E),
-}
-
-impl DatabaseConnection {
-  pub async fn run_in_transaction<T, E: 'static + StdError + Send>(&self, future: impl Future<Output=Result<T, E>> + 'static + Send) -> Result<T, TransactionError<E>> {
-    use TransactionError::*;
-    self.connection.transaction_manager().begin_transaction(&self.connection).map_err(TransactionFail)?;
-    let result = future.await.map_err(InsideTransactionFail);
-    match &result {
-      Ok(_) => self.connection.transaction_manager().commit_transaction(&self.connection).map_err(TransactionFail)?,
-      Err(_) => self.connection.transaction_manager().rollback_transaction(&self.connection).map_err(TransactionFail)?,
-    }
-    result
-  }
 }
 
 

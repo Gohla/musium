@@ -22,7 +22,6 @@ use crate::serve::serve;
 pub mod serve;
 pub mod auth;
 pub mod api;
-pub mod sync;
 
 #[derive(Debug, StructOpt)]
 #[structopt(name = "server", about = "Musium server")]
