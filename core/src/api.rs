@@ -16,6 +16,7 @@ pub struct SpotifyMeInfo {
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub enum SyncStatus {
   Idle,
-  Busy(f32),
+  Busy(Option<f32>),
+  Completed,
   Failed,
 }

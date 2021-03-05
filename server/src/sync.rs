@@ -113,14 +113,20 @@ impl SyncServer {
       let tx = request.tx;
       match request.command {
         Command::GetStatus => {
-          match self.sync_task {
+          match &self.sync_task {
             None => tx.send(SyncStatus::Idle),
-            Some(ref sync_task) => {
+            Some(sync_task) => {
               tx.send(sync_task.progress.borrow().clone());
             }
           }
         }
-        Command::SyncAll => {}
+        Command::SyncAll => {
+          if let Some(sync_task) = &self.sync_task {
+            tx.send(sync_task.progress.borrow().clone());
+          } else {
+            
+          }
+        }
         Command::SyncLocalSources => {}
         Command::SyncLocalSource(_) => {}
         Command::SyncSpotifySources => {}
