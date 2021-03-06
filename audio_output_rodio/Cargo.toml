@@ -6,6 +6,7 @@ edition = "2018"
 publish = false
 
 [dependencies]
+musium_core = { path = "../core" }
 musium_audio_output = { path = "../audio_output" }
 rodio = "0.13"
 crossbeam-channel = "0.5"

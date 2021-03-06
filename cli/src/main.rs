@@ -138,8 +138,29 @@ enum Command {
     rating: i32,
   },
 
-  /// Initiate a scan in all scan directories to add/remove/update tracks
-  Sync,
+  /// Shows the status of the current synchronization task (if any).
+  ShowSyncStatus,
+  /// Attempts to start a synchronization task with all sources if no synchronization task is currently running.
+  /// Shows the status of the current synchronization task otherwise.
+  SyncAllSources,
+  /// Attempts to start a synchronization task with all local sources if no synchronization task is currently running.
+  /// Shows the status of the current synchronization task otherwise.
+  SyncLocalSources,
+  /// Attempts to start a synchronization task with a local source if no synchronization task is currently running.
+  /// Shows the status of the current synchronization task otherwise.
+  SyncLocalSource {
+    /// ID of the local source to synchronize.
+    local_source_id: i32,
+  },
+  /// Attempts to start a synchronization task with all Spotify sources if no synchronization task is currently running.
+  /// Shows the status of the current synchronization task otherwise.
+  SyncSpotifySources,
+  /// Attempts to start a synchronization task with a Spotify source if no synchronization task is currently running.
+  /// Shows the status of the current synchronization task otherwise.
+  SyncSpotifySource {
+    /// ID of the Spotify source to synchronize.
+    spotify_source_id: i32,
+  },
 }
 
 fn main() -> Result<()> {
@@ -311,13 +332,29 @@ async fn run(command: Command, player: &mut Player) -> Result<()> {
       println!("{:?}", rating);
     }
 
-    Command::Sync => {
-      let started_sync = player.get_client().sync_all_sources().await?;
-      if started_sync {
-        println!("Started synchronizing");
-      } else {
-        println!("Already synchronizing");
-      }
+    Command::ShowSyncStatus => {
+      let status = player.get_client().get_sync_status().await?;
+      println!("{}", status);
+    }
+    Command::SyncAllSources => {
+      let status = player.get_client().sync_all_sources().await?;
+      println!("{}", status);
+    }
+    Command::SyncLocalSources => {
+      let status = player.get_client().sync_local_sources().await?;
+      println!("{}", status);
+    }
+    Command::SyncLocalSource { local_source_id } => {
+      let status = player.get_client().sync_local_source(local_source_id).await?;
+      println!("{}", status);
+    }
+    Command::SyncSpotifySources => {
+      let status = player.get_client().sync_spotify_sources().await?;
+      println!("{}", status);
+    }
+    Command::SyncSpotifySource { spotify_source_id } => {
+      let status = player.get_client().sync_spotify_source(spotify_source_id).await?;
+      println!("{}", status);
     }
   }
   Ok(())

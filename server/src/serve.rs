@@ -4,14 +4,14 @@ use actix_identity::{CookieIdentityPolicy, IdentityService};
 use actix_web::{App, HttpResponse, HttpServer, middleware, web};
 
 use musium_backend::database::Database;
+use musium_backend::sync::SyncClient;
 
 use crate::api::*;
 use crate::auth::*;
-use crate::sync::Sync;
 
 pub async fn serve<A: net::ToSocketAddrs, C: Into<Vec<u8>>>(database: Database, bind_address: A, cookie_identity_secret_key: C) -> std::io::Result<()> {
   let database_data = web::Data::new(database);
-  let sync_data = web::Data::new(Sync::new());
+  let sync_client_data = web::Data::new(SyncClient::new());
   let cookie_identity_secret_key = cookie_identity_secret_key.into();
   HttpServer::new(move || {
     App::new()
@@ -22,7 +22,7 @@ pub async fn serve<A: net::ToSocketAddrs, C: Into<Vec<u8>>>(database: Database, 
           .secure(false)
       ))
       .app_data(database_data.clone())
-      .app_data(sync_data.clone())
+      .app_data(sync_client_data.clone())
       .route("/", web::get().to(index))
       // Auth
       .route("/login", web::post().to(login))
@@ -65,7 +65,12 @@ pub async fn serve<A: net::ToSocketAddrs, C: Into<Vec<u8>>>(database: Database, 
       .route("/user/data/track/{id}/rating/{rating}", web::put().to(set_user_track_rating))
       .route("/user/data/artist/{id}/rating/{rating}", web::put().to(set_user_artist_rating))
       // Scan
-      .route("/sync", web::get().to(sync))
+      .route("/sync", web::get().to(get_sync_status))
+      .route("/sync", web::post().to(sync_all_sources))
+      .route("/sync/local", web::post().to(sync_local_sources))
+      .route("/sync/local/{id}", web::post().to(sync_local_source))
+      .route("/sync/spotify", web::post().to(sync_spotify_sources))
+      .route("/sync/spotify/{id}", web::post().to(sync_spotify_source))
   })
     .bind(bind_address)?
     .run()

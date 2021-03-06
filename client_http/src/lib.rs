@@ -66,6 +66,14 @@ pub enum SpotifySourceError {
   CreateSpotifySourceAuthorizationUrlFail(#[from] CreateSpotifySourceAuthorizationUrlError),
   #[error(transparent)]
   HttpRequestFail(#[from] HttpRequestError),
+  #[error(transparent)]
+  UrlJoinFail(#[from] url::ParseError),
+  #[error(transparent)]
+  RequestFail(#[from] reqwest::Error),
+  #[error("Server responded with an internal error")]
+  InternalServerFail(#[from] InternalServerError, Backtrace),
+  #[error("Server responded with unexpected status code: {0}")]
+  UnexpectedStatusCode(StatusCode, Backtrace),
 }
 
 #[derive(Debug, Error)]
@@ -262,28 +270,35 @@ impl Client for HttpClient {
 
   type SyncError = HttpRequestError;
 
-  async fn get_sync_status(&self) -> Result<SyncStatus, Self::SyncError> {}
-
-  async fn sync_all_sources(&self) -> Result<bool, Self::SyncError> {
-    let response = self.get(
-      "sync",
-      |r| r,
-      &[StatusCode::OK, StatusCode::ACCEPTED],
-    ).await?;
-    match response.status() {
-      StatusCode::OK => Ok(false),
-      StatusCode::ACCEPTED => Ok(true),
-      _ => unreachable!(),
-    }
+  async fn get_sync_status(&self) -> Result<SyncStatus, Self::SyncError> {
+    let response = self.get_simple("sync").await?;
+    Ok(response.json().await?)
   }
 
-  async fn sync_local_sources(&self) -> Result<SyncStatus, Self::SyncError> {}
+  async fn sync_all_sources(&self) -> Result<SyncStatus, Self::SyncError> {
+    let response = self.post_simple("sync").await?;
+    Ok(response.json().await?)
+  }
 
-  async fn sync_local_source(&self, local_source_id: i32) -> Result<SyncStatus, Self::SyncError> {}
+  async fn sync_local_sources(&self) -> Result<SyncStatus, Self::SyncError> {
+    let response = self.post_simple("sync/local").await?;
+    Ok(response.json().await?)
+  }
 
-  async fn sync_spotify_sources(&self) -> Result<SyncStatus, Self::SyncError> {}
+  async fn sync_local_source(&self, local_source_id: i32) -> Result<SyncStatus, Self::SyncError> {
+    let response = self.post_simple(format!("sync/local/{}", local_source_id)).await?;
+    Ok(response.json().await?)
+  }
 
-  async fn sync_spotify_source(&self, spotify_source_id: i32) -> Result<SyncStatus, Self::SyncError> {}
+  async fn sync_spotify_sources(&self) -> Result<SyncStatus, Self::SyncError> {
+    let response = self.post_simple("sync/spotify").await?;
+    Ok(response.json().await?)
+  }
+
+  async fn sync_spotify_source(&self, spotify_source_id: i32) -> Result<SyncStatus, Self::SyncError> {
+    let response = self.post_simple(format!("sync/spotify/{}", spotify_source_id)).await?;
+    Ok(response.json().await?)
+  }
 }
 
 // Internals

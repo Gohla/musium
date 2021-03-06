@@ -1,6 +1,6 @@
 <component name="ProjectRunConfigurationManager">
-  <configuration default="false" name="Run (fastdev) cli -- list-artists" type="CargoCommandRunConfiguration" factoryName="Cargo Command" folderName="CLI">
-    <option name="command" value="run --bin musium_cli -Z unstable-options --profile fastdev -- list-artists" />
+  <configuration default="false" name="R cli -- play-track" type="CargoCommandRunConfiguration" factoryName="Cargo Command" folderName="CLI">
+    <option name="command" value="run --bin musium_cli -Z unstable-options --profile fastdev -- play-track 1" />
     <option name="workingDirectory" value="file://$PROJECT_DIR$" />
     <option name="channel" value="DEFAULT" />
     <option name="allFeatures" value="false" />

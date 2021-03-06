@@ -14,11 +14,11 @@ use tracing::{event, Level};
 use musium_backend::database::{Database, DatabaseConnectError, DatabaseQueryError, user::UserAddVerifyError};
 use musium_backend::database::source::spotify;
 use musium_backend::database::track::{PlayError, PlaySource};
+use musium_backend::sync::{SyncClient, SyncClientError};
 use musium_core::api::InternalServerError;
 use musium_core::model::{NewLocalSource, NewUser};
 
 use crate::auth::LoggedInUser;
-use crate::sync::Sync;
 
 // TODO: all async functions that touch the database are blocking! this should not be the case!
 
@@ -302,19 +302,62 @@ pub async fn set_user_artist_rating(
   Ok(HttpResponse::Ok().json(rating))
 }
 
-// Scanning
+// Sync
 
-pub async fn sync(
+pub async fn get_sync_status(
   database: web::Data<Database>,
-  scanner: web::Data<Sync>,
+  sync_client: web::Data<SyncClient>,
   _logged_in_user: LoggedInUser,
-) -> HttpResponse {
-  let started_sync = scanner.sync(database.into_inner());
-  if started_sync {
-    HttpResponse::Accepted().finish()
-  } else {
-    HttpResponse::Ok().finish()
-  }
+) -> Result<HttpResponse, InternalError> {
+  let sync_status = sync_client.get_status(database.into_inner()).await?;
+  Ok(HttpResponse::Ok().json(sync_status))
+}
+
+pub async fn sync_all_sources(
+  database: web::Data<Database>,
+  sync_client: web::Data<SyncClient>,
+  _logged_in_user: LoggedInUser,
+) -> Result<HttpResponse, InternalError> {
+  let sync_status = sync_client.sync_all_sources(database.into_inner()).await?;
+  Ok(HttpResponse::Ok().json(sync_status))
+}
+
+pub async fn sync_local_sources(
+  database: web::Data<Database>,
+  sync_client: web::Data<SyncClient>,
+  _logged_in_user: LoggedInUser,
+) -> Result<HttpResponse, InternalError> {
+  let sync_status = sync_client.sync_local_sources(database.into_inner()).await?;
+  Ok(HttpResponse::Ok().json(sync_status))
+}
+
+pub async fn sync_local_source(
+  id: web::Path<i32>,
+  database: web::Data<Database>,
+  sync_client: web::Data<SyncClient>,
+  _logged_in_user: LoggedInUser,
+) -> Result<HttpResponse, InternalError> {
+  let sync_status = sync_client.sync_local_source(id.into_inner(), database.into_inner()).await?;
+  Ok(HttpResponse::Ok().json(sync_status))
+}
+
+pub async fn sync_spotify_sources(
+  database: web::Data<Database>,
+  sync_client: web::Data<SyncClient>,
+  _logged_in_user: LoggedInUser,
+) -> Result<HttpResponse, InternalError> {
+  let sync_status = sync_client.sync_spotify_sources(database.into_inner()).await?;
+  Ok(HttpResponse::Ok().json(sync_status))
+}
+
+pub async fn sync_spotify_source(
+  id: web::Path<i32>,
+  database: web::Data<Database>,
+  sync_client: web::Data<SyncClient>,
+  _logged_in_user: LoggedInUser,
+) -> Result<HttpResponse, InternalError> {
+  let sync_status = sync_client.sync_spotify_source(id.into_inner(), database.into_inner()).await?;
+  Ok(HttpResponse::Ok().json(sync_status))
 }
 
 // Error type
@@ -347,6 +390,8 @@ pub enum InternalError {
   IoFail(#[from] std::io::Error, Backtrace),
   #[error("Failed to play track")]
   PlayFail(#[from] PlayError, Backtrace),
+  #[error("Failed to start sync or get sync status")]
+  SyncFail(#[from] SyncClientError, Backtrace),
 }
 
 impl ResponseError for InternalError {

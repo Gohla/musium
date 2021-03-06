@@ -9,3 +9,4 @@ pub mod model;
 pub mod api;
 pub mod format_error;
 pub mod untagged_result;
+pub mod panic;

@@ -2425,9 +2425,9 @@ dependencies = [
 
 [[package]]
 name = "id3"
-version = "0.5.3"
+version = "0.6.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8cb37ae5aa60d57c5f3412df1f3e5a48a978804f4a7e70700bb5f97e8f1a6331"
+checksum = "7757528cac50df8681481dc91fd0b0e4a9886f78db9b6579d3c181d1184c7d94"
 dependencies = [
  "bitflags",
  "byteorder",
@@ -3009,6 +3009,7 @@ dependencies = [
  "crossbeam-channel 0.5.0",
  "futures",
  "musium_audio_output",
+ "musium_core",
  "rodio",
  "thiserror",
 ]

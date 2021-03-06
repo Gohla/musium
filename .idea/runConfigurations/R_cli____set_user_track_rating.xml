@@ -1,6 +1,6 @@
 <component name="ProjectRunConfigurationManager">
-  <configuration default="false" name="Run (fastdev) cli -- show-spotify-me" type="CargoCommandRunConfiguration" factoryName="Cargo Command" folderName="CLI">
-    <option name="command" value="run --bin musium_cli -Z unstable-options --profile fastdev -- show-spotify-me" />
+  <configuration default="false" name="R cli -- set-user-track-rating" type="CargoCommandRunConfiguration" factoryName="Cargo Command" folderName="CLI">
+    <option name="command" value="run --bin musium_cli -Z unstable-options --profile fastdev -- set-user-track-rating 1 1 4" />
     <option name="workingDirectory" value="file://$PROJECT_DIR$" />
     <option name="channel" value="DEFAULT" />
     <option name="allFeatures" value="false" />

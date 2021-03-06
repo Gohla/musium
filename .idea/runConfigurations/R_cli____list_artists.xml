@@ -1,6 +1,6 @@
 <component name="ProjectRunConfigurationManager">
-  <configuration default="false" name="Run (fastdev) cli -- set-user-album-rating" type="CargoCommandRunConfiguration" factoryName="Cargo Command" folderName="CLI">
-    <option name="command" value="run --bin musium_cli -Z unstable-options --profile fastdev -- set-user-album-rating 1 1 3" />
+  <configuration default="false" name="R cli -- list-artists" type="CargoCommandRunConfiguration" factoryName="Cargo Command" folderName="CLI">
+    <option name="command" value="run --bin musium_cli -Z unstable-options --profile fastdev -- list-artists" />
     <option name="workingDirectory" value="file://$PROJECT_DIR$" />
     <option name="channel" value="DEFAULT" />
     <option name="allFeatures" value="false" />

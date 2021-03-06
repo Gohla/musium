@@ -8,6 +8,7 @@ use rodio::{OutputStream, OutputStreamHandle};
 use thiserror::Error;
 
 pub use musium_audio_output::AudioOutput;
+use musium_core::panic::try_panic_into_string;
 
 #[derive(Clone)]
 pub struct RodioAudioOutput {
@@ -66,22 +67,20 @@ impl RodioAudioOutput {
   /// Destroys this audio output. Returns an error if it cannot be destroyed because there are still clones around, or
   /// if the worker thread was stopped but panicked.
   ///
-  /// Dropping this audio output and all its clones will also properly destroy this audio output, but ignores the panic
-  /// produced by the worker thread (if any).
+  /// Dropping this audio output and all its clones will also properly destroy it, but ignores the panic produced by the
+  /// worker thread (if any), and does not wait for the worker thread to complete first.
   pub fn destroy(self) -> Result<(), RodioDestroyError> {
     use RodioDestroyError::*;
     let Inner { thread_join_handle, .. } = Arc::try_unwrap(self.inner).map_err(|_| ClonesStillExist)?;
     // Because we did not match on Inner.tx, it is dropped and the thread will stop.
-    match thread_join_handle.join() {
-      Err(e) => if let Some(msg) = e.downcast_ref::<&'static str>() {
-        Err(ThreadPanicked(msg.to_string()))
-      } else if let Some(msg) = e.downcast_ref::<String>() {
-        Err(ThreadPanicked(msg.to_string()))
+    if let Err(e) = thread_join_handle.join() {
+      return if let Some(msg) = try_panic_into_string(e) {
+        Err(ThreadPanicked(msg))
       } else {
         Err(ThreadPanickedSilently)
-      }
-      Ok(_) => Ok(()),
-    }
+      };
+    };
+    Ok(())
   }
 }
 

@@ -9,7 +9,7 @@ param(
   [Parameter(Position = 1, ValueFromRemainingArguments)][String]$RemainingArgs
 )
 
-$StopServerBefore = $NoStopServerBefore
+$StopServerBefore = !$NoStopServerBefore.IsPresent
 $Build = !$NoBuild
 
 $Env:SQLITE_MAX_VARIABLE_NUMBER = 1000000
@@ -39,23 +39,24 @@ function Start-Diesel-Cli {
 
 function Start-Build {
   param(
-    [switch]$Server,
-    [switch]$Cli,
-    [switch]$Gui
+    [Switch]$Server,
+    [Switch]$Cli,
+    [Switch]$Gui
   )
   if($Build) {
     $Params = @("build")
     if($Server) {
-      Stop-Servers # Need to stop the servers before building, otherwise we cannot write to the server executable.
-      $Params += "--package"
+      # Need to stop the servers before building, otherwise we cannot write to the server executable.
+      Stop-Servers-Before-If-Requested
+      $Params += "--bin"
       $Params += "musium_server"
     }
     if($Cli) {
-      $Params += "--package"
+      $Params += "--bin"
       $Params += "musium_cli"
     }
     if($Gui) {
-      $Params += "--package"
+      $Params += "--bin"
       $Params += "musium_gui"
     }
     if(!$DebugProfile) {
@@ -107,9 +108,9 @@ function Start-Gui {
 
 function Before {
   param(
-    [parameter(mandatory = $false, position = 0, ValueFromRemainingArguments = $true)]$Args
+    [Parameter(Position = 0, ValueFromRemainingArguments)]$BeforeRemainingArgs
   )
-  Start-Build $Args
+  Invoke-Expression "Start-Build $BeforeRemainingArgs"
   Stop-Servers-Before-If-Requested
   Start-Server-If-Not-Running
   Start-Sleep -m 100 # Sleep to give the server some time to start up
@@ -143,10 +144,16 @@ function Test-Reset {
   After
 }
 
+Function Test-Cli {
+  Before -Cli
+  Start-Cli $RemainingArgs
+  # No After, should not stop server when testing the CLI, as it could start a sync.
+}
+
 function Test-Sync {
   Before -Server -Cli
   Start-Cli sync
-  # No After, should not stop server when syncing, as syncing does not wait for syncing to be finished
+  # No After, should not stop server when syncing, as syncing does not wait for syncing to be finished.
 }
 function Test-ListLocalSources {
   Before -Server -Cli

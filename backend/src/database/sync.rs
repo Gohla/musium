@@ -37,8 +37,8 @@ impl DatabaseConnection {
   #[instrument(skip(self))]
   pub fn sync_all_sources(&self) -> Result<(), SyncAllSourcesError> {
     self.connection.transaction::<_, SyncAllSourcesError, _>(|| {
-      self.sync_all_local_sources()?;
-      self.sync_all_spotify_sources()?;
+      self.sync_local_sources()?;
+      self.sync_spotify_sources()?;
       Ok(())
     })
   }
@@ -60,7 +60,7 @@ pub enum SyncLocalSourcesError {
 
 impl DatabaseConnection {
   #[instrument(skip(self))]
-  pub fn sync_all_local_sources(&self) -> Result<(), SyncLocalSourcesError> {
+  pub fn sync_local_sources(&self) -> Result<(), SyncLocalSourcesError> {
     use SyncLocalSourcesError::*;
     self.connection.transaction::<_, SyncLocalSourcesError, _>(|| {
       let local_sources = self.list_local_sources()?;
@@ -102,7 +102,7 @@ pub enum SyncSpotifySourcesError {
 
 impl DatabaseConnection {
   #[instrument(skip(self))]
-  pub fn sync_all_spotify_sources(&self) -> Result<(), SyncSpotifySourcesError> {
+  pub fn sync_spotify_sources(&self) -> Result<(), SyncSpotifySourcesError> {
     self.connection.transaction::<_, SyncSpotifySourcesError, _>(|| {
       let spotify_sources = self.list_spotify_sources()?;
       let runtime = tokio::runtime::Builder::new_current_thread()
