@@ -16,21 +16,22 @@ use musium_core::model::{Album, Track, User};
 use musium_core::model::collection::{TrackInfo, Tracks};
 use musium_player::*;
 
-use crate::page::main::tracks::TrackViewModel;
+use crate::page::main::track::TrackViewModel;
 use crate::util::{ButtonEx, Update};
 use crate::widget::table::TableBuilder;
 
-mod tracks;
+mod track;
 mod source;
 
 #[derive(Default, Debug)]
 pub struct Page {
   logged_in_user: User,
 
-  tracks_tab: tracks::Tab,
-
-  refresh_library_button_state: button::State,
-  refreshing_library: bool,
+  track_tab: track::Tab,
+  track_tab_button_state: button::State,
+  source_tab: source::Tab,
+  source_tab_button_state: button::State,
+  current_tab: Tab,
 
   prev_track_button_state: button::State,
   playpause_button_state: button::State,
@@ -39,86 +40,64 @@ pub struct Page {
 
 #[derive(Debug)]
 pub enum Message {
-  RequestLibraryRefresh,
-  ReceiveLibraryRefresh(Result<Vec<TrackViewModel>, RefreshLibraryFail>),
-  RequestPlayTrack(i32),
-  ReceivePlayResult(Result<(), PlayError>),
+  TrackTab(track::Message),
+  SourceTab(source::Message),
+  SetCurrentTab(Tab),
   RequestPrevTrack,
   RequestPlayPause,
   RequestNextTrack,
+}
+
+#[derive(Debug, Eq, PartialEq)]
+pub enum Tab {
+  Track,
+  Source,
+}
+
+impl Default for Tab {
+  fn default() -> Self { Self::Track }
 }
 
 pub enum Action {}
 
 impl<'a> Page {
   pub fn new(logged_in_user: User, player: &Player) -> (Self, Command<Message>) {
-    let mut page = Self {
+    let (track_tab, track_tab_command) = track::Tab::new(player);
+    let (source_tab, source_tab_command) = source::Tab::new(player);
+    let page = Self {
       logged_in_user,
       ..Self::default()
     };
-    let command = page.refresh_library(player);
+    let command = Command::batch(vec![
+      track_tab_command.map(|m| Message::TrackTab(m)),
+      source_tab_command.map(|m| Message::SourceTab(m)),
+    ]);
     (page, command)
   }
 
   pub fn update(&mut self, player: &Player, message: Message) -> Update<Message, Action> {
+    use Message::*;
     match message {
-      Message::RequestLibraryRefresh => {
-        self.refreshing_library = true;
-        return Update::command(self.refresh_library(player));
-      }
-      Message::ReceiveLibraryRefresh(result) => {
-        match result {
-          Ok(track_view_models) => {
-            debug!("Received {} tracks", track_view_models.len());
-            self.tracks_tab.update_tracks(track_view_models);
-          }
-          Err(e) => {
-            let format_error = FormatError::new(&e);
-            error!("Receiving tracks failed: {:?}", format_error);
-          }
-        }
-        self.refreshing_library = false;
-      }
-      Message::RequestPlayTrack(id) => {
-        let player = player.clone();
-        return Update::command(Command::perform(
-          async move { player.play_track_by_id(id, 0.1).await },
-          |r| Message::ReceivePlayResult(r),
-        ));
-      }
-      Message::ReceivePlayResult(result) => match result {
-        Ok(_) => {
-          debug!("Track played successfully");
-        }
-        Err(e) => {
-          let format_error = FormatError::new(&e);
-          error!("Playing track failed: {:?}", format_error);
-        }
-      }
+      TrackTab(m) => { return self.track_tab.update(player, m).map_command(|m| TrackTab(m)); }
+      SourceTab(m) => { return self.source_tab.update(player, m).map_command(|m| SourceTab(m)); }
+      SetCurrentTab(tab) => self.current_tab = tab,
       m => debug!("Unhandled message: {:?}", m)
-    }
+    };
     Update::none()
   }
 
   pub fn view(&'a mut self) -> Element<'a, Message> {
-    let top = Row::new()
+    let tabs = Row::new()
       .spacing(2)
-      .width(Length::Fill)
-      .push(Row::new()
-        .width(Length::Fill)
-        .push(Text::new("Musium").color([0.5, 0.5, 0.5]))
-        .push(Text::new("|"))
-        .push(Text::new("all tracks"))
-      )
-      .push(Row::new()
-        .width(Length::Shrink)
-        .align_items(Align::End)
-        .push(Button::new(&mut self.refresh_library_button_state, Text::new("Refresh library"))
-          .on_press_into(|| Message::RequestLibraryRefresh, !self.refreshing_library)
-        )
-      )
+      .push(Button::new(&mut self.track_tab_button_state, Text::new("Tracks"))
+        .on_press_into(|| Message::SetCurrentTab(Tab::Track), self.current_tab != Tab::Track))
+      .push(Button::new(&mut self.source_tab_button_state, Text::new("Sources"))
+        .on_press_into(|| Message::SetCurrentTab(Tab::Source), self.current_tab != Tab::Source))
       ;
-    let content = self.tracks_tab.view();
+    let current_tab = match self.current_tab {
+      Tab::Track => self.track_tab.view().map(|m| Message::TrackTab(m)),
+      Tab::Source => self.source_tab.view().map(|m| Message::SourceTab(m)),
+    };
     let player_controls = Row::new()
       .spacing(2)
       .push(Button::new(&mut self.prev_track_button_state, Text::new("Prev track"))
@@ -131,38 +110,30 @@ impl<'a> Page {
     let content: Element<_> = Column::new()
       .width(Length::Fill)
       .height(Length::Fill)
-      .align_items(Align::Center)
       .padding(4)
       .spacing(4)
-      .push(top)
+      .push(tabs)
       .push(Rule::horizontal(1))
-      .push(content)
+      .push(current_tab)
       .push(Rule::horizontal(1))
-      .push(player_controls)
+      .push(Row::new().align_items(Align::Center).push(player_controls))
       .into();
-    content//.explain([0.5, 0.5, 0.5])
-  }
-
-  fn refresh_library(&mut self, player: &Player) -> Command<Message> {
-    let player = player.clone();
-    Command::perform(
-      async move {
-        let library_ref = player.refresh_library().await?;
-        let tracks_view_models: Vec<_> = library_ref.iter().map(|ti| ti.into()).collect();
-        Ok(tracks_view_models)
-      },
-      |r| Message::ReceiveLibraryRefresh(r),
-    )
+    content.explain([0.5, 0.5, 0.5])
   }
 }
 
 // Common widget functions
 
 fn h1(label: impl Into<String>) -> Text { Text::new(label).size(36) }
+
 fn h2(label: impl Into<String>) -> Text { Text::new(label).size(32) }
+
 fn h3(label: impl Into<String>) -> Text { Text::new(label).size(28) }
+
 fn h4(label: impl Into<String>) -> Text { Text::new(label).size(24) }
+
 fn h5(label: impl Into<String>) -> Text { Text::new(label).size(20) }
+
 fn txt(label: impl Into<String>) -> Text { Text::new(label).size(16) }
 
 fn header_text<'a, M>(label: impl Into<String>) -> Element<'a, M> {
@@ -186,5 +157,3 @@ fn cell_text<'a, M>(label: impl Into<String>) -> Element<'a, M> {
 fn empty<'a, M: 'a>() -> Element<'a, M> {
   Space::new(Length::Shrink, Length::Shrink).into()
 }
-
-

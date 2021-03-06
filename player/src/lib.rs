@@ -1,5 +1,3 @@
-use std::sync::{Arc, RwLock, RwLockReadGuard};
-
 use thiserror::Error;
 
 pub use musium_audio_output::AudioOutput as AudioOutputT;
@@ -9,7 +7,6 @@ pub use musium_client::Client as ClientT;
 #[cfg(feature = "musium_client_http")]
 pub use musium_client_http::{HttpClient, HttpRequestError, Url};
 use musium_core::model::{User, UserLogin};
-use musium_core::model::collection::Tracks;
 
 #[cfg(feature = "musium_client_http")]
 pub type Client = HttpClient;
@@ -20,7 +17,6 @@ pub type AudioOutput = RodioAudioOutput;
 pub struct Player {
   client: Client,
   audio_output: AudioOutput,
-  library: Arc<RwLock<Tracks>>,
 }
 
 // Creation
@@ -30,7 +26,6 @@ impl Player {
     Self {
       client,
       audio_output,
-      library: Arc::new(RwLock::new(Tracks::default())),
     }
   }
 }
@@ -63,31 +58,6 @@ impl Player {
 impl Player {
   pub async fn login(&self, user_login: &UserLogin) -> Result<User, <Client as ClientT>::LoginError> {
     self.get_client().login(user_login).await
-  }
-}
-
-// Library
-
-#[derive(Debug, Error)]
-pub enum RefreshLibraryFail {
-  #[error("Failed to get library from the client")]
-  ClientFail(#[source] <Client as ClientT>::TrackError),
-}
-
-impl<'a> Player {
-  pub async fn refresh_library(&'a self) -> Result<RwLockReadGuard<'a, Tracks>, RefreshLibraryFail> {
-    use RefreshLibraryFail::*;
-    let library_raw = self.get_client().list_tracks().await.map_err(|e| ClientFail(e))?;
-    // UNWRAP: returns error when thread panicked. In that case we also panic.
-    let library: Tracks = tokio::task::spawn_blocking(|| { library_raw.into() }).await.unwrap();
-    {
-      // UNWRAP: returns error when lock is poisoned, which is caused by a panic. In that case we also panic.
-      let mut library_write_locked = self.library.write().unwrap();
-      *library_write_locked = library;
-    }
-    // UNWRAP: returns error when lock is poisoned, which is caused by a panic. In that case we also panic.
-    let library_read_locked = self.library.read().unwrap();
-    Ok(library_read_locked)
   }
 }
 

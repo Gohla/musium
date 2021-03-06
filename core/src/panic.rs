@@ -9,3 +9,7 @@ pub fn try_panic_into_string(panic: Box<dyn Any + Send + 'static>) -> Option<Str
     None
   }
 }
+
+pub fn panic_into_string(panic: Box<dyn Any + Send + 'static>) -> String {
+  try_panic_into_string(panic).unwrap_or("(no panic message)".to_string())
+}

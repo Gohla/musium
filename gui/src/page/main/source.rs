@@ -3,7 +3,10 @@ use std::error::Error;
 use std::rc::Rc;
 
 use iced::{Align, button, Button, Checkbox, Column, Command, Element, Length, Row, Rule, scrollable, Text};
+use itertools::Itertools;
+use tracing::{debug, error};
 
+use musium_core::format_error::FormatError;
 use musium_core::model::{LocalSource, SpotifySource};
 use musium_player::{Client, ClientT, Player};
 
@@ -23,12 +26,10 @@ pub struct Tab {
   sync_all_button_state: button::State,
 }
 
-
 #[derive(Debug)]
 pub enum Message {
   RequestRefresh,
-  ReceiveLocalSources(Result<Vec<LocalSourceViewModel>, <Client as ClientT>::LocalSourceError>),
-  ReceiveSpotifySources(Result<Vec<SpotifySourceViewModel>, <Client as ClientT>::SpotifySourceError>),
+  ReceiveRefresh(Result<Vec<LocalSourceViewModel>, <Client as ClientT>::LocalSourceError>, Result<Vec<SpotifySourceViewModel>, <Client as ClientT>::SpotifySourceError>),
 
   SetLocalSourceEnabled(i32, bool),
   SetSpotifySourceEnabled(i32, bool),
@@ -42,11 +43,36 @@ pub enum Message {
 }
 
 impl<'a> Tab {
+  pub fn new(player: &Player) -> (Self, Command<Message>) {
+    let mut tab = Self {
+      ..Self::default()
+    };
+    let command = tab.refresh(player);
+    (tab, command)
+  }
+
   pub fn update(&mut self, player: &Player, message: Message) -> Update<Message, super::Action> {
     match message {
-      Message::RequestRefresh => {}
-      Message::ReceiveLocalSources(r) => {}
-      Message::ReceiveSpotifySources(r) => {}
+      Message::RequestRefresh => {
+        return Update::command(self.refresh(player));
+      }
+      Message::ReceiveRefresh(rl, rs) => {
+        self.refreshing = false;
+        match rl {
+          Ok(sources) => {
+            debug!("Received {} local sources", sources.len());
+            self.local_sources.update(sources)
+          }
+          Err(e) => error!("Receiving local sources failed: {:?}", FormatError::new(&e)),
+        };
+        match rs {
+          Ok(sources) => {
+            debug!("Received {} Spotify sources", sources.len());
+            self.spotify_sources.update(sources)
+          }
+          Err(e) => error!("Receiving Spotify sources failed: {:?}", FormatError::new(&e)),
+        };
+      }
 
       Message::SetLocalSourceEnabled(_, _) => {}
       Message::SetSpotifySourceEnabled(_, _) => {}
@@ -63,21 +89,24 @@ impl<'a> Tab {
 
   pub fn view(&'a mut self) -> Element<'a, Message> {
     let header = Row::new()
-      .width(Length::Fill)
-      .align_items(Align::Center)
       .spacing(2)
-      .push(h1("Sources"))
-      .push(Button::new(&mut self.refresh_button_state, Text::new("Refresh all sources")).on_press_into(|| Message::RequestRefresh, !self.refreshing))
-      .push(Button::new(&mut self.sync_all_button_state, Text::new("Sync all sources")).on_press_into(|| Message::RequestSync, !self.syncing))
+      .width(Length::Fill)
+      .push(Row::new()
+        .width(Length::Fill)
+        .push(h1("Sources"))
+      )
+      .push(Row::new()
+        .width(Length::Shrink)
+        .align_items(Align::End)
+        .push(Button::new(&mut self.refresh_button_state, Text::new("Refresh")).on_press_into(|| Message::RequestRefresh, !self.refreshing))
+        .push(Button::new(&mut self.sync_all_button_state, Text::new("Sync all")).on_press_into(|| Message::RequestSync, !self.syncing))
+      )
       ;
-
     let local_sources = self.local_sources.view(self.syncing);
     let spotify_sources = self.spotify_sources.view(self.syncing);
-
     Column::new()
       .width(Length::Fill)
       .height(Length::Fill)
-      .align_items(Align::Center)
       .padding(4)
       .spacing(4)
       .push(header)
@@ -88,30 +117,19 @@ impl<'a> Tab {
       .into()
   }
 
-  fn refresh_sources(&mut self, player: &Player) -> Command<Message> {
-    let local_sources_command = {
-      let player = player.clone();
-      Command::perform(
-        async move {
-          let sources = player.get_client().list_local_sources().await?;
-          let view_models: Vec<_> = sources.into_iter().map(|s| s.into()).collect();
-          Ok(view_models)
-        },
-        |r| Message::ReceiveLocalSources(r),
-      )
-    };
-    let spotify_sources_command = {
-      let player = player.clone();
-      Command::perform(
-        async move {
-          let sources = player.get_client().list_spotify_sources().await?;
-          let view_models: Vec<_> = sources.into_iter().map(|s| s.into()).collect();
-          Ok(view_models)
-        },
-        |r| Message::ReceiveSpotifySources(r),
-      )
-    };
-    Command::batch(vec![local_sources_command, spotify_sources_command])
+  fn refresh(&mut self, player: &Player) -> Command<Message> {
+    self.refreshing = true;
+    let player = player.clone();
+    Command::perform(
+      async move {
+        let local_sources = player.clone().get_client().list_local_sources().await
+          .map(|s| s.into_iter().map(|s| s.into()).collect_vec());
+        let spotify_sources = player.get_client().list_spotify_sources().await
+          .map(|s| s.into_iter().map(|s| s.into()).collect_vec());
+        (local_sources, spotify_sources)
+      },
+      |(l, s)| Message::ReceiveRefresh(l, s),
+    )
   }
 }
 
@@ -137,24 +155,23 @@ impl<'a> LocalSources {
       .push_column(5, header_text("ID"), Box::new(|t| {
         cell_text(t.source.id.to_string())
       }))
-      .push_column(5, header_text("Directory"), Box::new(|t|
+      .push_column(25, header_text("Directory"), Box::new(|t|
         cell_text(t.source.directory.clone())
       ))
-      .push_column(25, header_text("Enabled"), Box::new(|t| {
+      .push_column(10, header_text("Enabled"), Box::new(|t| {
         let id = t.source.id;
         Checkbox::new(t.source.enabled, "Enabled", move |e| Message::SetLocalSourceEnabled(id, e)).into()
       }))
-      .push_column(25, header_text("Sync"), Box::new(move |t| {
+      .push_column(10, header_text("Sync"), Box::new(move |t| {
         let id = t.source.id;
         Button::new(&mut t.sync_button_state, Text::new("Sync"))
           .on_press_into(move || Message::RequestLocalSourceSync(id), !syncing)
       }))
       .build(&mut self.rows_scrollable_state)
       .into();
-
     Column::new()
       .width(Length::Fill)
-      .align_items(Align::Center)
+      .height(Length::Fill)
       .spacing(2)
       .push(Row::new()
         .spacing(2)
@@ -192,7 +209,7 @@ impl<'a> SpotifySources {
   pub fn update(&mut self, sources: Vec<SpotifySourceViewModel>) {
     self.sources = Rc::new(RefCell::new(sources));
   }
-  
+
   fn view(&'a mut self, syncing: bool) -> Element<'a, Message> {
     let table: Element<_> = TableBuilder::new(self.sources.clone())
       .spacing(2)
@@ -204,27 +221,26 @@ impl<'a> SpotifySources {
       .push_column(5, header_text("User ID"), Box::new(|t|
         cell_text(t.source.user_id.to_string())
       ))
-      .push_column(25, header_text("Enabled"), Box::new(|t| {
+      .push_column(10, header_text("Enabled"), Box::new(|t| {
         let id = t.source.id;
         Checkbox::new(t.source.enabled, "Enabled", move |e| Message::SetSpotifySourceEnabled(id, e)).into()
       }))
-      .push_column(25, header_text("Sync"), Box::new(move |t| {
+      .push_column(10, header_text("Sync"), Box::new(move |t| {
         let id = t.source.id;
         Button::new(&mut t.sync_button_state, Text::new("Sync"))
           .on_press_into(move || Message::RequestSpotifySourceSync(id), !syncing)
       }))
       .build(&mut self.rows_scrollable_state)
       .into();
-
     Column::new()
       .width(Length::Fill)
-      .align_items(Align::Center)
+      .height(Length::Fill)
       .spacing(2)
       .push(Row::new()
         .spacing(2)
-        .push(h2("Local sources"))
-        .push(Button::new(&mut self.sync_button_state, Text::new("Sync local sources"))
-          .on_press_into(|| Message::RequestLocalSourcesSync, !syncing)
+        .push(h2("Spotify sources"))
+        .push(Button::new(&mut self.sync_button_state, Text::new("Sync Spotify sources"))
+          .on_press_into(|| Message::RequestSpotifySourcesSync, !syncing)
         )
       )
       .push(Rule::horizontal(1))
