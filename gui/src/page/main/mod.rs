@@ -89,6 +89,7 @@ impl<'a> Page {
   pub fn view(&'a mut self) -> Element<'a, Message> {
     let tabs = Row::new()
       .spacing(2)
+      .align_items(Align::Center)
       .push(Button::new(&mut self.track_tab_button_state, Text::new("Tracks"))
         .on_press_into(|| Message::SetCurrentTab(Tab::Track), self.current_tab != Tab::Track))
       .push(Button::new(&mut self.source_tab_button_state, Text::new("Sources"))
@@ -100,6 +101,7 @@ impl<'a> Page {
     };
     let player_controls = Row::new()
       .spacing(2)
+      .align_items(Align::Center)
       .push(Button::new(&mut self.prev_track_button_state, Text::new("Prev track"))
         .on_press_into(|| Message::RequestPrevTrack, true))
       .push(Button::new(&mut self.playpause_button_state, Text::new("Play/pause"))
@@ -116,7 +118,7 @@ impl<'a> Page {
       .push(Rule::horizontal(1))
       .push(current_tab)
       .push(Rule::horizontal(1))
-      .push(Row::new().align_items(Align::Center).push(player_controls))
+      .push(Column::new().width(Length::Fill).align_items(Align::Center).push(player_controls))
       .into();
     content.explain([0.5, 0.5, 0.5])
   }
@@ -124,15 +126,13 @@ impl<'a> Page {
 
 // Common widget functions
 
-fn h1(label: impl Into<String>) -> Text { Text::new(label).size(36) }
+fn h1(label: impl Into<String>) -> Text { Text::new(label).size(32) }
 
-fn h2(label: impl Into<String>) -> Text { Text::new(label).size(32) }
+fn h2(label: impl Into<String>) -> Text { Text::new(label).size(28) }
 
-fn h3(label: impl Into<String>) -> Text { Text::new(label).size(28) }
+fn h3(label: impl Into<String>) -> Text { Text::new(label).size(24) }
 
-fn h4(label: impl Into<String>) -> Text { Text::new(label).size(24) }
-
-fn h5(label: impl Into<String>) -> Text { Text::new(label).size(20) }
+fn h4(label: impl Into<String>) -> Text { Text::new(label).size(20) }
 
 fn txt(label: impl Into<String>) -> Text { Text::new(label).size(16) }
 
