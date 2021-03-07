@@ -6,7 +6,7 @@ use std::collections::HashMap;
 use std::rc::Rc;
 use std::sync::{Arc, Mutex};
 
-use iced::{self, button, Button, Checkbox, Color, Column, Command, Element, Length, Row, Rule, rule, scrollable, Text};
+use iced::{self, button, Button, Checkbox, Color, Column, Command, Element, Length, Row, Rule, rule, scrollable, Subscription, Text};
 use iced_native::{Align, HorizontalAlignment, Space, VerticalAlignment};
 use itertools::Itertools;
 use tracing::{debug, error, info};
@@ -84,6 +84,10 @@ impl<'a> Page {
       m => debug!("Unhandled message: {:?}", m)
     };
     Update::none()
+  }
+
+  pub fn subscription(&self, player: &Player) -> Subscription<Message> {
+    self.source_tab.subscription(player).map(|m| Message::SourceTab(m))
   }
 
   pub fn view(&'a mut self) -> Element<'a, Message> {

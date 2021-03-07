@@ -1,14 +1,19 @@
 use std::cell::RefCell;
 use std::error::Error;
+use std::hash::{Hash, Hasher};
 use std::rc::Rc;
+use std::time::Duration;
 
-use iced::{Align, button, Button, Checkbox, Column, Command, Element, Length, Row, Rule, scrollable, Text};
+use iced::{Align, button, Button, Checkbox, Column, Command, Element, Length, Row, Rule, scrollable, Subscription, Text};
+use iced::futures::{self, stream::BoxStream};
+use iced_native::subscription::Recipe;
 use itertools::Itertools;
 use tracing::{debug, error};
 
+use musium_core::api::SyncStatus;
 use musium_core::format_error::FormatError;
 use musium_core::model::{LocalSource, SpotifySource};
-use musium_player::{Client, ClientT, Player};
+use musium_player::{Client, ClientT, HttpRequestError, Player};
 
 use crate::page::main::{cell_button, cell_checkbox, cell_text, h1, h2, header_text, horizontal_line};
 use crate::util::{ButtonEx, Update};
@@ -23,6 +28,7 @@ pub struct Tab {
   refresh_button_state: button::State,
 
   syncing: bool,
+  sync_subscription_active: bool,
   sync_all_button_state: button::State,
 }
 
@@ -41,7 +47,7 @@ pub enum Message {
   RequestLocalSourceSync(i32),
   RequestSpotifySourcesSync,
   RequestSpotifySourceSync(i32),
-  ReceiveSyncStatus,
+  ReceiveSyncStatus(Result<SyncStatus, <Client as ClientT>::SyncError>),
 }
 
 impl<'a> Tab {
@@ -122,14 +128,72 @@ impl<'a> Tab {
         };
       }
 
-      RequestSync => {}
-      RequestLocalSourcesSync => {}
-      RequestLocalSourceSync(_) => {}
-      RequestSpotifySourcesSync => {}
-      RequestSpotifySourceSync(_) => {}
-      ReceiveSyncStatus => {}
+      RequestSync => {
+        self.syncing = true;
+        let player = player.clone();
+        return Update::command(Command::perform(async move {
+          player.get_client().sync_all_sources().await
+        }, move |r| ReceiveSyncStatus(r)));
+      }
+      RequestLocalSourcesSync => {
+        self.syncing = true;
+        let player = player.clone();
+        return Update::command(Command::perform(async move {
+          player.get_client().sync_local_sources().await
+        }, move |r| ReceiveSyncStatus(r)));
+      }
+      RequestLocalSourceSync(local_source_id) => {
+        self.syncing = true;
+        let player = player.clone();
+        return Update::command(Command::perform(async move {
+          player.get_client().sync_local_source(local_source_id).await
+        }, move |r| ReceiveSyncStatus(r)));
+      }
+      RequestSpotifySourcesSync => {
+        self.syncing = true;
+        let player = player.clone();
+        return Update::command(Command::perform(async move {
+          player.get_client().sync_spotify_sources().await
+        }, move |r| ReceiveSyncStatus(r)));
+      }
+      RequestSpotifySourceSync(spotify_source_id) => {
+        self.syncing = true;
+        let player = player.clone();
+        return Update::command(Command::perform(async move {
+          player.get_client().sync_spotify_source(spotify_source_id).await
+        }, move |r| ReceiveSyncStatus(r)));
+      }
+      ReceiveSyncStatus(result) => {
+        self.sync_subscription_active = true;
+        match result {
+          Ok(sync_status) => {
+            debug!("Received sync status: {}", sync_status);
+            match sync_status {
+              SyncStatus::Idle | SyncStatus::Completed | SyncStatus::Failed => {
+                self.syncing = false;
+                self.sync_subscription_active = false;
+              },
+              _ => self.syncing = true,
+            }
+          }
+          Err(e) => {
+            error!("Requesting sync failed unexpectedly: {:?}", FormatError::new(&e));
+            self.syncing = false;
+            self.sync_subscription_active = false;
+          }
+        };
+      }
     }
     Update::none()
+  }
+
+  pub fn subscription(&self, player: &Player) -> Subscription<Message> {
+    if self.sync_subscription_active {
+      let player = player.clone();
+      Subscription::from_recipe(Sync { player }).map(|r| Message::ReceiveSyncStatus(r))
+    } else {
+      Subscription::none()
+    }
   }
 
   pub fn view(&'a mut self) -> Element<'a, Message> {
@@ -320,6 +384,40 @@ pub struct SpotifySourceViewModel {
 
 impl<'a> From<SpotifySource> for SpotifySourceViewModel {
   fn from(source: SpotifySource) -> Self { Self { source, sync_button_state: button::State::default() } }
+}
+
+// Sync subscription
+
+struct Sync {
+  player: Player,
+}
+
+impl<H, I> Recipe<H, I> for Sync where
+  H: Hasher
+{
+  type Output = Result<SyncStatus, <Client as ClientT>::SyncError>;
+
+  fn hash(&self, state: &mut H) { // Only one sync subscription may be active, so hash just the marker struct.
+    struct Marker;
+    std::any::TypeId::of::<Marker>().hash(state);
+  }
+
+  fn stream(self: Box<Self>, input: BoxStream<I>) -> BoxStream<Self::Output> {
+    Box::pin(futures::stream::unfold((self.player, false, false), |(player, stop, delay)| async move {
+      if stop {
+        return None;
+      }
+      if delay {
+        tokio::time::sleep(Duration::from_millis(1000)).await;
+      }
+      let sync_status_result = player.clone().get_client().get_sync_status().await;
+      let stop = match sync_status_result {
+        Ok(SyncStatus::Idle) | Ok(SyncStatus::Completed) | Ok(SyncStatus::Failed) | Err(_) => true,
+        _ => false,
+      };
+      Some((sync_status_result, (player, stop, true)))
+    }))
+  }
 }
 
 // Utility

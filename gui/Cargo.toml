@@ -11,7 +11,7 @@ musium_player = { path = "../player" }
 iced = { version = "0.2.0", features = ["tokio", "debug"] }
 iced_graphics = "0.1.0"
 iced_native = "0.3.0"
-tokio = { version = "1", features = ["rt"], default-features = false }
+tokio = { version = "1", features = ["rt", "time"], default-features = false }
 url = "2"
 structopt = "0.3"
 dotenv = "0.15"

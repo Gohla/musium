@@ -1,4 +1,4 @@
-use iced::{Application, Command, Element};
+use iced::{Application, Command, Element, Subscription};
 use tracing::error;
 use url::Url;
 
@@ -27,8 +27,8 @@ enum Page {
 
 #[derive(Debug)]
 pub enum Message {
-  Login(login::Message),
-  Main(main::Message),
+  LoginPage(login::Message),
+  MainPage(main::Message),
 }
 
 impl Application for App {
@@ -48,19 +48,19 @@ impl Application for App {
 
   fn update(&mut self, message: Message) -> Command<Message> {
     match (&mut self.current_page, message) {
-      (Page::Login(p), Message::Login(m)) => {
+      (Page::Login(p), Message::LoginPage(m)) => {
         let Update { action, command } = p.update(&mut self.player, m);
-        let command = command.map(|m| Message::Login(m));
+        let command = command.map(|m| Message::LoginPage(m));
         if let Some(login::Action::LoggedIn(user)) = action {
           let (main_page, main_command) = main::Page::new(user, &mut self.player);
-          let main_command = main_command.map(|m| Message::Main(m));
+          let main_command = main_command.map(|m| Message::MainPage(m));
           self.current_page = Page::Main(main_page);
           Command::batch(vec![command, main_command])
         } else {
           command
         }
       }
-      (Page::Main(p), Message::Main(m)) => p.update(&mut self.player, m).into_command().map(|m| Message::Main(m)),
+      (Page::Main(p), Message::MainPage(m)) => p.update(&mut self.player, m).into_command().map(|m| Message::MainPage(m)),
       (p, m) => {
         error!("[BUG] Requested update with message '{:?}', but that message cannot be handled by the current page '{:?}' or the application itself", m, p);
         Command::none()
@@ -68,10 +68,17 @@ impl Application for App {
     }
   }
 
+  fn subscription(&self) -> Subscription<Message> {
+    match &self.current_page {
+      Page::Login(_) => { Subscription::none() }
+      Page::Main(p) => { p.subscription(&self.player).map(|m| Message::MainPage(m)) }
+    }
+  }
+
   fn view(&mut self) -> Element<'_, Message> {
     match &mut self.current_page {
-      Page::Login(p) => p.view().map(|m| Message::Login(m)),
-      Page::Main(p) => p.view().map(|m| Message::Main(m)),
+      Page::Login(p) => p.view().map(|m| Message::LoginPage(m)),
+      Page::Main(p) => p.view().map(|m| Message::MainPage(m)),
     }
   }
 }
