@@ -10,7 +10,7 @@ use musium_core::format_error::FormatError;
 use musium_core::model::{LocalSource, SpotifySource};
 use musium_player::{Client, ClientT, Player};
 
-use crate::page::main::{cell_text, h1, h2, header_text};
+use crate::page::main::{cell_button, cell_checkbox, cell_text, h1, h2, header_text, horizontal_line};
 use crate::util::{ButtonEx, Update};
 use crate::widget::table::TableBuilder;
 
@@ -31,8 +31,10 @@ pub enum Message {
   RequestRefresh,
   ReceiveRefresh(Result<Vec<LocalSourceViewModel>, <Client as ClientT>::LocalSourceError>, Result<Vec<SpotifySourceViewModel>, <Client as ClientT>::SpotifySourceError>),
 
-  SetLocalSourceEnabled(i32, bool),
-  SetSpotifySourceEnabled(i32, bool),
+  RequestSetLocalSourceEnabled(i32, bool),
+  ReceiveSetLocalSourceEnabled(Result<Option<LocalSource>, <Client as ClientT>::LocalSourceError>, i32, bool),
+  RequestSetSpotifySourceEnabled(i32, bool),
+  ReceiveSetSpotifySourceEnabled(Result<Option<SpotifySource>, <Client as ClientT>::SpotifySourceError>, i32, bool),
 
   RequestSync,
   RequestLocalSourcesSync,
@@ -52,37 +54,80 @@ impl<'a> Tab {
   }
 
   pub fn update(&mut self, player: &Player, message: Message) -> Update<Message, super::Action> {
+    use Message::*;
     match message {
-      Message::RequestRefresh => {
+      RequestRefresh => {
         return Update::command(self.refresh(player));
       }
-      Message::ReceiveRefresh(rl, rs) => {
+      ReceiveRefresh(rl, rs) => {
         self.refreshing = false;
         match rl {
           Ok(sources) => {
             debug!("Received {} local sources", sources.len());
-            self.local_sources.update(sources)
+            self.local_sources.update(sources);
           }
           Err(e) => error!("Receiving local sources failed: {:?}", FormatError::new(&e)),
         };
         match rs {
           Ok(sources) => {
             debug!("Received {} Spotify sources", sources.len());
-            self.spotify_sources.update(sources)
+            self.spotify_sources.update(sources);
           }
           Err(e) => error!("Receiving Spotify sources failed: {:?}", FormatError::new(&e)),
         };
       }
 
-      Message::SetLocalSourceEnabled(_, _) => {}
-      Message::SetSpotifySourceEnabled(_, _) => {}
+      RequestSetLocalSourceEnabled(local_source_id, enabled) => {
+        let player = player.clone();
+        return Update::command(Command::perform(async move {
+          player.get_client().set_local_source_enabled_by_id(local_source_id, enabled).await
+        }, move |r| ReceiveSetLocalSourceEnabled(r, local_source_id, enabled)));
+      }
+      ReceiveSetLocalSourceEnabled(result, local_source_id, enabled) => {
+        let local_source_sting = format!("local source with ID '{}'", local_source_id);
+        match result {
+          Ok(Some(source)) => {
+            let mut guard = self.local_sources.sources.borrow_mut();
+            if let Some(mut local_source_view_model) = guard.iter_mut().find(|s| s.source.id == local_source_id) {
+              local_source_view_model.source.enabled = enabled;
+              debug!("{} {}", if enabled { "Enabled" } else { "Disabled" }, local_source_sting);
+            } else {
+              error!("Failed to {} {}; it was not found in the GUI", enable_str(enabled), local_source_sting);
+            }
+          }
+          Ok(None) => error!("Failed to {} {}; it was not found", enable_str(enabled), local_source_sting),
+          Err(e) => error!("Failed to {} {}; an unexpected error occurred: {:?}", enable_str(enabled), local_source_sting, FormatError::new(&e)),
+        };
+      }
+      RequestSetSpotifySourceEnabled(spotify_source_id, enabled) => {
+        let player = player.clone();
+        return Update::command(Command::perform(async move {
+          player.get_client().set_spotify_source_enabled_by_id(spotify_source_id, enabled).await
+        }, move |r| ReceiveSetSpotifySourceEnabled(r, spotify_source_id, enabled)));
+      }
+      ReceiveSetSpotifySourceEnabled(result, spotify_source_id, enabled) => {
+        let spotify_source_sting = format!("Spotify source with ID '{}'", spotify_source_id);
+        match result {
+          Ok(Some(source)) => {
+            let mut guard = self.spotify_sources.sources.borrow_mut();
+            if let Some(mut spotify_source_view_model) = guard.iter_mut().find(|s| s.source.id == spotify_source_id) {
+              spotify_source_view_model.source.enabled = enabled;
+              debug!("{} {}", if enabled { "Enabled" } else { "Disabled" }, spotify_source_sting);
+            } else {
+              error!("Failed to {} {}; it was not found in the GUI", enable_str(enabled), spotify_source_sting);
+            }
+          }
+          Ok(None) => error!("Failed to {} {}; it was not found", enable_str(enabled), spotify_source_sting),
+          Err(e) => error!("Failed to {} {}; an unexpected error occurred: {:?}", enable_str(enabled), spotify_source_sting, FormatError::new(&e)),
+        };
+      }
 
-      Message::RequestSync => {}
-      Message::RequestLocalSourcesSync => {}
-      Message::RequestLocalSourceSync(_) => {}
-      Message::RequestSpotifySourcesSync => {}
-      Message::RequestSpotifySourceSync(_) => {}
-      Message::ReceiveSyncStatus => {}
+      RequestSync => {}
+      RequestLocalSourcesSync => {}
+      RequestLocalSourceSync(_) => {}
+      RequestSpotifySourcesSync => {}
+      RequestSpotifySourceSync(_) => {}
+      ReceiveSyncStatus => {}
     }
     Update::none()
   }
@@ -107,13 +152,12 @@ impl<'a> Tab {
     Column::new()
       .width(Length::Fill)
       .height(Length::Fill)
-      .padding(4)
       .spacing(4)
       .align_items(Align::Center)
       .push(header)
-      .push(Rule::horizontal(1))
+      .push(horizontal_line())
       .push(local_sources)
-      .push(Rule::horizontal(1))
+      .push(horizontal_line())
       .push(spotify_sources)
       .into()
   }
@@ -174,24 +218,23 @@ impl<'a> LocalSources {
       .push_column(25, header_text("Directory"), Box::new(|t|
         cell_text(t.source.directory.clone())
       ))
-      .push_column(10, header_text("Enabled"), Box::new(|t| {
+      .push_column(5, header_text("Enabled"), Box::new(|t| {
         let id = t.source.id;
-        Checkbox::new(t.source.enabled, "Enabled", move |e| Message::SetLocalSourceEnabled(id, e)).into()
+        cell_checkbox(t.source.enabled, move |e| Message::RequestSetLocalSourceEnabled(id, e))
       }))
-      .push_column(10, header_text("Sync"), Box::new(move |t| {
+      .push_column(5, header_text("Sync"), Box::new(move |t| {
         let id = t.source.id;
-        Button::new(&mut t.sync_button_state, Text::new("Sync"))
-          .on_press_into(move || Message::RequestLocalSourceSync(id), !syncing)
+        cell_button(&mut t.sync_button_state, "Sync", !syncing, move || Message::RequestLocalSourceSync(id))
       }))
       .build(&mut self.rows_scrollable_state)
       .into();
     Column::new()
       .width(Length::Fill)
       .height(Length::Fill)
-      .spacing(2)
+      .spacing(4)
       .align_items(Align::Center)
       .push(header)
-      .push(Rule::horizontal(1))
+      .push(horizontal_line())
       .push(table)
       .into()
   }
@@ -244,27 +287,26 @@ impl<'a> SpotifySources {
       .push_column(5, header_text("ID"), Box::new(|t| {
         cell_text(t.source.id.to_string())
       }))
-      .push_column(5, header_text("User ID"), Box::new(|t|
+      .push_column(25, header_text("User ID"), Box::new(|t|
         cell_text(t.source.user_id.to_string())
       ))
-      .push_column(10, header_text("Enabled"), Box::new(|t| {
+      .push_column(5, header_text("Enabled"), Box::new(|t| {
         let id = t.source.id;
-        Checkbox::new(t.source.enabled, "Enabled", move |e| Message::SetSpotifySourceEnabled(id, e)).into()
+        cell_checkbox(t.source.enabled, move |e| Message::RequestSetSpotifySourceEnabled(id, e))
       }))
-      .push_column(10, header_text("Sync"), Box::new(move |t| {
+      .push_column(5, header_text("Sync"), Box::new(move |t| {
         let id = t.source.id;
-        Button::new(&mut t.sync_button_state, Text::new("Sync"))
-          .on_press_into(move || Message::RequestSpotifySourceSync(id), !syncing)
+        cell_button(&mut t.sync_button_state, "Sync", !syncing, move || Message::RequestSpotifySourceSync(id))
       }))
       .build(&mut self.rows_scrollable_state)
       .into();
     Column::new()
       .width(Length::Fill)
       .height(Length::Fill)
-      .spacing(2)
+      .spacing(4)
       .align_items(Align::Center)
       .push(header)
-      .push(Rule::horizontal(1))
+      .push(horizontal_line())
       .push(table)
       .into()
   }
@@ -278,4 +320,10 @@ pub struct SpotifySourceViewModel {
 
 impl<'a> From<SpotifySource> for SpotifySourceViewModel {
   fn from(source: SpotifySource) -> Self { Self { source, sync_button_state: button::State::default() } }
+}
+
+// Utility
+
+fn enable_str(enable: bool) -> &'static str {
+  if enable { "enable" } else { "disable" }
 }

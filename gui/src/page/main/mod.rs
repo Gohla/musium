@@ -6,7 +6,7 @@ use std::collections::HashMap;
 use std::rc::Rc;
 use std::sync::{Arc, Mutex};
 
-use iced::{button, Button, Color, Column, Command, Element, Length, Row, Rule, scrollable, Text};
+use iced::{self, button, Button, Checkbox, Color, Column, Command, Element, Length, Row, Rule, rule, scrollable, Text};
 use iced_native::{Align, HorizontalAlignment, Space, VerticalAlignment};
 use itertools::Itertools;
 use tracing::{debug, error, info};
@@ -115,12 +115,12 @@ impl<'a> Page {
       .padding(4)
       .spacing(4)
       .push(tabs)
-      .push(Rule::horizontal(1))
+      .push(horizontal_line())
       .push(current_tab)
-      .push(Rule::horizontal(1))
+      .push(horizontal_line())
       .push(Column::new().width(Length::Fill).align_items(Align::Center).push(player_controls))
       .into();
-    content.explain([0.5, 0.5, 0.5])
+    content//.explain([0.5, 0.5, 0.5])
   }
 }
 
@@ -137,7 +137,7 @@ fn h4(label: impl Into<String>) -> Text { Text::new(label).size(20) }
 fn txt(label: impl Into<String>) -> Text { Text::new(label).size(16) }
 
 fn header_text<'a, M>(label: impl Into<String>) -> Element<'a, M> {
-  h3(label)
+  h4(label)
     .width(Length::Fill)
     .height(Length::Fill)
     .horizontal_alignment(HorizontalAlignment::Left)
@@ -152,6 +152,36 @@ fn cell_text<'a, M>(label: impl Into<String>) -> Element<'a, M> {
     .horizontal_alignment(HorizontalAlignment::Left)
     .vertical_alignment(VerticalAlignment::Center)
     .into()
+}
+
+fn cell_checkbox<'a, M: 'a>(is_checked: bool, message_fn: impl 'static + Fn(bool) -> M) -> Element<'a, M> {
+  Checkbox::new(is_checked, "", message_fn)
+    .into()
+}
+
+fn cell_button<'a, M: 'static>(state: &'a mut button::State, label: impl Into<String>, enabled: bool, message_fn: impl 'static + Fn() -> M) -> Element<'a, M> {
+  Button::new(state, txt(label))
+    .padding(1)
+    .on_press_into(message_fn, enabled)
+}
+
+fn horizontal_line<M: 'static>() -> Element<'static, M> {
+  Rule::horizontal(1)
+    .style(HorizontalLine)
+    .into()
+}
+
+struct HorizontalLine;
+
+impl rule::StyleSheet for HorizontalLine {
+  fn style(&self) -> rule::Style {
+    rule::Style {
+      color: [0.6, 0.6, 0.6, 0.6].into(),
+      width: 1,
+      radius: 0.0,
+      fill_mode: rule::FillMode::Full,
+    }
+  }
 }
 
 fn empty<'a, M: 'a>() -> Element<'a, M> {

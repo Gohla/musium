@@ -389,12 +389,12 @@ struct TableRows<'a, T, M, R> where
   row_height: u32,
   column_fill_portions: Vec<u32>,
   mappers: Vec<Box<dyn 'a + Fn(&mut T) -> Element<'_, M, R>>>,
-  // HACK: store row data as `Rc<RefCell<Vec<T>>>` because I bashed my head in for hours trying to get the lifetimes
+  // HACK: Store row data as `Rc<RefCell<Vec<T>>>` because I bashed my head in for hours trying to get the lifetimes
   //       and mutability right with a more general type. The `RefCell` is needed because the `mappers` want a `&mut` to
   //       row data, so that they can return mutable state such as button states, but we do not have `&mut self` in the
-  //       `draw` method, making it impossible to get an exclusive borrow to `rows`. Therefore, `Rc` is needed to share
-  //       the data with the owner of this widget. The `Vec` is needed because that is what the owner of this widget
-  //       provides, and I could not figure out how to take a more general type/trait inside `Rc`/`RefCell`.
+  //       `draw` method, making it impossible to get an exclusive borrow to `rows`. Furthermore, `Rc` is needed to
+  //       share the data with the owner of this widget. The `Vec` is needed because that is what the owner of this
+  //       widget provides, and I could not figure out how to take a more general type/trait inside `Rc`/`RefCell`.
   //
   //       Ideally, we want to take something like `T: 'a, I: 'a + IntoIterator, I::Item=&'a mut T,
   //       I::IntoIter='a + ExactSizeIterator`.
@@ -579,8 +579,8 @@ impl<'a, T, M, B> TableRowsRenderer<'a, T, M> for ConcreteRenderer<B> where
     let last_row_index = num_rows.saturating_sub(1);
     let row_height_plus_spacing = row_height + spacing;
     let start_offset = (((viewport.y - absolute_position.y) / row_height_plus_spacing).floor() as usize).min(last_row_index);
-    // NOTE: + 1 on next line to ensure that last partially visible row is not culled. Why is this needed?
-    let num_rows_to_render = ((viewport.height / row_height_plus_spacing).ceil() as usize + 1).min(last_row_index);
+    // NOTE: + 1 on next line to ensure that last partially visible row is not culled.
+    let num_rows_to_render = ((viewport.height / row_height_plus_spacing).ceil() as usize + 1).min(num_rows);
     let mut y_offset = absolute_position.y + start_offset as f32 * row_height_plus_spacing;
     for (i, row) in rows.into_iter().skip(start_offset).take(num_rows_to_render).enumerate() {
       for (mapper, base_layout) in mappers.iter().zip(layout.children()) {

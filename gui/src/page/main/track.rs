@@ -9,7 +9,7 @@ use musium_core::format_error::FormatError;
 use musium_core::model::collection::{TrackInfo, Tracks};
 use musium_player::{Client, ClientT, Player, PlayError};
 
-use crate::page::main::{cell_text, empty, h1, header_text};
+use crate::page::main::{cell_text, empty, h1, header_text, cell_button, horizontal_line};
 use crate::util::{ButtonEx, Update};
 use crate::widget::table::TableBuilder;
 use musium_core::panic::{panic_into_string};
@@ -81,9 +81,9 @@ impl<'a> Tab {
       )
       ;
     let table: Element<_> = TableBuilder::new(self.tracks.clone())
-      .spacing(2)
-      .header_row_height(26)
-      .row_height(16)
+      .spacing(1)
+      .header_row_height(27)
+      .row_height(17)
       .push_column(5, empty(), Box::new(move |t| {
         play_button(&mut t.play_button_state, t.id)
       }))
@@ -107,10 +107,10 @@ impl<'a> Tab {
     Column::new()
       .width(Length::Fill)
       .height(Length::Fill)
-      .spacing(2)
+      .spacing(4)
       .align_items(Align::Center)
       .push(header)
-      .push(Rule::horizontal(1))
+      .push(horizontal_line())
       .push(table)
       .into()
   }
@@ -178,6 +178,5 @@ impl<'a> From<TrackInfo<'a>> for TrackViewModel {
 // Widget functions
 
 fn play_button<'a>(state: &'a mut button::State, track_id: i32) -> Element<'a, Message> {
-  Button::new(state, Text::new("Play"))
-    .on_press_into(move || Message::RequestPlayTrack(track_id), true)
+  cell_button(state, "Play", true, move || Message::RequestPlayTrack(track_id))
 }
