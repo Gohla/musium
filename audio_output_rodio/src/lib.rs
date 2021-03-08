@@ -1,53 +1,41 @@
 use std::io::Cursor;
 use std::sync::Arc;
 use std::thread;
+use std::thread::JoinHandle;
 
 use async_trait::async_trait;
 use futures::channel::oneshot;
-use rodio::{OutputStream, OutputStreamHandle};
+use rodio::{OutputStream, OutputStreamHandle, Sink};
 use thiserror::Error;
+use tracing::instrument;
 
 pub use musium_audio_output::AudioOutput;
 use musium_core::panic::try_panic_into_string;
 
 #[derive(Clone)]
 pub struct RodioAudioOutput {
-  inner: Arc<Inner>,
-}
-
-struct Inner {
-  thread_join_handle: thread::JoinHandle<()>,
-  tx: crossbeam_channel::Sender<Command>,
+  tx: crossbeam_channel::Sender<Request>,
+  worker_thread: Arc<thread::JoinHandle<()>>,
 }
 
 // Creation
 
 #[derive(Debug, Error)]
 pub enum RodioCreateError {
-  #[error("No default local audio output device was found")]
-  NoDefaultOutputDevice,
+  #[error("Failed to create Rodio stream")]
+  StreamCreateFail(#[from] rodio::StreamError),
+  #[error("Failed to create Rodio sink")]
+  SinkCreateFail(#[from] rodio::PlayError),
 }
 
 impl RodioAudioOutput {
   pub fn new() -> Result<Self, RodioCreateError> {
     let (tx, rx) = crossbeam_channel::unbounded();
     let (create_result_tx, create_result_rx) = crossbeam_channel::bounded(0);
-    let thread_join_handle = thread::spawn(move || {
-      let (output_stream, output_stream_handle) = match rodio::OutputStream::try_default().map_err(|_| RodioCreateError::NoDefaultOutputDevice) {
-        Ok(v) => {
-          create_result_tx.send(Ok(())).unwrap();
-          v
-        }
-        Err(e) => {
-          create_result_tx.send(Err(e)).unwrap();
-          return;
-        }
-      };
-      Self::message_loop(output_stream, output_stream_handle, rx)
-    });
-    create_result_rx.recv().unwrap()?;
-    let inner = Arc::new(Inner { tx, thread_join_handle });
-    Ok(Self { inner })
+    let worker_thread = WorkerThread::new(create_result_tx, rx);
+    create_result_rx.recv().unwrap()?; // UNWRAP: errors if disconnected which only happens in panic -> we panic as well.
+    let worker_thread = Arc::new(worker_thread);
+    Ok(Self { tx, worker_thread })
   }
 }
 
@@ -71,9 +59,10 @@ impl RodioAudioOutput {
   /// worker thread (if any), and does not wait for the worker thread to complete first.
   pub fn destroy(self) -> Result<(), RodioDestroyError> {
     use RodioDestroyError::*;
-    let Inner { thread_join_handle, .. } = Arc::try_unwrap(self.inner).map_err(|_| ClonesStillExist)?;
-    // Because we did not match on Inner.tx, it is dropped and the thread will stop.
-    if let Err(e) = thread_join_handle.join() {
+    let RodioAudioOutput { tx, worker_thread } = self;
+    drop(tx); // Dropping sender will cause the worker thread to break out of the loop and stop.
+    let worker_thread = Arc::try_unwrap(worker_thread).map_err(|_| ClonesStillExist)?;
+    if let Err(e) = worker_thread.join() { // Join does not block because worker thread stopped.
       return if let Some(msg) = try_panic_into_string(e) {
         Err(ThreadPanicked(msg))
       } else {
@@ -88,10 +77,10 @@ impl RodioAudioOutput {
 
 #[derive(Debug, Error)]
 pub enum RodioPlayError {
-  #[error(transparent)]
+  #[error("Failed to read audio data")]
   ReadFail(#[from] std::io::Error),
-  #[error(transparent)]
-  PlayFail(#[from] rodio::PlayError),
+  #[error("Failed to decode audio data")]
+  DecodeFail(#[from] rodio::decoder::DecoderError),
   #[error("Failed to send command; worker thread was stopped")]
   SendCommandFail,
   #[error("Failed to receive command feedback; worker thread was stopped")]
@@ -101,36 +90,75 @@ pub enum RodioPlayError {
 #[async_trait]
 impl AudioOutput for RodioAudioOutput {
   type PlayError = RodioPlayError;
+  #[instrument(skip(self, audio_data))]
   async fn play(&self, audio_data: Vec<u8>, volume: f32) -> Result<(), RodioPlayError> {
     use RodioPlayError::*;
     let (tx, rx) = oneshot::channel();
-    self.inner.tx.send(Command::Play { audio_data, volume, tx }).map_err(|_| SendCommandFail)?;
+    self.tx.send(Request::Play { audio_data, volume, tx }).map_err(|_| SendCommandFail)?;
     rx.await.map_err(|_| ReceiveCommandFeedbackFail)?
   }
 }
 
-// Internals that run the message loop and perform commands.
+// Internals
 
-enum Command {
+// Messages
+
+enum Request {
   Play { audio_data: Vec<u8>, volume: f32, tx: oneshot::Sender<Result<(), RodioPlayError>> }
 }
 
-impl RodioAudioOutput {
-  fn message_loop(_output_stream: OutputStream, output_stream_handle: OutputStreamHandle, rx: crossbeam_channel::Receiver<Command>) {
-    loop {
-      match rx.recv() {
-        Ok(message) => match message {
-          Command::Play { audio_data, volume, tx } => tx.send(Self::play(audio_data, volume, &output_stream_handle)).ok(),
+// Worker thread
+
+struct WorkerThread {
+  _output_stream: OutputStream,
+  _output_stream_handle: OutputStreamHandle,
+  sink: Sink,
+  rx: crossbeam_channel::Receiver<Request>,
+}
+
+impl WorkerThread {
+  fn new(create_result_tx: crossbeam_channel::Sender<Result<(), RodioCreateError>>, rx: crossbeam_channel::Receiver<Request>) -> JoinHandle<()> {
+    thread::spawn(move || {
+      let result: Result<_, RodioCreateError> = rodio::OutputStream::try_default()
+        .map_err(|e| e.into())
+        .and_then(|(output_stream, output_stream_handle)| {
+          let sink = Sink::try_new(&output_stream_handle)?;
+          Ok((output_stream, output_stream_handle, sink))
+        });
+      let (_output_stream, _output_stream_handle, sink) = match result {
+        Ok(v) => {
+          // UNWRAP: errors if disconnected which only happens in panic -> we panic as well.
+          create_result_tx.send(Ok(())).unwrap();
+          v
         }
-        Err(_) => break, // Sender has disconnected, stop the loop.
+        Err(e) => {
+          // UNWRAP: errors if disconnected which only happens in panic -> we panic as well.
+          create_result_tx.send(Err(e)).unwrap();
+          return;
+        }
+      };
+      let worker_thread = WorkerThread { _output_stream, _output_stream_handle, sink, rx };
+      worker_thread.run();
+    })
+  }
+
+  #[instrument(skip(self))]
+  fn run(mut self) {
+    while let Ok(request) = self.rx.recv() { // Loop until all senders disconnect.
+      match request {
+        Request::Play { audio_data, volume, tx } => {
+          tx.send(self.play(audio_data, volume)).ok(); // OK: receiver hung up -> we don't care.
+        }
       };
     }
   }
 
-  fn play(audio_data: Vec<u8>, volume: f32, stream_handle: &OutputStreamHandle) -> Result<(), RodioPlayError> {
+  #[instrument(skip(self, audio_data))]
+  fn play(&mut self, audio_data: Vec<u8>, volume: f32) -> Result<(), RodioPlayError> {
+    self.sink.set_volume(volume);
     let cursor = Cursor::new(audio_data);
-    let sink = stream_handle.play_once(cursor)?;
-    sink.set_volume(volume);
+    let decoder = rodio::decoder::Decoder::new(cursor)?;
+    self.sink.append(decoder);
     Ok(())
   }
 }

@@ -3012,6 +3012,7 @@ dependencies = [
  "musium_core",
  "rodio",
  "thiserror",
+ "tracing",
 ]
 
 [[package]]

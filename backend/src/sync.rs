@@ -23,7 +23,7 @@ impl SyncClient {
   pub fn new() -> Self {
     let (tx, rx) = mpsc::channel(32);
     let worker_task = Arc::new(tokio::spawn(async move {
-      SyncWorker { rx, sync_task: Arc::new(RwLock::new(None)) }.run().await;
+      WorkerTask::new(rx).run().await;
     }));
     Self { tx, worker_task }
   }
@@ -50,10 +50,10 @@ impl SyncClient {
   pub async fn destroy(self) -> Result<(), SyncClientDestroyError> {
     use SyncClientDestroyError::*;
     let SyncClient { tx, worker_task } = self;
-    drop(tx); // Dropping sender will cause the worker task to break out of the loop and complete.
+    drop(tx); // Dropping sender will cause the worker task to break out of the loop and stop.
     let worker_task = Arc::try_unwrap(worker_task).map_err(|_| ClonesStillExist)?;
-    worker_task.abort(); // Also aborting the worker task just in case.
-    if let Err(e) = worker_task.await {
+    worker_task.abort(); // Also abort the worker task just in case.
+    if let Err(e) = worker_task.await { // Await does not block because worker task stopped.
       if let Ok(panic) = e.try_into_panic() {
         return if let Some(msg) = try_panic_into_string(panic) {
           Err(TaskPanicked(msg))
@@ -103,7 +103,7 @@ impl SyncClient {
   }
 
   #[instrument(skip(self, database))]
-  pub async fn sync_spotify_source(&self,  spotify_source_id: i32, database: Arc<Database>) -> Result<SyncStatus, SyncClientError> {
+  pub async fn sync_spotify_source(&self, spotify_source_id: i32, database: Arc<Database>) -> Result<SyncStatus, SyncClientError> {
     self.send_receive(Command::SyncSpotifySource(spotify_source_id), database).await
   }
 }
@@ -118,6 +118,8 @@ impl SyncClient {
     Ok(rx.await.map_err(|_| ReceiveSyncStatusFail)?)
   }
 }
+
+// Messages
 
 struct Request {
   command: Command,
@@ -141,8 +143,9 @@ impl Request {
   }
 }
 
+// Worker task
 
-struct SyncWorker {
+struct WorkerTask {
   rx: mpsc::Receiver<Request>,
   sync_task: Arc<RwLock<Option<SyncTask>>>,
 }
@@ -153,10 +156,14 @@ struct SyncTask {
   rx: watch::Receiver<SyncStatus>,
 }
 
-impl SyncWorker {
+impl WorkerTask {
+  fn new(rx: mpsc::Receiver<Request>) -> Self {
+    WorkerTask { rx, sync_task: Arc::new(RwLock::new(None)) }
+  }
+
   #[instrument(skip(self))]
   async fn run(mut self) {
-    while let Some(request) = self.rx.recv().await {
+    while let Some(request) = self.rx.recv().await { // Loop until all senders disconnect.
       let tx = request.tx;
       let db = request.database;
       match request.command {
