@@ -24,8 +24,6 @@ pub struct RodioAudioOutput {
 pub enum RodioCreateError {
   #[error("Failed to create Rodio stream")]
   StreamCreateFail(#[from] rodio::StreamError),
-  #[error("Failed to create Rodio sink")]
-  SinkCreateFail(#[from] rodio::PlayError),
 }
 
 impl RodioAudioOutput {
@@ -79,6 +77,8 @@ impl RodioAudioOutput {
 pub enum RodioPlayError {
   #[error("Failed to read audio data")]
   ReadFail(#[from] std::io::Error),
+  #[error("Failed to create Rodio sink")]
+  SinkCreateFail(#[from] rodio::PlayError),
   #[error("Failed to decode audio data")]
   DecodeFail(#[from] rodio::decoder::DecoderError),
   #[error("Failed to send command; worker thread was stopped")]
@@ -110,9 +110,9 @@ enum Request {
 // Worker thread
 
 struct WorkerThread {
-  _output_stream: OutputStream,
-  _output_stream_handle: OutputStreamHandle,
-  sink: Sink,
+  _stream: OutputStream,
+  handle: OutputStreamHandle,
+  current_sink: Option<Sink>,
   rx: crossbeam_channel::Receiver<Request>,
 }
 
@@ -120,12 +120,8 @@ impl WorkerThread {
   fn new(create_result_tx: crossbeam_channel::Sender<Result<(), RodioCreateError>>, rx: crossbeam_channel::Receiver<Request>) -> JoinHandle<()> {
     thread::spawn(move || {
       let result: Result<_, RodioCreateError> = rodio::OutputStream::try_default()
-        .map_err(|e| e.into())
-        .and_then(|(output_stream, output_stream_handle)| {
-          let sink = Sink::try_new(&output_stream_handle)?;
-          Ok((output_stream, output_stream_handle, sink))
-        });
-      let (_output_stream, _output_stream_handle, sink) = match result {
+        .map_err(|e| e.into());
+      let (_stream, handle) = match result {
         Ok(v) => {
           // UNWRAP: errors if disconnected which only happens in panic -> we panic as well.
           create_result_tx.send(Ok(())).unwrap();
@@ -137,7 +133,7 @@ impl WorkerThread {
           return;
         }
       };
-      let worker_thread = WorkerThread { _output_stream, _output_stream_handle, sink, rx };
+      let worker_thread = WorkerThread { _stream, handle, current_sink: None, rx };
       worker_thread.run();
     })
   }
@@ -155,10 +151,15 @@ impl WorkerThread {
 
   #[instrument(skip(self, audio_data))]
   fn play(&mut self, audio_data: Vec<u8>, volume: f32) -> Result<(), RodioPlayError> {
-    self.sink.set_volume(volume);
+    if let Some(sink) = &self.current_sink {
+      sink.stop();
+    }
+    let sink = Sink::try_new(&self.handle)?;
+    sink.set_volume(volume);
     let cursor = Cursor::new(audio_data);
     let decoder = rodio::decoder::Decoder::new(cursor)?;
-    self.sink.append(decoder);
+    sink.append(decoder);
+    self.current_sink = Some(sink);
     Ok(())
   }
 }
