@@ -91,11 +91,47 @@ pub enum RodioPlayError {
 impl AudioOutput for RodioAudioOutput {
   type PlayError = RodioPlayError;
   #[instrument(skip(self, audio_data))]
-  async fn play(&self, audio_data: Vec<u8>, volume: f32) -> Result<(), RodioPlayError> {
+  async fn set_audio_data(&self, audio_data: Vec<u8>, volume: f32) -> Result<(), RodioPlayError> {
     use RodioPlayError::*;
     let (tx, rx) = oneshot::channel();
     self.tx.send(Request::Play { audio_data, volume, tx }).map_err(|_| SendCommandFail)?;
     rx.await.map_err(|_| ReceiveCommandFeedbackFail)?
+  }
+
+
+  async fn is_playing(&self) -> bool {
+    unimplemented!()
+  }
+
+  async fn play(&self) {
+    unimplemented!()
+  }
+
+
+  async fn is_paused(&self) -> bool {
+    unimplemented!()
+  }
+
+  async fn pause(&self) {
+    unimplemented!()
+  }
+
+
+  async fn is_stopped(&self) -> bool {
+    unimplemented!()
+  }
+
+  async fn stop(&self) {
+    unimplemented!()
+  }
+
+
+  async fn get_volume(&self) -> f32 {
+    unimplemented!()
+  }
+
+  async fn set_volume(&self, volume: f32) {
+    unimplemented!()
   }
 }
 
@@ -113,6 +149,7 @@ struct WorkerThread {
   _stream: OutputStream,
   handle: OutputStreamHandle,
   current_sink: Option<Sink>,
+  volume: f32,
   rx: crossbeam_channel::Receiver<Request>,
 }
 
@@ -143,14 +180,14 @@ impl WorkerThread {
     while let Ok(request) = self.rx.recv() { // Loop until all senders disconnect.
       match request {
         Request::Play { audio_data, volume, tx } => {
-          tx.send(self.play(audio_data, volume)).ok(); // OK: receiver hung up -> we don't care.
+          tx.send(self.set_audio_data(audio_data, volume)).ok(); // OK: receiver hung up -> we don't care.
         }
       };
     }
   }
 
   #[instrument(skip(self, audio_data))]
-  fn play(&mut self, audio_data: Vec<u8>, volume: f32) -> Result<(), RodioPlayError> {
+  fn set_audio_data(&mut self, audio_data: Vec<u8>, play: bool) -> Result<(), RodioPlayError> {
     if let Some(sink) = &self.current_sink {
       sink.stop();
     }
@@ -161,5 +198,41 @@ impl WorkerThread {
     sink.append(decoder);
     self.current_sink = Some(sink);
     Ok(())
+  }
+
+  fn is_playing(&self) -> bool {
+    unimplemented!()
+  }
+
+  fn play(&self) {
+    unimplemented!()
+  }
+
+
+  fn is_paused(&self) -> bool {
+    unimplemented!()
+  }
+
+  fn pause(&self) {
+    unimplemented!()
+  }
+
+
+  fn is_stopped(&self) -> bool {
+    unimplemented!()
+  }
+
+  fn stop(&self) {
+    unimplemented!()
+  }
+
+
+  fn get_volume(&self) -> f32 {
+    self.volume
+  }
+
+  fn set_volume(&mut self, volume: f32) {
+    self.volume = volume.clamp(0.0, 1.0);
+
   }
 }

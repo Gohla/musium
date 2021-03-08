@@ -77,7 +77,7 @@ impl Player {
     use musium_client::PlaySource::*;
     let play_source = self.get_client().play_track_by_id(id).await.map_err(|e| ClientFail(e))?;
     match play_source {
-      Some(AudioData(audio_data)) => self.get_audio_output().play(audio_data, volume).await.map_err(|e| AudioOutputFail(e))?,
+      Some(AudioData(audio_data)) => self.get_audio_output().set_audio_data(audio_data, volume).await.map_err(|e| AudioOutputFail(e))?,
       Some(ExternallyPlayed) => {}
       None => {}
     };
