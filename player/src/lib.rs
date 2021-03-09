@@ -2,7 +2,7 @@ use thiserror::Error;
 
 pub use musium_audio_output::AudioOutput as AudioOutputT;
 #[cfg(feature = "musium_audio_output_rodio")]
-pub use musium_audio_output_rodio::{RodioAudioOutput, RodioPlayError};
+pub use musium_audio_output_rodio::{RodioAudioOutput, RodioSetAudioDataError};
 pub use musium_client::Client as ClientT;
 #[cfg(feature = "musium_client_http")]
 pub use musium_client_http::{HttpClient, HttpRequestError, Url};
@@ -72,12 +72,12 @@ pub enum PlayError {
 }
 
 impl Player {
-  pub async fn play_track_by_id(&self, id: i32, volume: f32) -> Result<(), PlayError> {
+  pub async fn play_track_by_id(&self, id: i32) -> Result<(), PlayError> {
     use PlayError::*;
     use musium_client::PlaySource::*;
     let play_source = self.get_client().play_track_by_id(id).await.map_err(|e| ClientFail(e))?;
     match play_source {
-      Some(AudioData(audio_data)) => self.get_audio_output().set_audio_data(audio_data, volume).await.map_err(|e| AudioOutputFail(e))?,
+      Some(AudioData(audio_data)) => self.get_audio_output().set_audio_data(audio_data, true).await.map_err(|e| AudioOutputFail(e))?,
       Some(ExternallyPlayed) => {}
       None => {}
     };

@@ -60,7 +60,7 @@ impl Application for App {
           command
         }
       }
-      (Page::Main(p), Message::MainPage(m)) => p.update(&mut self.player, m).into_command().map(|m| Message::MainPage(m)),
+      (Page::Main(p), Message::MainPage(m)) => p.update(&mut self.player, m).map(|m| Message::MainPage(m)),
       (p, m) => {
         error!("[BUG] Requested update with message '{:?}', but that message cannot be handled by the current page '{:?}' or the application itself", m, p);
         Command::none()

@@ -33,8 +33,12 @@ pub struct Page {
   source_tab_button_state: button::State,
   current_tab: Tab,
 
+  is_paused: bool,
+  is_stopped: bool,
+
   prev_track_button_state: button::State,
-  playpause_button_state: button::State,
+  stop_button_state: button::State,
+  toggle_play_button_state: button::State,
   next_track_button_state: button::State,
 }
 
@@ -44,7 +48,10 @@ pub enum Message {
   SourceTab(source::Message),
   SetCurrentTab(Tab),
   RequestPrevTrack,
-  RequestPlayPause,
+  RequestStop,
+  ReceiveStop(Result<(), <AudioOutput as AudioOutputT>::OtherError>),
+  RequestTogglePlay,
+  ReceiveTogglePlay(Result<bool, <AudioOutput as AudioOutputT>::OtherError>),
   RequestNextTrack,
 }
 
@@ -58,7 +65,9 @@ impl Default for Tab {
   fn default() -> Self { Self::Track }
 }
 
-pub enum Action {}
+pub enum Action {
+  ReceivePlay
+}
 
 impl<'a> Page {
   pub fn new(logged_in_user: User, player: &Player) -> (Self, Command<Message>) {
@@ -66,6 +75,8 @@ impl<'a> Page {
     let (source_tab, source_tab_command) = source::Tab::new(player);
     let page = Self {
       logged_in_user,
+      is_paused: false,
+      is_stopped: true,
       ..Self::default()
     };
     let command = Command::batch(vec![
@@ -75,15 +86,65 @@ impl<'a> Page {
     (page, command)
   }
 
-  pub fn update(&mut self, player: &Player, message: Message) -> Update<Message, Action> {
+  pub fn update(&mut self, player: &Player, message: Message) -> Command<Message> {
     use Message::*;
     match message {
-      TrackTab(m) => { return self.track_tab.update(player, m).map_command(|m| TrackTab(m)); }
-      SourceTab(m) => { return self.source_tab.update(player, m).map_command(|m| SourceTab(m)); }
+      TrackTab(m) => {
+        let (command, action) = self.track_tab.update(player, m).unwrap();
+        self.handle_action(action);
+        return command.map(|m| TrackTab(m));
+      }
+      SourceTab(m) => {
+        let (command, action) = self.source_tab.update(player, m).unwrap();
+        self.handle_action(action);
+        return command.map(|m| SourceTab(m));
+      }
       SetCurrentTab(tab) => self.current_tab = tab,
+
+      RequestStop => {
+        let player = player.clone();
+        return Command::perform(
+          async move { player.get_audio_output().stop().await },
+          |r| ReceiveStop(r),
+        );
+      }
+      ReceiveStop(r) => match r {
+        Ok(_) => {
+          self.is_paused = false;
+          self.is_stopped = true;
+        }
+        Err(e) => error!("Failed to stop playback: {:?}", FormatError::new(&e)),
+      }
+      RequestTogglePlay => {
+        let player = player.clone();
+        return Command::perform(
+          async move { player.get_audio_output().toggle_play().await },
+          |r| ReceiveTogglePlay(r),
+        );
+      }
+      ReceiveTogglePlay(r) => match r {
+        Ok(is_playing) => {
+          self.is_paused = !is_playing;
+          self.is_stopped = false;
+        }
+        Err(e) => error!("Failed to toggle playback: {:?}", FormatError::new(&e)),
+      }
+      // RequestPrevTrack => {}
+      // RequestNextTrack => {}
       m => debug!("Unhandled message: {:?}", m)
     };
-    Update::none()
+    Command::none()
+  }
+
+  pub fn handle_action(&mut self, action: Option<Action>) {
+    if let Some(action) = action {
+      match action {
+        Action::ReceivePlay => {
+          self.is_paused = false;
+          self.is_stopped = false;
+        }
+      }
+    }
   }
 
   pub fn subscription(&self, player: &Player) -> Subscription<Message> {
@@ -107,11 +168,13 @@ impl<'a> Page {
       .spacing(2)
       .align_items(Align::Center)
       .push(Button::new(&mut self.prev_track_button_state, Text::new("Prev track"))
-        .on_press_into(|| Message::RequestPrevTrack, true))
-      .push(Button::new(&mut self.playpause_button_state, Text::new("Play/pause"))
-        .on_press_into(|| Message::RequestPlayPause, true))
+        .on_press_into(move || Message::RequestPrevTrack, !self.is_stopped))
+      .push(Button::new(&mut self.stop_button_state, Text::new("Stop"))
+        .on_press_into(move || Message::RequestStop, !self.is_stopped))
+      .push(Button::new(&mut self.toggle_play_button_state, Text::new("Play/pause"))
+        .on_press_into(move || Message::RequestTogglePlay, !self.is_stopped))
       .push(Button::new(&mut self.next_track_button_state, Text::new("Next track"))
-        .on_press_into(|| Message::RequestNextTrack, true))
+        .on_press_into(move || Message::RequestNextTrack, !self.is_stopped))
       ;
     let content: Element<_> = Column::new()
       .width(Length::Fill)

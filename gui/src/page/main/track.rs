@@ -3,16 +3,16 @@ use std::rc::Rc;
 
 use iced::{Align, button, Button, Column, Command, Element, HorizontalAlignment, Length, Row, Rule, scrollable, Space, Text, VerticalAlignment};
 use itertools::Itertools;
-use tracing::{error, debug};
+use tracing::{debug, error};
 
 use musium_core::format_error::FormatError;
 use musium_core::model::collection::{TrackInfo, Tracks};
+use musium_core::panic::panic_into_string;
 use musium_player::{Client, ClientT, Player, PlayError};
 
-use crate::page::main::{cell_text, empty, h1, header_text, cell_button, horizontal_line};
+use crate::page::main::{cell_button, cell_text, empty, h1, header_text, horizontal_line};
 use crate::util::{ButtonEx, Update};
 use crate::widget::table::TableBuilder;
-use musium_core::panic::{panic_into_string};
 
 #[derive(Default, Debug)]
 pub struct Tab {
@@ -51,7 +51,7 @@ impl<'a> Tab {
           Ok(tracks) => {
             debug!("Received {} tracks", tracks.len());
             self.tracks = Rc::new(RefCell::new(tracks))
-          },
+          }
           Err(e) => error!("Receiving tracks failed: {:?}", FormatError::new(&e)),
         };
       }
@@ -59,7 +59,10 @@ impl<'a> Tab {
         return Update::command(Self::play_track(track_id, player));
       }
       Message::ReceivePlayResult(r) => match r {
-        Ok(_) => debug!("Track played successfully"),
+        r @ Ok(_) => {
+          debug!("Track played successfully");
+          return Update::action(super::Action::ReceivePlay);
+        }
         Err(e) => error!("Playing track failed: {:?}", FormatError::new(&e)),
       }
     }
@@ -138,7 +141,7 @@ impl<'a> Tab {
   fn play_track(track_id: i32, player: &Player) -> Command<Message> {
     let player = player.clone();
     Command::perform(
-      async move { player.play_track_by_id(track_id, 0.1).await },
+      async move { player.play_track_by_id(track_id).await },
       |r| Message::ReceivePlayResult(r),
     )
   }
