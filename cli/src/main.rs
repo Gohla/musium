@@ -78,9 +78,6 @@ enum Command {
   PlayTrack {
     /// ID of the track to play
     id: i32,
-    /// Volume to play the track at, with 1.0 being full volume, and 0.0 being no volume
-    #[structopt(short, long, default_value = "0.1")]
-    volume: f32,
   },
 
   /// Lists all artists
@@ -280,8 +277,8 @@ async fn run(command: Command, player: &mut Player) -> Result<()> {
       let track = player.get_client().get_track_by_id(id).await?;
       println!("{:?}", track);
     }
-    Command::PlayTrack { id, volume } => {
-      player.play_track_by_id(id, volume).await
+    Command::PlayTrack { id} => {
+      player.play_track_by_id(id).await
         .with_context(|| "Failed to play audio track")?;
     }
 
