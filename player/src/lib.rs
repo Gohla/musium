@@ -36,8 +36,9 @@ impl Player {
   /// Converts this player into its client and audio output, effectively destroying the player. The client and audio
   /// output can then be manually destroyed.
   ///
-  /// Dropping this player and all its clones will also properly destroy this player, but may ignore panics in the
-  /// worker threads of the client and audio output (if any).
+  /// Dropping this player and all its clones will also properly destroy it, but ignores the panics produced by the
+  /// client and audio output (if any), and also does not wait for them to complete first (if they have tasks or threads
+  /// that must be completed).
   pub fn into_client_and_audio_output(self) -> (Client, AudioOutput) {
     (self.client, self.audio_output)
   }
