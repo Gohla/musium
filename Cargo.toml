@@ -31,8 +31,8 @@ debug = true
 codegen-units = 8
 lto = false
 incremental = true
-[profile.dev.package.backtrace] # Fully optimize backtrace crate to speed up backtrace collection
-opt-level = 3
+#[profile.dev.package.backtrace] # Fully optimize backtrace crate to speed up backtrace collection
+#opt-level = 3
 
 # Fast development profile: no debug information, some optimisations.
 [profile.fastdev]
