@@ -1,4 +1,4 @@
-use std::ops::Try;
+use std::ops::{ControlFlow, FromResidual, Try};
 
 use serde::{Deserialize, Serialize};
 
@@ -20,21 +20,26 @@ impl<T, E> Into<Result<T, E>> for UResult<T, E> {
 }
 
 impl<T, E> Try for UResult<T, E> {
-  type Ok = T;
-  type Error = E;
+  type Output = T;
+  type Residual = E;
 
   #[inline]
-  fn into_result(self) -> Result<T, E> {
-    self.into()
-  }
-
-  #[inline]
-  fn from_error(v: E) -> Self {
-    UResult::Err(v)
-  }
-
-  #[inline]
-  fn from_ok(v: T) -> Self {
+  fn from_output(v: T) -> Self {
     UResult::Ok(v)
+  }
+
+  #[inline]
+  fn branch(self) -> ControlFlow<E, T> {
+    match self {
+      UResult::Ok(t) => ControlFlow::Continue(t),
+      UResult::Err(e) => ControlFlow::Break(e),
+    }
+  }
+}
+
+impl<T, E> FromResidual for UResult<T, E> {
+  #[inline]
+  fn from_residual(v: E) -> Self {
+    UResult::Err(v)
   }
 }

@@ -10,9 +10,16 @@ pub struct InternalServerError {
   pub message: String,
 }
 
-#[derive(Serialize, Deserialize, Debug)]
-pub struct SpotifyMeInfo {
-  pub display_name: String,
+#[derive(Clone, Debug)]
+pub enum PlaySource {
+  AudioData(Vec<u8>),
+  ExternallyPlayedOnSpotify,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub enum PlaySourceKind {
+  AudioData,
+  ExternalOnSpotify,
 }
 
 #[derive(Copy, Clone, Debug, Serialize, Deserialize)]
@@ -47,3 +54,9 @@ impl Display for SyncStatus {
     }
   }
 }
+
+#[derive(Serialize, Deserialize, Debug)]
+pub struct SpotifyMeInfo {
+  pub display_name: String,
+}
+

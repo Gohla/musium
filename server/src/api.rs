@@ -12,8 +12,8 @@ use thiserror::Error;
 use tracing::{event, Level};
 
 use musium_backend::database::{Database, DatabaseConnectError, DatabaseQueryError, user::UserAddVerifyError};
+use musium_backend::database::playback::{BackendPlaySource, PlayError};
 use musium_backend::database::source::spotify;
-use musium_backend::database::track::{PlayError, PlaySource};
 use musium_backend::sync::{SyncClient, SyncClientError};
 use musium_core::api::InternalServerError;
 use musium_core::model::{NewLocalSource, NewUser};
@@ -172,22 +172,6 @@ pub async fn show_track_by_id(
   Ok(HttpResponse::Ok().json(track))
 }
 
-pub async fn play_track_by_id(
-  id: web::Path<i32>,
-  database: web::Data<Database>,
-  logged_in_user: LoggedInUser,
-) -> Result<Either<NamedFile, HttpResponse>, InternalError> {
-  if let Some(play_source) = database.connect()?.play_track(*id, logged_in_user.user.id).await? {
-    let response = match play_source {
-      PlaySource::AudioData(path) => Either::A(NamedFile::open(path)?),
-      PlaySource::ExternallyPlayed => Either::B(HttpResponse::Accepted().finish()),
-    };
-    Ok(response)
-  } else {
-    Ok(Either::B(HttpResponse::NotFound().finish()))
-  }
-}
-
 // Artist
 
 pub async fn list_artists(
@@ -204,6 +188,33 @@ pub async fn show_artist_by_id(
 ) -> Result<HttpResponse, InternalError> {
   let artist = database.connect()?.get_artist_by_id(*id)?;
   Ok(HttpResponse::Ok().json(artist))
+}
+
+// Playback
+
+pub async fn show_track_play_source_kind(
+  id: web::Path<i32>,
+  database: web::Data<Database>,
+  _logged_in_user: LoggedInUser,
+) -> Result<HttpResponse, InternalError> {
+  let play_source_kind = database.connect()?.get_track_play_source_kind_by_id(*id)?;
+  Ok(HttpResponse::Ok().json(play_source_kind))
+}
+
+pub async fn play_track_by_id(
+  id: web::Path<i32>,
+  database: web::Data<Database>,
+  logged_in_user: LoggedInUser,
+) -> Result<Either<NamedFile, HttpResponse>, InternalError> {
+  if let Some(play_source) = database.connect()?.play_track_by_id(*id, logged_in_user.user.id).await? {
+    let response = match play_source {
+      BackendPlaySource::AudioData(path) => Either::A(NamedFile::open(path)?),
+      BackendPlaySource::ExternallyPlayedOnSpotify => Either::B(HttpResponse::Accepted().finish()),
+    };
+    Ok(response)
+  } else {
+    Ok(Either::B(HttpResponse::NotFound().finish()))
+  }
 }
 
 // Users

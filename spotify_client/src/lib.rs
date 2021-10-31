@@ -183,8 +183,8 @@ impl SpotifyClient {
     #[derive(Deserialize)]
     struct AuthorizationInfo {
       pub access_token: String,
-      pub token_type: String,
-      pub scope: String,
+      #[serde(rename = "token_type")] pub _token_type: String,
+      #[serde(rename = "scope")] pub _scope: String,
       pub expires_in: i32,
       pub refresh_token: String,
     }

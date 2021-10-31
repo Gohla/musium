@@ -8,6 +8,8 @@ pub use musium_client::Client as ClientT;
 pub use musium_client_http::{HttpClient, HttpRequestError, Url};
 use musium_core::model::{User, UserLogin};
 
+//mod worker_task;
+
 #[cfg(feature = "musium_client_http")]
 pub type Client = HttpClient;
 #[cfg(feature = "musium_audio_output_rodio")]
@@ -75,13 +77,15 @@ pub enum PlayError {
 impl Player {
   pub async fn play_track_by_id(&self, id: i32) -> Result<(), PlayError> {
     use PlayError::*;
-    use musium_client::PlaySource::*;
+    use musium_core::api::PlaySource::*;
     let play_source = self.get_client().play_track_by_id(id).await.map_err(|e| ClientFail(e))?;
     match play_source {
       Some(AudioData(audio_data)) => self.get_audio_output().set_audio_data(audio_data, true).await.map_err(|e| AudioOutputFail(e))?,
-      Some(ExternallyPlayed) => {}
+      Some(ExternallyPlayedOnSpotify) => {}
       None => {}
     };
     Ok(())
   }
+
+  //pub async fn toggle_play(&self) -> Result<(), ()> {}
 }

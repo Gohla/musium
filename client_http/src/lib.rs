@@ -8,7 +8,7 @@ pub use reqwest::Url;
 use serde::Serialize;
 use thiserror::Error;
 
-pub use musium_client::{Client, PlaySource};
+pub use musium_client::Client;
 use musium_core::{
   api::{InternalServerError, SpotifyMeInfo},
   model::{
@@ -16,7 +16,7 @@ use musium_core::{
     collection::{AlbumsRaw, TracksRaw},
   },
 };
-use musium_core::api::SyncStatus;
+use musium_core::api::{PlaySource, PlaySourceKind, SyncStatus};
 
 #[derive(Clone)]
 pub struct HttpClient {
@@ -184,21 +184,6 @@ impl Client for HttpClient {
     Ok(response.json().await?)
   }
 
-  async fn play_track_by_id(&self, id: i32) -> Result<Option<PlaySource>, Self::TrackError> {
-    let response = self.get(
-      format!("track/play/{}", id),
-      |r| r,
-      &[StatusCode::OK, StatusCode::ACCEPTED, StatusCode::NOT_FOUND],
-    ).await?;
-    let play_source = match response.status() {
-      StatusCode::OK => Some(PlaySource::AudioData(response.bytes().await?.to_vec())),
-      StatusCode::ACCEPTED => Some(PlaySource::ExternallyPlayed),
-      StatusCode::NOT_FOUND => None,
-      _ => unreachable!()
-    };
-    Ok(play_source)
-  }
-
   // Artist
 
   type ArtistError = HttpRequestError;
@@ -211,6 +196,31 @@ impl Client for HttpClient {
   async fn get_artist_by_id(&self, id: i32) -> Result<Option<Artist>, Self::ArtistError> {
     let response = self.get_simple(format!("artist/{}", id)).await?;
     Ok(response.json().await?)
+  }
+
+  // Playback
+
+  type PlaybackError = HttpRequestError;
+
+
+  async fn get_track_play_source_kind_by_id(&self, id: i32) -> Result<Option<PlaySourceKind>, Self::PlaybackError> {
+    let response = self.get_simple(format!("track/play_source_kind/{}", id)).await?;
+    Ok(response.json().await?)
+  }
+
+  async fn play_track_by_id(&self, id: i32) -> Result<Option<PlaySource>, Self::PlaybackError> {
+    let response = self.get(
+      format!("track/play/{}", id),
+      |r| r,
+      &[StatusCode::OK, StatusCode::ACCEPTED, StatusCode::NOT_FOUND],
+    ).await?;
+    let play_source = match response.status() {
+      StatusCode::OK => Some(PlaySource::AudioData(response.bytes().await?.to_vec())),
+      StatusCode::ACCEPTED => Some(PlaySource::ExternallyPlayedOnSpotify),
+      StatusCode::NOT_FOUND => None,
+      _ => unreachable!()
+    };
+    Ok(play_source)
   }
 
   // User

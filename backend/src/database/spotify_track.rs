@@ -7,9 +7,20 @@ use tracing::{event, Level};
 use musium_core::model::{SpotifySource, SpotifyTrack};
 use musium_core::schema;
 
+use crate::database::DatabaseQueryError;
 use crate::model::SpotifySourceEx;
 
 use super::DatabaseConnection;
+
+impl DatabaseConnection {
+  pub fn get_spotify_track_by_track_id(&self, input_track_id: i32) -> Result<Option<SpotifyTrack>, DatabaseQueryError> {
+    use schema::spotify_track::dsl::*;
+    Ok(spotify_track
+      .filter(track_id.eq(input_track_id))
+      .first::<SpotifyTrack>(&self.connection)
+      .optional()?)
+  }
+}
 
 #[derive(Debug, Error)]
 pub enum SpotifyPlayError {
