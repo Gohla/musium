@@ -14,8 +14,8 @@ $Build = !$NoBuild
 
 $Env:SQLITE_MAX_VARIABLE_NUMBER = 1000000
 
-$FastDevPath = Join-Path $PSScriptRoot "target\fastdev"
-$DebugPath = Join-Path $PSScriptRoot "target\debug"
+$FastDevPath = Join-Path $PSScriptRoot "target\debug"
+$DebugPath = Join-Path $PSScriptRoot "target\dbg"
 if($DebugProfile) {
   $ExeDir = $DebugPath
 } else {
@@ -59,11 +59,11 @@ function Start-Build {
       $Params += "--bin"
       $Params += "musium_gui"
     }
-    if(!$DebugProfile) {
+    if($DebugProfile) {
       $Params += "-Z"
       $Params += "unstable-options"
       $Params += "--profile"
-      $Params += "fastdev"
+      $Params += "dbg"
     }
     cargo @Params
     if(!$?) {

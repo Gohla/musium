@@ -15,60 +15,32 @@ members = [
   "cli",
   "gui"
 ]
+resolver = "2"
 
 [patch.crates-io]
 iced = { path = "gui/iced" }
 iced_native = { path = "gui/iced/native" }
 iced_graphics = { path = "gui/iced/graphics" }
 
-# Development profile: full debug information, some optimisations.
+# Development profile: no debug information, some optimisations.
 [profile.dev]
-opt-level = 2
-overflow-checks = true
-debug-assertions = true
 panic = "abort"
-debug = true
-codegen-units = 8
-lto = false
-incremental = true
-#[profile.dev.package.backtrace] # Fully optimize backtrace crate to speed up backtrace collection
-#opt-level = 3
-
-# Fast development profile: no debug information, some optimisations.
-[profile.fastdev]
-inherits = 'dev'
 opt-level = 2
 debug = false
 # Fully optimize all dependencies, but not our own crates, to speed up compilation.
-[profile.fastdev.package."*"]
+[profile.dev.package."*"]
 opt-level = 3
-[profile.fastdev.package."musium_core"]
-opt-level = 2
-[profile.fastdev.package."musium_spotify_client"]
-opt-level = 2
-[profile.fastdev.package."musium_filesystem_sync"]
-opt-level = 2
-[profile.fastdev.package."musium_backend"]
-opt-level = 2
-[profile.fastdev.package."musium_server"]
-opt-level = 2
-[profile.fastdev.package."musium_client"]
-opt-level = 2
-[profile.fastdev.package."musium_client_http"]
-opt-level = 2
-[profile.fastdev.package."musium_audio_output"]
-opt-level = 2
-[profile.fastdev.package."musium_audio_output_rodio"]
-opt-level = 2
-[profile.fastdev.package."musium_player"]
-opt-level = 2
-[profile.fastdev.package."musium_cli"]
-opt-level = 2
-[profile.fastdev.package."musium_gui"]
-opt-level = 2
 
+# Testing: same as development profile.
 [profile.test]
-inherits = 'fastdev'
+inherits = "dev"
+
+# Debug profile: full debug information, no optimisations.
+[profile.dbg]
+inherits = "dev"
+opt-level = 0
+debug = true
+panic = "unwind"
 
 # Release profile: full optimisations, including link-time optimisations.
 [profile.release]
@@ -80,5 +52,5 @@ debug = false
 
 # Performance profiling profile: full debug information, full optimisations.
 [profile.profile]
-inherits = 'release'
+inherits = "release"
 debug = true

@@ -1,10 +1,12 @@
 <component name="ProjectRunConfigurationManager">
   <configuration default="false" name="R cli" type="CargoCommandRunConfiguration" factoryName="Cargo Command" folderName="CLI">
-    <option name="command" value="run --bin musium_cli -Z unstable-options --profile=fastdev" />
+    <option name="command" value="run --bin musium_cli" />
     <option name="workingDirectory" value="file://$PROJECT_DIR$" />
     <option name="channel" value="DEFAULT" />
+    <option name="requiredFeatures" value="true" />
     <option name="allFeatures" value="false" />
     <option name="emulateTerminal" value="false" />
+    <option name="withSudo" value="false" />
     <option name="backtrace" value="SHORT" />
     <envs>
       <env name="SQLITE_MAX_VARIABLE_NUMBER" value="1000000" />
