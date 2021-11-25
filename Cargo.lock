@@ -2838,12 +2838,11 @@ name = "musium_audio_output_rodio"
 version = "0.1.0"
 dependencies = [
  "async-trait",
- "crossbeam-channel 0.5.1",
- "futures",
  "musium_audio_output",
  "musium_core",
  "rodio",
  "thiserror",
+ "tokio",
  "tracing",
 ]
 

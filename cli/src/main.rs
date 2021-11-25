@@ -189,14 +189,13 @@ fn main() -> Result<()> {
   // Create player
   let client = HttpClient::new(opt.url_base)
     .with_context(|| "Failed to create Musium HTTP client")?;
-  let audio_output = RodioAudioOutput::new()
+  let audio_output = runtime.block_on(async { RodioAudioOutput::new().await })
     .with_context(|| "Failed to create Rodio audio output")?;
   let mut player = Player::new(client, audio_output);
   // Login
   let user_login = UserLogin { name: opt.name, password: opt.password };
-  runtime.block_on(async {
-    player.login(&user_login).await
-  }).with_context(|| "Failed to login to server")?;
+  runtime.block_on(async { player.login(&user_login).await })
+    .with_context(|| "Failed to login to server")?;
   // Run command
   let command = opt.command;
   let result = runtime.block_on(async {
@@ -277,7 +276,7 @@ async fn run(command: Command, player: &mut Player) -> Result<()> {
       let track = player.get_client().get_track_by_id(id).await?;
       println!("{:?}", track);
     }
-    Command::PlayTrack { id} => {
+    Command::PlayTrack { id } => {
       player.play_track_by_id(id).await
         .with_context(|| "Failed to play audio track")?;
     }

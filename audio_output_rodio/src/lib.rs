@@ -4,9 +4,9 @@ use std::thread;
 use std::thread::JoinHandle;
 
 use async_trait::async_trait;
-use futures::channel::oneshot;
 use rodio::{OutputStream, OutputStreamHandle, Sink};
 use thiserror::Error;
+use tokio::sync::{mpsc, oneshot};
 use tracing::instrument;
 
 pub use musium_audio_output::AudioOutput;
@@ -14,7 +14,7 @@ use musium_core::panic::try_panic_into_string;
 
 #[derive(Clone)]
 pub struct RodioAudioOutput {
-  tx: crossbeam_channel::Sender<Request>,
+  tx: mpsc::UnboundedSender<Request>,
   worker_thread: Arc<thread::JoinHandle<()>>,
 }
 
@@ -27,11 +27,11 @@ pub enum RodioCreateError {
 }
 
 impl RodioAudioOutput {
-  pub fn new() -> Result<Self, RodioCreateError> {
-    let (tx, rx) = crossbeam_channel::unbounded();
-    let (create_result_tx, create_result_rx) = crossbeam_channel::bounded(0);
+  pub async fn new() -> Result<Self, RodioCreateError> {
+    let (tx, rx) = mpsc::unbounded_channel();
+    let (create_result_tx, create_result_rx) = oneshot::channel();
     let worker_thread = WorkerThread::new(create_result_tx, rx);
-    create_result_rx.recv().unwrap()?; // UNWRAP: errors if disconnected which only happens in panic -> we panic as well.
+    create_result_rx.await.unwrap()?; // UNWRAP: errors if disconnected which only happens in panic -> we panic as well.
     let worker_thread = Arc::new(worker_thread);
     Ok(Self { tx, worker_thread })
   }
@@ -178,11 +178,11 @@ struct WorkerThread {
   handle: OutputStreamHandle,
   sink: Option<Sink>,
   volume: f32,
-  rx: crossbeam_channel::Receiver<Request>,
+  rx: mpsc::UnboundedReceiver<Request>,
 }
 
 impl WorkerThread {
-  fn new(create_result_tx: crossbeam_channel::Sender<Result<(), RodioCreateError>>, rx: crossbeam_channel::Receiver<Request>) -> JoinHandle<()> {
+  fn new(create_result_tx: oneshot::Sender<Result<(), RodioCreateError>>, rx: mpsc::UnboundedReceiver<Request>) -> JoinHandle<()> {
     thread::spawn(move || {
       let result: Result<_, RodioCreateError> = rodio::OutputStream::try_default()
         .map_err(|e| e.into());
@@ -211,7 +211,7 @@ impl WorkerThread {
 
   #[instrument(skip(self))]
   fn run(mut self) {
-    while let Ok(request) = self.rx.recv() { // Loop until all senders disconnect.
+    while let Some(request) = self.rx.blocking_recv() { // Loop until all senders disconnect.
       // OK: in matches: receiver hung up -> we don't care.
       match request {
         Request::SetAudioData { audio_data, play, tx } =>
@@ -270,10 +270,10 @@ impl WorkerThread {
       } else {
         sink.pause();
         false
-      }
+      };
     } else {
       false
-    }
+    };
   }
 
   fn is_stopped(&self) -> bool {

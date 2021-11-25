@@ -60,12 +60,18 @@ fn main() -> Result<()> {
   let controller: Controller = metrics_receiver.controller();
   let mut observer: YamlObserver = YamlBuilder::new().build();
   metrics_receiver.install();
+  // Create an async runtime, just for creating the player. Iced will create its own runtime again afterwards.
+  let runtime = tokio::runtime::Builder::new_current_thread()
+    .enable_all()
+    .build()
+    .unwrap();
   // Create player
   let client = HttpClient::new(opt.url_base.clone())
     .with_context(|| "Failed to create Musium HTTP client")?;
-  let audio_output = RodioAudioOutput::new()
+  let audio_output = runtime.block_on(async { RodioAudioOutput::new().await })
     .with_context(|| "Failed to create Rodio audio output")?;
   let player = Player::new(client, audio_output);
+  drop(runtime);
   // Run GUI
   let user_login = UserLogin { name: opt.name, password: opt.password };
   let app_settings = iced::Settings {

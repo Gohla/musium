@@ -9,9 +9,7 @@ publish = false
 musium_core = { path = "../core" }
 musium_audio_output = { path = "../audio_output" }
 rodio = "0.14"
-crossbeam-channel = "0.5"
-futures = "0.3"
+tokio = { version = "1", default-features = false, features = ["sync"] }
 async-trait = "0.1"
 thiserror = "1"
 tracing = "0.1"
-
