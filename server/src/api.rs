@@ -86,7 +86,7 @@ pub(crate) async fn request_spotify_authorization(
   let redirect_uri = request.url_for_static("spotify_authorization_callback").map_err(|e| UrlGenerationFail(e))?.to_string();
   // TODO: do not use user ID as state, since it is easily guessable.
   let url = database.connect()?.create_spotify_authorization_url(&logged_in_user.user, redirect_uri, Some(format!("{}", logged_in_user.user.id)))?;
-  Ok(HttpResponse::TemporaryRedirect().header(http::header::LOCATION, url).finish().into_body())
+  Ok(HttpResponse::TemporaryRedirect().append_header((http::header::LOCATION, url)).finish())
 }
 
 #[derive(Deserialize, Debug)]
@@ -208,12 +208,12 @@ pub async fn play_track_by_id(
 ) -> Result<Either<NamedFile, HttpResponse>, InternalError> {
   if let Some(play_source) = database.connect()?.play_track_by_id(*id, logged_in_user.user.id).await? {
     let response = match play_source {
-      BackendPlaySource::AudioData(path) => Either::A(NamedFile::open(path)?),
-      BackendPlaySource::ExternallyPlayedOnSpotify => Either::B(HttpResponse::Accepted().finish()),
+      BackendPlaySource::AudioData(path) => Either::Left(NamedFile::open(path)?),
+      BackendPlaySource::ExternallyPlayedOnSpotify => Either::Right(HttpResponse::Accepted().finish()),
     };
     Ok(response)
   } else {
-    Ok(Either::B(HttpResponse::NotFound().finish()))
+    Ok(Either::Right(HttpResponse::NotFound().finish()))
   }
 }
 

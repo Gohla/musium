@@ -97,7 +97,7 @@ fn main() -> Result<()> {
   // Run HTTP server
   let bind_address = opt.bind_address.clone();
   let cookie_identity_secret_key = opt.cookie_identity_secret_key.clone();
-  actix_rt::System::new("server")
+  actix_rt::System::new()
     .block_on(async move { serve(database, bind_address, cookie_identity_secret_key).await })
     .with_context(|| "HTTP server failed")?;
   // Print metrics

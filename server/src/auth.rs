@@ -31,8 +31,8 @@ pub enum InternalLoginError {
   BackendConnectFail(#[from] DatabaseConnectError, Backtrace),
   #[error("Failed to verify user")]
   UserVerifyFail(#[from] UserAddVerifyError, Backtrace),
-  #[error("Thread pool is gone")]
-  ThreadPoolGoneFail,
+  #[error("Blocking thread pool is gone")]
+  BlockingThreadPoolGoneFail,
   #[error("Failed to serialize identity")]
   SerializeIdentityFail(#[from] serde_json::Error),
 }
@@ -56,23 +56,23 @@ impl ResponseError for InternalLoginError {
 pub async fn login(user_login: web::Json<UserLogin>, identity: Identity, database: web::Data<Database>) -> Result<HttpResponse, InternalLoginError> {
   use InternalLoginError::*;
 
-  let user: Result<Option<User>, BlockingError<InternalLoginError>> = web::block(move || {
+  let result: Result<Result<Option<User>, InternalLoginError>, BlockingError> = web::block(move || {
     let backend_connected = database.connect()?;
     Ok(backend_connected.verify_user(&*user_login)?)
   }).await;
 
-  match user {
-    Err(BlockingError::Error(e)) => {
+  match result {
+    Err(_) => {
+      Err(BlockingThreadPoolGoneFail)
+    }
+    Ok(Err(e)) => {
       Err(e)
     }
-    Err(BlockingError::Canceled) => {
-      Err(ThreadPoolGoneFail)
-    }
-    Ok(Some(user)) => {
+    Ok(Ok(Some(user))) => {
       identity.remember(serde_json::to_string(&LoggedInUser { user: user.clone() })?);
       Ok(HttpResponse::Ok().json(&user))
     }
-    Ok(None) => {
+    Ok(Ok(None)) => {
       Ok(HttpResponse::Unauthorized().finish())
     }
   }
@@ -123,7 +123,6 @@ impl ResponseError for LoggedInUserExtractInternalError {
 impl FromRequest for LoggedInUser {
   type Error = LoggedInUserExtractInternalError;
   type Future = Pin<Box<dyn Future<Output=Result<LoggedInUser, LoggedInUserExtractInternalError>>>>;
-  type Config = ();
 
   fn from_request(req: &HttpRequest, payload: &mut Payload<PayloadStream>) -> Self::Future {
     use LoggedInUserExtractInternalError::*;
