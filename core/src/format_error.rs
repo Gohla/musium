@@ -1,24 +1,24 @@
+use core::fmt;
+use core::fmt::{Debug, Formatter, Write};
 use std::backtrace::BacktraceStatus;
 use std::error::Error;
-use std::fmt;
-use std::fmt::{Debug, Formatter, Write};
 use std::vec;
 
 use self::ChainState::*;
 
 // Formatting of errors (selectively copied from https://github.com/dtolnay/anyhow/blob/master/src/fmt.rs)
 
-pub struct FormatError<'a, E> {
+pub struct FormatError<'a, E: Error> {
   error: &'a E,
 }
 
-impl<'a, E: Error + 'a> FormatError<'a, E> {
+impl<'a, E: Error> FormatError<'a, E> {
   pub fn new(error: &'a E) -> Self {
     Self { error }
   }
 }
 
-impl<'a, E: Error + 'a> Debug for FormatError<'a, E> {
+impl<'a, E: Error> Debug for FormatError<'a, E> {
   fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
     if f.alternate() {
       return Debug::fmt(self.error, f);
