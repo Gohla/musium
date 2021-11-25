@@ -8,9 +8,7 @@
     <option name="emulateTerminal" value="false" />
     <option name="withSudo" value="false" />
     <option name="backtrace" value="FULL" />
-    <envs>
-      <env name="SQLITE_MAX_VARIABLE_NUMBER" value="1000000" />
-    </envs>
+    <envs />
     <option name="isRedirectInput" value="false" />
     <option name="redirectInputPath" value="" />
     <method v="2">

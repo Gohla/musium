@@ -11,3 +11,6 @@ rustflags = ["-C", "link-arg=-fuse-ld=/usr/local/bin/zld", "-Zshare-generics=y"]
 [target.x86_64-pc-windows-msvc]
 linker = "rust-lld.exe"
 rustflags = ["-Zshare-generics=y"]
+
+[env]
+SQLITE_MAX_VARIABLE_NUMBER = "1000000"
