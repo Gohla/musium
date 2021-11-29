@@ -1,0 +1,14 @@
+[package]
+name = "musium_audio_output_kira"
+version = "0.1.0"
+authors = ["Gabriel Konat <gabrielkonat@gmail.com>"]
+edition = "2021"
+publish = false
+
+[dependencies]
+musium_core = { path = "../core" }
+musium_audio_output = { path = "../audio_output" }
+kira = "0.5"
+async-trait = "0.1"
+thiserror = "1"
+tracing = "0.1"

@@ -71,7 +71,7 @@ pub enum PlayError {
   #[error("Failed to get playback data from the client")]
   ClientFail(#[source] <Client as ClientT>::TrackError),
   #[error("Failed to play audio data with the audio output")]
-  AudioOutputFail(#[source] <AudioOutput as AudioOutputT>::PlayError),
+  AudioOutputFail(#[source] <AudioOutput as AudioOutputT>::SetAudioDataError),
 }
 
 impl Player {
@@ -80,7 +80,7 @@ impl Player {
     use musium_core::api::PlaySource::*;
     let play_source = self.get_client().play_track_by_id(id).await.map_err(|e| ClientFail(e))?;
     match play_source {
-      Some(AudioData(audio_data)) => self.get_audio_output().set_audio_data(audio_data, true).await.map_err(|e| AudioOutputFail(e))?,
+      Some(AudioData { data: audio_data }) => self.get_audio_output().set_audio_data(audio_data, true).await.map_err(|e| AudioOutputFail(e))?,
       Some(ExternallyPlayedOnSpotify) => {}
       None => {}
     };

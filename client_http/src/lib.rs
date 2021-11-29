@@ -215,7 +215,7 @@ impl Client for HttpClient {
       &[StatusCode::OK, StatusCode::ACCEPTED, StatusCode::NOT_FOUND],
     ).await?;
     let play_source = match response.status() {
-      StatusCode::OK => Some(PlaySource::AudioData(response.bytes().await?.to_vec())),
+      StatusCode::OK => Some(PlaySource::AudioData { data: response.bytes().await?.to_vec() }),
       StatusCode::ACCEPTED => Some(PlaySource::ExternallyPlayedOnSpotify),
       StatusCode::NOT_FOUND => None,
       _ => unreachable!()

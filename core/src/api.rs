@@ -1,7 +1,6 @@
-use std::fmt::Display;
+use std::fmt::{Display, Formatter};
 
 use serde::{Deserialize, Serialize};
-use serde::__private::Formatter;
 use thiserror::Error;
 
 #[derive(Serialize, Deserialize, Debug, Error)]
@@ -10,9 +9,19 @@ pub struct InternalServerError {
   pub message: String,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub enum AudioCodec {
+  Mp3,
+  Ogg,
+  Flac,
+  Wav,
+  Other(String),
+  Unknown,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub enum PlaySource {
-  AudioData(Vec<u8>),
+  AudioData { codec: AudioCodec, data: Vec<u8> },
   ExternallyPlayedOnSpotify,
 }
 
