@@ -9,6 +9,7 @@ extern crate diesel;
 pub mod schema;
 pub mod model;
 pub mod api;
+pub mod error;
 pub mod format_error;
 pub mod untagged_result;
 pub mod panic;

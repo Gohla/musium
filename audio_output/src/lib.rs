@@ -1,35 +1,36 @@
-use std::error::Error;
 use std::fmt::Debug;
 
 use async_trait::async_trait;
 
 use musium_core::api::AudioCodec;
+use musium_core::error::SyncError;
 
 #[async_trait]
 pub trait AudioOutput: 'static + Send + Sync + Clone + Debug {
-  type SetAudioDataError: 'static + Error + Send + Sync;
+  type SetAudioDataError: SyncError;
   async fn set_audio_data(&self, codec: Option<AudioCodec>, data: Vec<u8>) -> Result<(), Self::SetAudioDataError>;
 
-  type IsPlayingError: 'static + Error + Send + Sync;
+  type IsPlayingError: SyncError;
   async fn is_playing(&self) -> Result<bool, Self::IsPlayingError>;
-  type PlayError: 'static + Error + Send + Sync;
+  type PlayError: SyncError;
   async fn play(&self) -> Result<(), Self::PlayError>;
 
-  type IsPausedError: 'static + Error + Send + Sync;
+  type IsPausedError: SyncError;
   async fn is_paused(&self) -> Result<bool, Self::IsPausedError>;
-  type PauseError: 'static + Error + Send + Sync;
+  type PauseError: SyncError;
   async fn pause(&self) -> Result<(), Self::PauseError>;
 
-  type TogglePlayError: 'static + Error + Send + Sync;
+  type TogglePlayError: SyncError;
   async fn toggle_play(&self) -> Result<bool, Self::TogglePlayError>;
 
-  type IsStoppedError: 'static + Error + Send + Sync;
+  type IsStoppedError: SyncError;
   async fn is_stopped(&self) -> Result<bool, Self::IsStoppedError>;
-  type StopError: 'static + Error + Send + Sync;
+  type StopError: SyncError;
   async fn stop(&self) -> Result<(), Self::StopError>;
 
-  type GetVolumeError: 'static + Error + Send + Sync;
+
+  type GetVolumeError: SyncError;
   async fn get_volume(&self) -> Result<f64, Self::GetVolumeError>;
-  type SetVolumeError: 'static + Error + Send + Sync;
+  type SetVolumeError: SyncError;
   async fn set_volume(&self, volume: f64) -> Result<(), Self::SetVolumeError>;
 }

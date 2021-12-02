@@ -1,4 +1,3 @@
-use std::error::Error;
 use std::fmt::Debug;
 
 use async_trait::async_trait;
@@ -10,6 +9,7 @@ pub use musium_audio_output_kira::KiraAudioOutput;
 pub use musium_client::Client;
 #[cfg(feature = "default_player")]
 pub use musium_client_http::{HttpClient, HttpRequestError, Url};
+use musium_core::error::SyncError;
 use musium_core::model::{User, UserLogin};
 
 // Player trait
@@ -18,13 +18,10 @@ use musium_core::model::{User, UserLogin};
 pub trait Player: 'static + Send + Sync + Clone + Debug {
   type Client: Client;
   type AudioOutput: AudioOutput;
-
   fn get_client(&self) -> &Self::Client;
-
   fn get_client_mut(&mut self) -> &mut Self::Client;
-
   fn get_audio_output(&self) -> &Self::AudioOutput;
-
+  fn get_audio_output_mut(&mut self) -> &mut Self::AudioOutput;
   /// Converts this player into its client and audio output, effectively destroying the player. The client and audio
   /// output can then be manually destroyed.
   ///
@@ -33,12 +30,11 @@ pub trait Player: 'static + Send + Sync + Clone + Debug {
   /// that must be completed).
   fn into_client_and_audio_output(self) -> (Self::Client, Self::AudioOutput);
 
-  type LoginError: 'static + Error + Send + Sync;
 
+  type LoginError: SyncError;
   async fn login(&self, user_login: &UserLogin) -> Result<User, Self::LoginError>;
 
-  type PlayError: 'static + Error + Send + Sync;
-
+  type PlayError: SyncError;
   async fn play_track_by_id(&self, id: i32) -> Result<(), Self::PlayError>;
 }
 
@@ -52,7 +48,7 @@ pub enum PlayError<CP, AOS, AOP> {
   AudioOutputPlayFail(#[source] AOP),
 }
 
-// Generic player struct
+// Generic player type
 
 #[derive(Clone, Debug)]
 pub struct GenericPlayer<C, AO> {
@@ -73,17 +69,14 @@ impl<C: Client, AO: AudioOutput> GenericPlayer<C, AO> {
 impl<C: Client, AO: AudioOutput> Player for GenericPlayer<C, AO> {
   type Client = C;
   type AudioOutput = AO;
-
-
   #[inline]
   fn get_client(&self) -> &Self::Client { &self.client }
-
   #[inline]
   fn get_client_mut(&mut self) -> &mut Self::Client { &mut self.client }
-
   #[inline]
   fn get_audio_output(&self) -> &Self::AudioOutput { &self.audio_output }
-
+  #[inline]
+  fn get_audio_output_mut(&mut self) -> &mut Self::AudioOutput { &mut self.audio_output }
   #[inline]
   fn into_client_and_audio_output(self) -> (Self::Client, Self::AudioOutput) { (self.client, self.audio_output) }
 
