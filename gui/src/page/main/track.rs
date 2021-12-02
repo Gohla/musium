@@ -26,7 +26,7 @@ pub struct Tab {
 #[derive(Debug)]
 pub enum Message<P: Player> {
   RequestRefresh,
-  ReceiveRefresh(Result<Vec<TrackViewModel>, <<P as Player>::Client as Client>::TrackError>),
+  ReceiveRefresh(Result<Vec<TrackViewModel>, <P::Client as Client>::TrackError>),
   RequestPlayTrack(i32),
   ReceivePlayResult(Result<(), P::PlayError>),
 }

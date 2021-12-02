@@ -35,19 +35,19 @@ pub struct Tab {
 #[derive(Debug)]
 pub enum Message<P: Player> {
   RequestRefresh,
-  ReceiveRefresh(Result<Vec<LocalSourceViewModel>, <<P as Player>::Client as Client>::LocalSourceError>, Result<Vec<SpotifySourceViewModel>, <<P as Player>::Client as Client>::SpotifySourceError>),
+  ReceiveRefresh(Result<Vec<LocalSourceViewModel>, <P::Client as Client>::LocalSourceError>, Result<Vec<SpotifySourceViewModel>, <P::Client as Client>::SpotifySourceError>),
 
   RequestSetLocalSourceEnabled(i32, bool),
-  ReceiveSetLocalSourceEnabled(Result<Option<LocalSource>, <<P as Player>::Client as Client>::LocalSourceError>, i32, bool),
+  ReceiveSetLocalSourceEnabled(Result<Option<LocalSource>, <P::Client as Client>::LocalSourceError>, i32, bool),
   RequestSetSpotifySourceEnabled(i32, bool),
-  ReceiveSetSpotifySourceEnabled(Result<Option<SpotifySource>, <<P as Player>::Client as Client>::SpotifySourceError>, i32, bool),
+  ReceiveSetSpotifySourceEnabled(Result<Option<SpotifySource>, <P::Client as Client>::SpotifySourceError>, i32, bool),
 
   RequestSync,
   RequestLocalSourcesSync,
   RequestLocalSourceSync(i32),
   RequestSpotifySourcesSync,
   RequestSpotifySourceSync(i32),
-  ReceiveSyncStatus(Result<SyncStatus, <<P as Player>::Client as Client>::SyncError>),
+  ReceiveSyncStatus(Result<SyncStatus, <P::Client as Client>::SyncError>),
 }
 
 impl<'a> Tab {

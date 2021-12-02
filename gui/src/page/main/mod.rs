@@ -49,9 +49,9 @@ pub enum Message<P: Player> {
   SetCurrentTab(Tab),
   RequestPrevTrack,
   RequestStop,
-  ReceiveStop(Result<(), <<P as Player>::AudioOutput as AudioOutput>::StopError>),
+  ReceiveStop(Result<(), <P::AudioOutput as AudioOutput>::StopError>),
   RequestTogglePlay,
-  ReceiveTogglePlay(Result<bool, <<P as Player>::AudioOutput as AudioOutput>::TogglePlayError>),
+  ReceiveTogglePlay(Result<bool, <P::AudioOutput as AudioOutput>::TogglePlayError>),
   RequestNextTrack,
 }
 
