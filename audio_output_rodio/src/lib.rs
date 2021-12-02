@@ -1,3 +1,4 @@
+use std::fmt::{Debug, Formatter};
 use std::io::Cursor;
 use std::sync::Arc;
 use std::thread;
@@ -9,8 +10,8 @@ use thiserror::Error;
 use tokio::sync::{mpsc, oneshot};
 use tracing::instrument;
 
-use musium_audio_output::AudioCodec;
 pub use musium_audio_output::AudioOutput;
+use musium_core::api::AudioCodec;
 use musium_core::panic::try_panic_into_string;
 
 #[derive(Clone)]
@@ -100,7 +101,7 @@ pub enum RodioError {
 impl AudioOutput for RodioAudioOutput {
   type SetAudioDataError = RodioSetAudioDataError;
   #[instrument(skip(self, data))]
-  async fn set_audio_data(&self, _codec: AudioCodec, data: Vec<u8>) -> Result<(), RodioSetAudioDataError> {
+  async fn set_audio_data(&self, _codec: Option<AudioCodec>, data: Vec<u8>) -> Result<(), RodioSetAudioDataError> {
     use RodioSetAudioDataError::*;
     let (tx, rx) = oneshot::channel();
     self.tx.send(Request::SetAudioData { data, tx }).map_err(|_| SendCommandFail)?;
@@ -166,6 +167,13 @@ impl RodioAudioOutput {
     let (tx, rx) = oneshot::channel();
     self.tx.send(request_fn(tx)).map_err(|_| SendCommandFail)?;
     Ok(rx.await.map_err(|_| ReceiveCommandFeedbackFail)?)
+  }
+}
+
+impl Debug for RodioAudioOutput {
+  fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+    f.debug_struct("RodioAudioOutput")
+      .finish()
   }
 }
 

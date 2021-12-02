@@ -1,4 +1,5 @@
 use std::error::Error;
+use std::fmt::Debug;
 
 use async_trait::async_trait;
 
@@ -22,11 +23,11 @@ use musium_core::{
     UserTrackRating,
   },
 };
-use musium_core::api::{SyncStatus, PlaySource, PlaySourceKind};
+use musium_core::api::{PlaySource, PlaySourceKind, SyncStatus};
 use musium_core::model::SpotifySource;
 
 #[async_trait]
-pub trait Client: Send + Sync {
+pub trait Client: 'static + Send + Sync + Clone + Debug {
   type LoginError: 'static + Error + Send + Sync;
   async fn login(&self, user_login: &UserLogin) -> Result<User, Self::LoginError>;
 

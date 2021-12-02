@@ -1,10 +1,8 @@
 use std::ops::{ControlFlow, FromResidual, Try};
 
-use serde::{Deserialize, Serialize};
-
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug)]
 #[must_use = "this `Result` may be an `Err` variant, which should be handled"]
-#[serde(untagged)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize), serde(untagged))]
 pub enum UResult<T, E> {
   Ok(T),
   Err(E),

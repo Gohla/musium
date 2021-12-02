@@ -43,15 +43,15 @@ pub struct Page {
 }
 
 #[derive(Debug)]
-pub enum Message {
-  TrackTab(track::Message),
-  SourceTab(source::Message),
+pub enum Message<P: Player> {
+  TrackTab(track::Message<P>),
+  SourceTab(source::Message<P>),
   SetCurrentTab(Tab),
   RequestPrevTrack,
   RequestStop,
-  ReceiveStop(Result<(), <AudioOutput as AudioOutputT>::OtherError>),
+  ReceiveStop(Result<(), <<P as Player>::AudioOutput as AudioOutput>::StopError>),
   RequestTogglePlay,
-  ReceiveTogglePlay(Result<bool, <AudioOutput as AudioOutputT>::OtherError>),
+  ReceiveTogglePlay(Result<bool, <<P as Player>::AudioOutput as AudioOutput>::TogglePlayError>),
   RequestNextTrack,
 }
 
@@ -70,7 +70,7 @@ pub enum Action {
 }
 
 impl<'a> Page {
-  pub fn new(logged_in_user: User, player: &Player) -> (Self, Command<Message>) {
+  pub fn new<P: Player>(logged_in_user: User, player: &P) -> (Self, Command<Message<P>>) {
     let (track_tab, track_tab_command) = track::Tab::new(player);
     let (source_tab, source_tab_command) = source::Tab::new(player);
     let page = Self {
@@ -86,7 +86,7 @@ impl<'a> Page {
     (page, command)
   }
 
-  pub fn update(&mut self, player: &Player, message: Message) -> Command<Message> {
+  pub fn update<P: Player>(&mut self, player: &P, message: Message<P>) -> Command<Message<P>> {
     use Message::*;
     match message {
       TrackTab(m) => {
@@ -147,11 +147,11 @@ impl<'a> Page {
     }
   }
 
-  pub fn subscription(&self, player: &Player) -> Subscription<Message> {
+  pub fn subscription<P: Player>(&self, player: &P) -> Subscription<Message<P>> {
     self.source_tab.subscription(player).map(|m| Message::SourceTab(m))
   }
 
-  pub fn view(&'a mut self) -> Element<'a, Message> {
+  pub fn view<P: Player>(&'a mut self) -> Element<'a, Message<P>> {
     let tabs = Row::new()
       .spacing(2)
       .align_items(Align::Center)

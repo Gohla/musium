@@ -1,3 +1,6 @@
+#![feature(never_type)]
+
+use std::fmt::{Debug, Formatter};
 use std::io::Cursor;
 use std::sync::{Arc, Mutex};
 
@@ -23,7 +26,8 @@ use kira::{
 };
 use thiserror::Error;
 
-use musium_audio_output::{AudioCodec, AudioOutput};
+pub use musium_audio_output::AudioOutput;
+use musium_core::api::AudioCodec;
 
 #[derive(Clone)]
 pub struct KiraAudioOutput {
@@ -45,7 +49,7 @@ impl KiraAudioOutput {
       audio_manager,
       current_sound_handle: None,
       current_instance_handle: None,
-      current_volume: 0.1,
+      current_volume: 1.0,
     }));
     Ok(Self { inner })
   }
@@ -55,8 +59,14 @@ impl KiraAudioOutput {
 
 #[derive(Debug, Error)]
 pub enum KiraSetAudioDataError {
+  #[error("No audio codec was specified, and Kira is not able to determine the codec automatically")]
+  NoCodecFail,
   #[error("Failed to load sound")]
   LoadSoundFail(#[from] kira::sound::error::SoundFromFileError),
+  #[error("Failed to stop existing sound instance")]
+  StopSoundInstanceFail(#[from] kira::CommandError),
+  #[error("Failed to remove sound from audio manager")]
+  RemoveSoundFail(#[from] kira::manager::error::RemoveSoundError),
   #[error("Failed to add sound to audio manager")]
   AddSoundFail(#[from] kira::manager::error::AddSoundError),
 }
@@ -64,9 +74,11 @@ pub enum KiraSetAudioDataError {
 #[async_trait]
 impl AudioOutput for KiraAudioOutput {
   type SetAudioDataError = KiraSetAudioDataError;
-  async fn set_audio_data(&self, codec: AudioCodec, data: Vec<u8>) -> Result<(), Self::SetAudioDataError> {
+  async fn set_audio_data(&self, codec: Option<AudioCodec>, data: Vec<u8>) -> Result<(), Self::SetAudioDataError> {
     use AudioCodec::*;
+    use KiraSetAudioDataError::*;
     let cursor = Cursor::new(data);
+    let codec = codec.ok_or(NoCodecFail)?;
     let sound = match codec {
       Mp3 => { Sound::from_mp3_reader(cursor, SoundSettings::default()) }
       Ogg => { Sound::from_ogg_reader(cursor, SoundSettings::default()) }
@@ -74,14 +86,23 @@ impl AudioOutput for KiraAudioOutput {
       Wav => { Sound::from_wav_reader(cursor, SoundSettings::default()) }
     }?;
     let mut inner = self.inner.lock().unwrap();
+    if let Some(instance_handle) = &mut inner.current_instance_handle {
+      instance_handle.stop(StopInstanceSettings::default())?;
+    }
+    inner.current_instance_handle = None;
+    if inner.current_sound_handle.is_some() {
+      let id = inner.current_sound_handle.as_ref().unwrap().id();
+      inner.audio_manager.remove_sound(id)?;
+      inner.audio_manager.free_unused_resources();
+    }
     inner.current_sound_handle = Some(inner.audio_manager.add_sound(sound)?);
     Ok(())
   }
 
 
-  type IsPlayingError = ();
+  type IsPlayingError = !;
   async fn is_playing(&self) -> Result<bool, Self::IsPlayingError> {
-    let mut inner = self.inner.lock().unwrap();
+    let inner = self.inner.lock().unwrap();
     let result = if let Some(instance_handle) = &inner.current_instance_handle {
       instance_handle.state() == InstanceState::Playing
     } else {
@@ -97,9 +118,10 @@ impl AudioOutput for KiraAudioOutput {
       instance_handle.resume(ResumeInstanceSettings::default())?;
       return Ok(());
     }
-    if let Some(mut sound_handle) = &inner.current_sound_handle {
+    let current_volume = inner.current_volume;
+    if let Some(sound_handle) = &mut inner.current_sound_handle {
       let instance_handle = sound_handle.play(InstanceSettings {
-        volume: Value::Fixed(inner.current_volume),
+        volume: Value::Fixed(current_volume),
         ..InstanceSettings::default()
       })?;
       inner.current_instance_handle = Some(instance_handle);
@@ -108,9 +130,9 @@ impl AudioOutput for KiraAudioOutput {
   }
 
 
-  type IsPausedError = ();
+  type IsPausedError = !;
   async fn is_paused(&self) -> Result<bool, Self::IsPausedError> {
-    let mut inner = self.inner.lock().unwrap();
+    let inner = self.inner.lock().unwrap();
     let result = if let Some(instance_handle) = &inner.current_instance_handle {
       match instance_handle.state() {
         InstanceState::Paused(_) => true,
@@ -159,9 +181,9 @@ impl AudioOutput for KiraAudioOutput {
   }
 
 
-  type IsStoppedError = ();
+  type IsStoppedError = !;
   async fn is_stopped(&self) -> Result<bool, Self::IsStoppedError> {
-    let mut inner = self.inner.lock().unwrap();
+    let inner = self.inner.lock().unwrap();
     let result = if let Some(instance_handle) = &inner.current_instance_handle {
       match instance_handle.state() {
         InstanceState::Stopped => true,
@@ -180,13 +202,14 @@ impl AudioOutput for KiraAudioOutput {
     if let Some(instance_handle) = &mut inner.current_instance_handle {
       instance_handle.stop(StopInstanceSettings::default())?;
     }
+    inner.audio_manager.free_unused_resources();
     Ok(())
   }
 
 
-  type GetVolumeError = ();
+  type GetVolumeError = !;
   async fn get_volume(&self) -> Result<f64, Self::GetVolumeError> {
-    let mut inner = self.inner.lock().unwrap();
+    let inner = self.inner.lock().unwrap();
     Ok(inner.current_volume)
   }
 
@@ -208,4 +231,11 @@ struct Inner {
   current_sound_handle: Option<SoundHandle>,
   current_instance_handle: Option<InstanceHandle>,
   current_volume: f64,
+}
+
+impl Debug for KiraAudioOutput {
+  fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+    f.debug_struct("KiraAudioOutput")
+      .finish()
+  }
 }

@@ -208,7 +208,7 @@ pub async fn play_track_by_id(
 ) -> Result<Either<NamedFile, HttpResponse>, InternalError> {
   if let Some(play_source) = database.connect()?.play_track_by_id(*id, logged_in_user.user.id).await? {
     let response = match play_source {
-      BackendPlaySource::AudioData(path) => Either::Left(NamedFile::open(path)?),
+      BackendPlaySource::AudioData(path) => Either::Left(NamedFile::open_async(path).await?),
       BackendPlaySource::ExternallyPlayedOnSpotify => Either::Right(HttpResponse::Accepted().finish()),
     };
     Ok(response)

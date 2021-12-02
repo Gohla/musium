@@ -6,10 +6,10 @@ edition = "2021"
 publish = false
 
 [dependencies]
-musium_core = { path = "../core" }
+musium_core = { path = "../core", features = ["serde"] }
 musium_spotify_client = { path = "../spotify_client" }
 musium_backend = { path = "../backend" }
-actix-web = "= 4.0.0-beta.12"
+actix-web = "= 4.0.0-beta.13"
 actix-rt = "2.5.0"
 actix-files = "0.6.0-beta.9"
 actix-http = "3.0.0-beta.13"

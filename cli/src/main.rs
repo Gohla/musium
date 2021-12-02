@@ -10,7 +10,7 @@ use tracing_subscriber::prelude::*;
 
 use musium_core::model::*;
 use musium_core::model::collection::{Albums, Tracks};
-use musium_player::*;
+use musium_player::{Client, create_default_player, Player, Url};
 
 #[derive(Debug, StructOpt)]
 #[structopt(name = "cli", about = "Musium CLI")]
@@ -187,11 +187,7 @@ fn main() -> Result<()> {
     .build()
     .unwrap();
   // Create player
-  let client = HttpClient::new(opt.url_base)
-    .with_context(|| "Failed to create Musium HTTP client")?;
-  let audio_output = runtime.block_on(async { RodioAudioOutput::new().await })
-    .with_context(|| "Failed to create Rodio audio output")?;
-  let mut player = Player::new(client, audio_output);
+  let mut player = create_default_player(opt.url_base)?;
   // Login
   let user_login = UserLogin { name: opt.name, password: opt.password };
   runtime.block_on(async { player.login(&user_login).await })
@@ -201,10 +197,6 @@ fn main() -> Result<()> {
   let result = runtime.block_on(async {
     run(command, &mut player).await
   });
-  // Stop player
-  let (_, audio_output) = player.into_client_and_audio_output();
-  audio_output.destroy()
-    .with_context(|| "Failed to destroy audio output")?;
   // Print metrics
   if opt.print_metrics {
     controller.observe(&mut observer);
@@ -215,7 +207,7 @@ fn main() -> Result<()> {
   Ok(result?)
 }
 
-async fn run(command: Command, player: &mut Player) -> Result<()> {
+async fn run(command: Command, player: &mut impl Player) -> Result<()> {
   match command {
     Command::ListLocalSources => {
       for local_source in player.get_client().list_local_sources().await? {

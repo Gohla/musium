@@ -10,10 +10,12 @@ musium_core = { path = "../core" }
 musium_client = { path = "../client" }
 musium_client_http = { path = "../client_http", optional = true }
 musium_audio_output = { path = "../audio_output" }
-musium_audio_output_rodio = { path = "../audio_output_rodio", optional = true }
+musium_audio_output_kira = { path = "../audio_output_kira", optional = true }
 tokio = { version = "1", features = ["rt"], default-features = false }
+async-trait = "0.1"
 thiserror = "1"
 tracing = "0.1"
 
 [features]
-default = ["musium_client_http", "musium_audio_output_rodio"]
+default = ["default_player"]
+default_player = ["musium_client_http", "musium_audio_output_kira"]

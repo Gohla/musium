@@ -6,7 +6,7 @@ edition = "2021"
 publish = false
 
 [dependencies]
-musium_core = { path = "../core" }
+musium_core = { path = "../core", features = ["diesel"] }
 musium_filesystem_sync = { path = "../filesystem_sync" }
 musium_spotify_client = { path = "../spotify_client" }
 diesel = { version = "1", features = ["sqlite", "r2d2", "chrono"] }

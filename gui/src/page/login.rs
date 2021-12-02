@@ -6,14 +6,16 @@ use iced::{Align, Button, button, Column, Command, Element, HorizontalAlignment,
 use tracing::{debug, error};
 use url::Url;
 
+use derivative::Derivative;
 use musium_core::format_error::FormatError;
 use musium_core::model::{User, UserLogin};
 use musium_player::*;
 
 use crate::util::Update;
 
-#[derive(Default, Debug)]
-pub struct Page {
+#[derive(Debug, Derivative)]
+#[derivative(Default(bound = ""))]
+pub struct Page<P: Player<Client=HttpClient>> {
   url_input: text_input::State,
   name_input: text_input::State,
   password_input: text_input::State,
@@ -24,16 +26,17 @@ pub struct Page {
   url_parse_error: Option<url::ParseError>,
   user_login: UserLogin,
 
-  state: State,
+  state: State<P>,
 }
 
-#[derive(Clone, Debug)]
-pub enum Message {
+#[derive(Debug, Derivative)]
+#[derivative(Clone)]
+pub enum Message<P: Player> {
   SetUrl(String),
   SetName(String),
   SetPassword(String),
   SendLoginRequest(UserLogin),
-  LoginResponseReceived(Result<User, Arc<HttpRequestError>>),
+  LoginResponseReceived(Result<User, Arc<P::LoginError>>),
   Return,
 }
 
@@ -41,11 +44,11 @@ pub enum Message {
 pub enum Action { LoggedIn(User) }
 
 #[derive(Debug)]
-enum State { Idle, Busy, Failed(Arc<HttpRequestError>) }
+enum State<P: Player> { Idle, Busy, Failed(Arc<P::LoginError>) }
 
-impl Default for State { fn default() -> Self { Self::Idle } }
+impl<P: Player> Default for State<P> { fn default() -> Self { Self::Idle } }
 
-impl Page {
+impl<P: Player<Client=HttpClient>> Page<P> {
   pub fn new(url: Url, user_login: UserLogin) -> Self {
     Self {
       url: url.to_string(),
@@ -55,12 +58,13 @@ impl Page {
     }
   }
 
-  pub fn update(&mut self, player: &Player, message: Message) -> Update<Message, Action> {
+  pub fn update(&mut self, player: &mut P, message: Message<P>) -> Update<Message<P>, Action> {
     match message {
       Message::SetUrl(url) => {
         self.url = url.clone();
         match Url::parse(&url) {
           Ok(url) => {
+            player.get_client_mut().set_url(url.clone());
             self.parsed_url = Some(url);
             self.url_parse_error = None;
           }
@@ -98,7 +102,7 @@ impl Page {
     Update::none()
   }
 
-  pub fn view(&mut self) -> Element<'_, Message> {
+  pub fn view(&mut self) -> Element<'_, Message<P>> {
     let title = Text::new("Musium")
       .width(Length::Fill)
       .size(100)

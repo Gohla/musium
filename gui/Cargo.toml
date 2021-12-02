@@ -18,6 +18,7 @@ dotenv = "0.15"
 itertools = "0.10"
 anyhow = "1"
 thiserror = "1"
+derivative = "2"
 metrics-core = "0.5"
 metrics-runtime = { version = "0.13", default-features = false }
 metrics-observer-yaml = "0.1"

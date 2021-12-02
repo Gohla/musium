@@ -1,6 +1,7 @@
 use std::collections::HashMap;
 
 use itertools::Itertools;
+#[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
 
 use crate::model::*;
@@ -9,14 +10,16 @@ use crate::model::*;
 // Albums
 //
 
-#[derive(Default, Clone, Debug, Serialize, Deserialize)]
+#[derive(Default, Clone, Debug)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct AlbumsRaw {
   pub albums: Vec<Album>,
   pub artists: Vec<Artist>,
   pub album_artists: Vec<AlbumArtist>,
 }
 
-#[derive(Default, Clone, Debug, Serialize, Deserialize)]
+#[derive(Default, Clone, Debug)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct Albums {
   pub albums: Vec<Album>,
   pub artists: HashMap<i32, Artist>,
@@ -58,7 +61,8 @@ impl From<AlbumsRaw> for Albums {
 // Tracks
 //
 
-#[derive(Default, Clone, Debug, Serialize, Deserialize)]
+#[derive(Default, Clone, Debug)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct TracksRaw {
   pub albums: Vec<Album>,
   pub tracks: Vec<Track>,
@@ -67,7 +71,8 @@ pub struct TracksRaw {
   pub track_artists: Vec<TrackArtist>,
 }
 
-#[derive(Default, Clone, Debug, Serialize, Deserialize)]
+#[derive(Default, Clone, Debug)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct Tracks {
   pub albums: HashMap<i32, Album>,
   pub tracks: Vec<Track>,

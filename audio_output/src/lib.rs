@@ -1,12 +1,14 @@
 use std::error::Error;
-use std::path::Path;
+use std::fmt::Debug;
 
 use async_trait::async_trait;
 
+use musium_core::api::AudioCodec;
+
 #[async_trait]
-pub trait AudioOutput: Send + Sync {
+pub trait AudioOutput: 'static + Send + Sync + Clone + Debug {
   type SetAudioDataError: 'static + Error + Send + Sync;
-  async fn set_audio_data(&self, codec: AudioCodec, data: Vec<u8>) -> Result<(), Self::SetAudioDataError>;
+  async fn set_audio_data(&self, codec: Option<AudioCodec>, data: Vec<u8>) -> Result<(), Self::SetAudioDataError>;
 
   type IsPlayingError: 'static + Error + Send + Sync;
   async fn is_playing(&self) -> Result<bool, Self::IsPlayingError>;
@@ -30,23 +32,4 @@ pub trait AudioOutput: Send + Sync {
   async fn get_volume(&self) -> Result<f64, Self::GetVolumeError>;
   type SetVolumeError: 'static + Error + Send + Sync;
   async fn set_volume(&self, volume: f64) -> Result<(), Self::SetVolumeError>;
-}
-
-
-
-impl AudioCodec {
-  pub fn from_path(path: impl AsRef<Path>) -> Option<AudioCodec> {
-    if let Some(extension) = path.as_ref().extension() {
-      use AudioCodec::*;
-      match extension.to_string_lossy().as_ref() {
-        "mp3" => Some(Mp3),
-        "ogg" => Some(Ogg),
-        "flac" => Some(Flac),
-        "wav" => Some(Wav),
-        _ => None,
-      }
-    } else {
-      None
-    }
-  }
 }

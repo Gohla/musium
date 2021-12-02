@@ -1,9 +1,10 @@
 #![feature(backtrace)]
 
 use std::backtrace::Backtrace;
+use std::fmt::{Debug, Formatter};
 
 use async_trait::async_trait;
-use reqwest::{Client as ReqwestHttpClient, header::ToStrError, Method, redirect, RequestBuilder, Response, StatusCode};
+use reqwest::{Client as ReqwestHttpClient, header::CONTENT_TYPE, header::ToStrError, Method, redirect, RequestBuilder, Response, StatusCode};
 pub use reqwest::Url;
 use serde::Serialize;
 use thiserror::Error;
@@ -16,7 +17,7 @@ use musium_core::{
     collection::{AlbumsRaw, TracksRaw},
   },
 };
-use musium_core::api::{PlaySource, PlaySourceKind, SyncStatus};
+use musium_core::api::{AudioCodec, PlaySource, PlaySourceKind, SyncStatus};
 
 #[derive(Clone)]
 pub struct HttpClient {
@@ -215,7 +216,11 @@ impl Client for HttpClient {
       &[StatusCode::OK, StatusCode::ACCEPTED, StatusCode::NOT_FOUND],
     ).await?;
     let play_source = match response.status() {
-      StatusCode::OK => Some(PlaySource::AudioData { data: response.bytes().await?.to_vec() }),
+      StatusCode::OK => {
+        let codec = response.headers().get(CONTENT_TYPE).and_then(|mime| mime.to_str().map_or(None, |str| AudioCodec::from_mime(str)));
+        let data = response.bytes().await?.to_vec();
+        Some(PlaySource::AudioData { codec, data })
+      }
       StatusCode::ACCEPTED => Some(PlaySource::ExternallyPlayedOnSpotify),
       StatusCode::NOT_FOUND => None,
       _ => unreachable!()
@@ -456,5 +461,13 @@ impl HttpClient {
     json: &(impl Serialize + ?Sized),
   ) -> Result<Response, HttpRequestError> {
     self.request_simple_with_json(Method::DELETE, url_suffix, json).await
+  }
+}
+
+impl Debug for HttpClient {
+  fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+    f.debug_struct("HttpClient")
+      .field("url", &self.url)
+      .finish()
   }
 }

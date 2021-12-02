@@ -6,4 +6,5 @@ edition = "2021"
 publish = false
 
 [dependencies]
+musium_core = { path = "../core" }
 async-trait = "0.1"

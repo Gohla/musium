@@ -3,40 +3,40 @@ use tracing::error;
 use url::Url;
 
 use musium_core::model::UserLogin;
-use musium_player::Player;
+use musium_player::{HttpClient, Player};
 
 use crate::page::{login, main};
 use crate::util::Update;
 
-pub struct Flags {
+pub struct Flags<P: Player> {
   pub initial_url: Url,
   pub initial_user_login: UserLogin,
-  pub player: Player,
+  pub player: P,
 }
 
-pub struct App {
-  player: Player,
-  current_page: Page,
+pub struct App<P: Player<Client=HttpClient>> {
+  player: P,
+  current_page: Page<P>,
 }
 
 #[derive(Debug)]
-enum Page {
-  Login(login::Page),
+enum Page<P: Player<Client=HttpClient>> {
+  Login(login::Page<P>),
   Main(main::Page),
 }
 
 #[derive(Debug)]
-pub enum Message {
-  LoginPage(login::Message),
-  MainPage(main::Message),
+pub enum Message<P: Player> {
+  LoginPage(login::Message<P>),
+  MainPage(main::Message<P>),
 }
 
-impl Application for App {
+impl<P: Player<Client=HttpClient>> Application for App<P> {
   type Executor = iced::executor::Default;
-  type Message = Message;
-  type Flags = Flags;
+  type Message = Message<P>;
+  type Flags = Flags<P>;
 
-  fn new(flags: Flags) -> (Self, Command<Message>) {
+  fn new(flags: Flags<P>) -> (Self, Command<Message<P>>) {
     let current_page = Page::Login(login::Page::new(flags.initial_url, flags.initial_user_login));
     let app = Self { player: flags.player, current_page };
     (app, Command::none())
@@ -46,7 +46,7 @@ impl Application for App {
     "Musium".to_string()
   }
 
-  fn update(&mut self, message: Message) -> Command<Message> {
+  fn update(&mut self, message: Message<P>) -> Command<Message<P>> {
     match (&mut self.current_page, message) {
       (Page::Login(p), Message::LoginPage(m)) => {
         let Update { action, command } = p.update(&mut self.player, m);
@@ -68,14 +68,14 @@ impl Application for App {
     }
   }
 
-  fn subscription(&self) -> Subscription<Message> {
+  fn subscription(&self) -> Subscription<Message<P>> {
     match &self.current_page {
       Page::Login(_) => { Subscription::none() }
       Page::Main(p) => { p.subscription(&self.player).map(|m| Message::MainPage(m)) }
     }
   }
 
-  fn view(&mut self) -> Element<'_, Message> {
+  fn view(&mut self) -> Element<'_, Message<P>> {
     match &mut self.current_page {
       Page::Login(p) => p.view().map(|m| Message::LoginPage(m)),
       Page::Main(p) => p.view().map(|m| Message::MainPage(m)),

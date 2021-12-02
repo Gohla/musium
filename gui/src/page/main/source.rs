@@ -13,7 +13,7 @@ use tracing::{debug, error};
 use musium_core::api::SyncStatus;
 use musium_core::format_error::FormatError;
 use musium_core::model::{LocalSource, SpotifySource};
-use musium_player::{Client, ClientT, HttpRequestError, Player};
+use musium_player::{Client, HttpRequestError, Player};
 
 use crate::page::main::{cell_button, cell_checkbox, cell_text, h1, h2, header_text, horizontal_line};
 use crate::util::{ButtonEx, Update};
@@ -33,25 +33,25 @@ pub struct Tab {
 }
 
 #[derive(Debug)]
-pub enum Message {
+pub enum Message<P: Player> {
   RequestRefresh,
-  ReceiveRefresh(Result<Vec<LocalSourceViewModel>, <Client as ClientT>::LocalSourceError>, Result<Vec<SpotifySourceViewModel>, <Client as ClientT>::SpotifySourceError>),
+  ReceiveRefresh(Result<Vec<LocalSourceViewModel>, <<P as Player>::Client as Client>::LocalSourceError>, Result<Vec<SpotifySourceViewModel>, <<P as Player>::Client as Client>::SpotifySourceError>),
 
   RequestSetLocalSourceEnabled(i32, bool),
-  ReceiveSetLocalSourceEnabled(Result<Option<LocalSource>, <Client as ClientT>::LocalSourceError>, i32, bool),
+  ReceiveSetLocalSourceEnabled(Result<Option<LocalSource>, <<P as Player>::Client as Client>::LocalSourceError>, i32, bool),
   RequestSetSpotifySourceEnabled(i32, bool),
-  ReceiveSetSpotifySourceEnabled(Result<Option<SpotifySource>, <Client as ClientT>::SpotifySourceError>, i32, bool),
+  ReceiveSetSpotifySourceEnabled(Result<Option<SpotifySource>, <<P as Player>::Client as Client>::SpotifySourceError>, i32, bool),
 
   RequestSync,
   RequestLocalSourcesSync,
   RequestLocalSourceSync(i32),
   RequestSpotifySourcesSync,
   RequestSpotifySourceSync(i32),
-  ReceiveSyncStatus(Result<SyncStatus, <Client as ClientT>::SyncError>),
+  ReceiveSyncStatus(Result<SyncStatus, <<P as Player>::Client as Client>::SyncError>),
 }
 
 impl<'a> Tab {
-  pub fn new(player: &Player) -> (Self, Command<Message>) {
+  pub fn new<P: Player>(player: &P) -> (Self, Command<Message<P>>) {
     let mut tab = Self {
       ..Self::default()
     };
@@ -59,7 +59,7 @@ impl<'a> Tab {
     (tab, command)
   }
 
-  pub fn update(&mut self, player: &Player, message: Message) -> Update<Message, super::Action> {
+  pub fn update<P: Player>(&mut self, player: &P, message: Message<P>) -> Update<Message<P>, super::Action> {
     use Message::*;
     match message {
       RequestRefresh => {
@@ -172,7 +172,7 @@ impl<'a> Tab {
               SyncStatus::Idle | SyncStatus::Completed | SyncStatus::Failed => {
                 self.syncing = false;
                 self.sync_subscription_active = false;
-              },
+              }
               _ => self.syncing = true,
             }
           }
@@ -187,7 +187,7 @@ impl<'a> Tab {
     Update::none()
   }
 
-  pub fn subscription(&self, player: &Player) -> Subscription<Message> {
+  pub fn subscription<P: Player>(&self, player: &P) -> Subscription<Message<P>> {
     if self.sync_subscription_active {
       let player = player.clone();
       Subscription::from_recipe(Sync { player }).map(|r| Message::ReceiveSyncStatus(r))
@@ -196,7 +196,7 @@ impl<'a> Tab {
     }
   }
 
-  pub fn view(&'a mut self) -> Element<'a, Message> {
+  pub fn view<P: Player>(&'a mut self) -> Element<'a, Message<P>> {
     let header = Row::new()
       .spacing(2)
       .width(Length::Fill)
@@ -226,7 +226,7 @@ impl<'a> Tab {
       .into()
   }
 
-  fn refresh(&mut self, player: &Player) -> Command<Message> {
+  fn refresh<P: Player>(&mut self, player: &P) -> Command<Message<P>> {
     self.refreshing = true;
     let player = player.clone();
     Command::perform(
@@ -256,7 +256,7 @@ impl<'a> LocalSources {
     self.sources = Rc::new(RefCell::new(sources));
   }
 
-  fn view(&'a mut self, syncing: bool) -> Element<'a, Message> {
+  fn view<P: Player>(&'a mut self, syncing: bool) -> Element<'a, Message<P>> {
     let header = Row::new()
       .spacing(2)
       .width(Length::Fill)
@@ -328,7 +328,7 @@ impl<'a> SpotifySources {
     self.sources = Rc::new(RefCell::new(sources));
   }
 
-  fn view(&'a mut self, syncing: bool) -> Element<'a, Message> {
+  fn view<P: Player>(&'a mut self, syncing: bool) -> Element<'a, Message<P>> {
     let header = Row::new()
       .spacing(2)
       .width(Length::Fill)
@@ -388,16 +388,17 @@ impl<'a> From<SpotifySource> for SpotifySourceViewModel {
 
 // Sync subscription
 
-struct Sync {
-  player: Player,
+struct Sync<P: Player> {
+  player: P,
 }
 
-impl<H, I> Recipe<H, I> for Sync where
+impl<H, I, P: Player> Recipe<H, I> for Sync<P> where
   H: Hasher
 {
-  type Output = Result<SyncStatus, <Client as ClientT>::SyncError>;
+  type Output = Result<SyncStatus, <<P as Player>::Client as Client>::SyncError>;
 
-  fn hash(&self, state: &mut H) { // Only one sync subscription may be active, so hash just the marker struct.
+  fn hash(&self, state: &mut H) {
+    // Only one sync subscription may be active, so hash just the marker struct.
     struct Marker;
     std::any::TypeId::of::<Marker>().hash(state);
   }

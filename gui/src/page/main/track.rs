@@ -8,7 +8,7 @@ use tracing::{debug, error};
 use musium_core::format_error::FormatError;
 use musium_core::model::collection::{TrackInfo, Tracks};
 use musium_core::panic::panic_into_string;
-use musium_player::{Client, ClientT, Player, PlayError};
+use musium_player::{Client, Player, PlayError};
 
 use crate::page::main::{cell_button, cell_text, empty, h1, header_text, horizontal_line};
 use crate::util::{ButtonEx, Update};
@@ -24,15 +24,15 @@ pub struct Tab {
 }
 
 #[derive(Debug)]
-pub enum Message {
+pub enum Message<P: Player> {
   RequestRefresh,
-  ReceiveRefresh(Result<Vec<TrackViewModel>, <Client as ClientT>::TrackError>),
+  ReceiveRefresh(Result<Vec<TrackViewModel>, <<P as Player>::Client as Client>::TrackError>),
   RequestPlayTrack(i32),
-  ReceivePlayResult(Result<(), PlayError>),
+  ReceivePlayResult(Result<(), P::PlayError>),
 }
 
 impl<'a> Tab {
-  pub fn new(player: &Player) -> (Self, Command<Message>) {
+  pub fn new<P: Player>(player: &P) -> (Self, Command<Message<P>>) {
     let mut tab = Self {
       ..Self::default()
     };
@@ -40,7 +40,7 @@ impl<'a> Tab {
     (tab, command)
   }
 
-  pub fn update(&mut self, player: &Player, message: Message) -> Update<Message, super::Action> {
+  pub fn update<P: Player>(&mut self, player: &P, message: Message<P>) -> Update<Message<P>, super::Action> {
     match message {
       Message::RequestRefresh => {
         return Update::command(self.refresh(player));
@@ -69,7 +69,7 @@ impl<'a> Tab {
     Update::none()
   }
 
-  pub fn view(&'a mut self) -> Element<'a, Message> {
+  pub fn view<P: Player>(&'a mut self) -> Element<'a, Message<P>> {
     let header = Row::new()
       .spacing(2)
       .width(Length::Fill)
@@ -118,7 +118,7 @@ impl<'a> Tab {
       .into()
   }
 
-  fn refresh(&mut self, player: &Player) -> Command<Message> {
+  fn refresh<P: Player>(&mut self, player: &P) -> Command<Message<P>> {
     self.refreshing = true;
     let player = player.clone();
     Command::perform(
@@ -138,7 +138,7 @@ impl<'a> Tab {
     )
   }
 
-  fn play_track(track_id: i32, player: &Player) -> Command<Message> {
+  fn play_track<P: Player>(track_id: i32, player: &P) -> Command<Message<P>> {
     let player = player.clone();
     Command::perform(
       async move { player.play_track_by_id(track_id).await },
@@ -180,6 +180,6 @@ impl<'a> From<TrackInfo<'a>> for TrackViewModel {
 
 // Widget functions
 
-fn play_button<'a>(state: &'a mut button::State, track_id: i32) -> Element<'a, Message> {
+fn play_button<'a, P: Player>(state: &'a mut button::State, track_id: i32) -> Element<'a, Message<P>> {
   cell_button(state, "Play", true, move || Message::RequestPlayTrack(track_id))
 }

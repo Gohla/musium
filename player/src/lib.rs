@@ -1,30 +1,67 @@
+use std::error::Error;
+use std::fmt::Debug;
+
+use async_trait::async_trait;
 use thiserror::Error;
 
-pub use musium_audio_output::AudioOutput as AudioOutputT;
-#[cfg(feature = "musium_audio_output_rodio")]
-pub use musium_audio_output_rodio::{RodioAudioOutput, RodioSetAudioDataError};
-pub use musium_client::Client as ClientT;
-#[cfg(feature = "musium_client_http")]
+pub use musium_audio_output::AudioOutput;
+#[cfg(feature = "default_player")]
+pub use musium_audio_output_kira::KiraAudioOutput;
+pub use musium_client::Client;
+#[cfg(feature = "default_player")]
 pub use musium_client_http::{HttpClient, HttpRequestError, Url};
 use musium_core::model::{User, UserLogin};
 
-//mod worker_task;
+// Player trait
 
-#[cfg(feature = "musium_client_http")]
-pub type Client = HttpClient;
-#[cfg(feature = "musium_audio_output_rodio")]
-pub type AudioOutput = RodioAudioOutput;
+#[async_trait]
+pub trait Player: 'static + Send + Sync + Clone + Debug {
+  type Client: Client;
+  type AudioOutput: AudioOutput;
 
-#[derive(Clone)]
-pub struct Player {
-  client: Client,
-  audio_output: AudioOutput,
+  fn get_client(&self) -> &Self::Client;
+
+  fn get_client_mut(&mut self) -> &mut Self::Client;
+
+  fn get_audio_output(&self) -> &Self::AudioOutput;
+
+  /// Converts this player into its client and audio output, effectively destroying the player. The client and audio
+  /// output can then be manually destroyed.
+  ///
+  /// Dropping this player and all its clones will also properly destroy it, but ignores the panics produced by the
+  /// client and audio output (if any), and also does not wait for them to complete first (if they have tasks or threads
+  /// that must be completed).
+  fn into_client_and_audio_output(self) -> (Self::Client, Self::AudioOutput);
+
+  type LoginError: 'static + Error + Send + Sync;
+
+  async fn login(&self, user_login: &UserLogin) -> Result<User, Self::LoginError>;
+
+  type PlayError: 'static + Error + Send + Sync;
+
+  async fn play_track_by_id(&self, id: i32) -> Result<(), Self::PlayError>;
 }
 
-// Creation
+#[derive(Debug, Error)]
+pub enum PlayError<CP, AOS, AOP> {
+  #[error("Failed to get playback data from the client")]
+  ClientPlayTrackFail(#[source] CP),
+  #[error("Failed to set audio data to the audio output")]
+  SetAudioDataFail(#[source] AOS),
+  #[error("Failed to play audio with the audio output")]
+  AudioOutputPlayFail(#[source] AOP),
+}
 
-impl Player {
-  pub fn new(client: Client, audio_output: AudioOutput) -> Self {
+// Generic player struct
+
+#[derive(Clone, Debug)]
+pub struct GenericPlayer<C, AO> {
+  client: C,
+  audio_output: AO,
+}
+
+impl<C: Client, AO: AudioOutput> GenericPlayer<C, AO> {
+  pub fn new(client: C, audio_output: AO) -> Self {
     Self {
       client,
       audio_output,
@@ -32,60 +69,60 @@ impl Player {
   }
 }
 
-// Destruction
+#[async_trait]
+impl<C: Client, AO: AudioOutput> Player for GenericPlayer<C, AO> {
+  type Client = C;
+  type AudioOutput = AO;
 
-impl Player {
-  /// Converts this player into its client and audio output, effectively destroying the player. The client and audio
-  /// output can then be manually destroyed.
-  ///
-  /// Dropping this player and all its clones will also properly destroy it, but ignores the panics produced by the
-  /// client and audio output (if any), and also does not wait for them to complete first (if they have tasks or threads
-  /// that must be completed).
-  pub fn into_client_and_audio_output(self) -> (Client, AudioOutput) {
-    (self.client, self.audio_output)
-  }
-}
-
-// Getters
-
-impl Player {
-  #[inline]
-  pub fn get_client(&self) -> &Client { &self.client }
 
   #[inline]
-  pub fn get_audio_output(&self) -> &AudioOutput { &self.audio_output }
-}
+  fn get_client(&self) -> &Self::Client { &self.client }
 
-// Login
+  #[inline]
+  fn get_client_mut(&mut self) -> &mut Self::Client { &mut self.client }
 
-impl Player {
-  pub async fn login(&self, user_login: &UserLogin) -> Result<User, <Client as ClientT>::LoginError> {
+  #[inline]
+  fn get_audio_output(&self) -> &Self::AudioOutput { &self.audio_output }
+
+  #[inline]
+  fn into_client_and_audio_output(self) -> (Self::Client, Self::AudioOutput) { (self.client, self.audio_output) }
+
+
+  type LoginError = <Self::Client as Client>::LoginError;
+  async fn login(&self, user_login: &UserLogin) -> Result<User, Self::LoginError> {
     self.get_client().login(user_login).await
   }
-}
 
-// Playback
-
-#[derive(Debug, Error)]
-pub enum PlayError {
-  #[error("Failed to get playback data from the client")]
-  ClientFail(#[source] <Client as ClientT>::TrackError),
-  #[error("Failed to play audio data with the audio output")]
-  AudioOutputFail(#[source] <AudioOutput as AudioOutputT>::SetAudioDataError),
-}
-
-impl Player {
-  pub async fn play_track_by_id(&self, id: i32) -> Result<(), PlayError> {
+  type PlayError = PlayError<<Self::Client as Client>::PlaybackError, <Self::AudioOutput as AudioOutput>::SetAudioDataError, <Self::AudioOutput as AudioOutput>::PlayError>;
+  async fn play_track_by_id(&self, id: i32) -> Result<(), Self::PlayError> {
     use PlayError::*;
     use musium_core::api::PlaySource::*;
-    let play_source = self.get_client().play_track_by_id(id).await.map_err(|e| ClientFail(e))?;
+    let play_source = self.get_client().play_track_by_id(id).await.map_err(|e| ClientPlayTrackFail(e))?;
     match play_source {
-      Some(AudioData { data: audio_data }) => self.get_audio_output().set_audio_data(audio_data, true).await.map_err(|e| AudioOutputFail(e))?,
+      Some(AudioData { codec, data }) => self.get_audio_output().set_audio_data(codec, data).await.map_err(|e| SetAudioDataFail(e))?,
       Some(ExternallyPlayedOnSpotify) => {}
       None => {}
     };
+    self.get_audio_output().play().await.map_err(|e| AudioOutputPlayFail(e))?;
     Ok(())
   }
+}
 
-  //pub async fn toggle_play(&self) -> Result<(), ()> {}
+// Default player
+
+#[cfg(feature = "default_player")]
+pub type DefaultPlayer = GenericPlayer<HttpClient, KiraAudioOutput>;
+
+#[cfg(feature = "default_player")]
+#[derive(Debug, Error)]
+pub enum CreateError {
+  #[error("Failed to create HTTP client")]
+  ClientCreateFail(#[from] musium_client_http::HttpClientCreateError),
+  #[error("Failed to create Kira audio output")]
+  AudioOutputCreateFail(#[from] musium_audio_output_kira::KiraCreateError),
+}
+
+#[cfg(feature = "default_player")]
+pub fn create_default_player(url: Url) -> Result<DefaultPlayer, CreateError> {
+  Ok(DefaultPlayer::new(musium_client_http::HttpClient::new(url)?, musium_audio_output_kira::KiraAudioOutput::new()?))
 }
