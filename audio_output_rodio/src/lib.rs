@@ -165,6 +165,16 @@ impl AudioOutput for RodioAudioOutput {
     Ok(())
   }
 
+  type GetPositionRelativeError = !;
+  async fn get_position_relative(&self) -> Result<Option<f64>, Self::GetPositionRelativeError> {
+    Ok(None)
+  }
+
+  type SeekToRelativeError = !;
+  async fn seek_to_relative(&self, _position_relative: f64) -> Result<(), Self::SeekToRelativeError> {
+    Ok(())
+  }
+
 
   type GetVolumeError = RodioError;
   async fn get_volume(&self) -> Result<f64, Self::GetVolumeError> {
