@@ -238,6 +238,38 @@ impl AudioOutput for KiraAudioOutput {
     Ok(())
   }
 
+  type GetPositionRelativeError = !;
+  async fn get_position_relative(&self) -> Result<Option<f64>, Self::GetPositionRelativeError> {
+    let inner = self.inner.lock().unwrap();
+    let duration = if let Some(sound_handle) = &inner.current_sound_handle {
+      sound_handle.duration()
+    } else {
+      return Ok(None);
+    };
+    let result = if let Some(instance_handle) = &inner.current_instance_handle {
+      Some(instance_handle.position() / duration)
+    } else {
+      None
+    };
+    Ok(result)
+  }
+
+  type SeekToRelativeError = kira::CommandError;
+  async fn seek_to_relative(&self, position_relative: f64) -> Result<(), Self::SeekToRelativeError> {
+    let mut inner = self.inner.lock().unwrap();
+    let duration = if let Some(sound_handle) = &inner.current_sound_handle {
+      sound_handle.duration()
+    } else {
+      return Ok(());
+    };
+    if let Some(instance_handle) = &mut inner.current_instance_handle {
+      let position_relative = position_relative.clamp(0.0, 1.0);
+      let position = duration * position_relative;
+      instance_handle.seek_to(position)?;
+    }
+    Ok(())
+  }
+
 
   type GetVolumeError = !;
   async fn get_volume(&self) -> Result<f64, Self::GetVolumeError> {
@@ -249,6 +281,7 @@ impl AudioOutput for KiraAudioOutput {
   async fn set_volume(&self, volume: f64) -> Result<(), Self::SetVolumeError> {
     let mut inner = self.inner.lock().unwrap();
     if let Some(instance_handle) = &mut inner.current_instance_handle {
+      let volume = volume.clamp(0.0, 1.0);
       instance_handle.set_volume(Value::Fixed(volume))?;
     }
     inner.current_volume = volume;

@@ -6,7 +6,7 @@ use std::collections::HashMap;
 use std::rc::Rc;
 use std::sync::{Arc, Mutex};
 
-use iced::{self, button, Button, Checkbox, Color, Column, Command, Element, Length, Row, Rule, rule, scrollable, Subscription, Text};
+use iced::{self, button, Button, Checkbox, Color, Column, Command, Element, Length, Row, Rule, rule, scrollable, Slider, slider, Subscription, Text};
 use iced_native::{Align, HorizontalAlignment, Space, VerticalAlignment};
 use itertools::Itertools;
 use tracing::{debug, error, info};
@@ -40,6 +40,9 @@ pub struct Page {
   stop_button_state: button::State,
   toggle_play_button_state: button::State,
   next_track_button_state: button::State,
+
+  track_position_relative: f64,
+  track_position_slider_state: slider::State,
 }
 
 #[derive(Debug)]
@@ -53,6 +56,8 @@ pub enum Message<P: Player> {
   RequestTogglePlay,
   ReceiveTogglePlay(Result<bool, <P::AudioOutput as AudioOutput>::TogglePlayError>),
   RequestNextTrack,
+  RequestSeek(f64),
+  ReceiveSeek(Result<(), <P::AudioOutput as AudioOutput>::SeekToRelativeError>),
 }
 
 #[derive(Debug, Eq, PartialEq)]
@@ -129,6 +134,19 @@ impl<'a> Page {
         }
         Err(e) => error!("Failed to toggle playback: {:?}", FormatError::new(&e)),
       }
+      RequestSeek(position_relative) => {
+        self.track_position_relative = position_relative;
+        let player = player.clone();
+        return Command::perform(
+          async move { player.get_audio_output().seek_to_relative(position_relative).await },
+          |r| ReceiveSeek(r),
+        );
+      }
+      ReceiveSeek(r) => {
+        if let Err(e) = r {
+          error!("Failed to seek: {:?}", FormatError::new(&e));
+        }
+      }
       // RequestPrevTrack => {}
       // RequestNextTrack => {}
       m => debug!("Unhandled message: {:?}", m)
@@ -176,6 +194,9 @@ impl<'a> Page {
       .push(Button::new(&mut self.next_track_button_state, Text::new("Next track"))
         .on_press_into(move || Message::RequestNextTrack, !self.is_stopped))
       ;
+    let seek_controls: Element<_> = Slider::new(&mut self.track_position_slider_state, 0.0..=1.0, self.track_position_relative, move |v| v)
+      .step(0.001)
+      .into();
     let content: Element<_> = Column::new()
       .width(Length::Fill)
       .height(Length::Fill)
@@ -186,6 +207,7 @@ impl<'a> Page {
       .push(current_tab)
       .push(horizontal_line())
       .push(Column::new().width(Length::Fill).align_items(Align::Center).push(player_controls))
+      .push(seek_controls.map(|v| Message::RequestSeek(v)))
       .into();
     content//.explain([0.5, 0.5, 0.5])
   }

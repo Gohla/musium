@@ -35,7 +35,10 @@ pub trait AudioOutput: 'static + Send + Sync + Clone + Debug {
   async fn get_position(&self) -> Result<Option<f64>, Self::GetPositionError>;
   type SeekToError: SyncError;
   async fn seek_to(&self, position: f64) -> Result<(), Self::SeekToError>;
-
+  type GetPositionRelativeError: SyncError;
+  async fn get_position_relative(&self) -> Result<Option<f64>, Self::GetPositionRelativeError>;
+  type SeekToRelativeError: SyncError;
+  async fn seek_to_relative(&self, position_relative: f64) -> Result<(), Self::SeekToRelativeError>;
 
   type GetVolumeError: SyncError;
   async fn get_volume(&self) -> Result<f64, Self::GetVolumeError>;
