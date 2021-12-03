@@ -3,12 +3,17 @@
 use std::borrow::BorrowMut;
 use std::cell::{Cell, RefCell};
 use std::collections::HashMap;
+use std::hash::{Hash, Hasher};
 use std::rc::Rc;
 use std::sync::{Arc, Mutex};
+use std::time::Duration;
 
-use iced::{self, button, Button, Checkbox, Color, Column, Command, Element, Length, Row, Rule, rule, scrollable, Slider, slider, Subscription, Text};
+use iced::{self, button, Button, Checkbox, Color, Column, Command, Element, futures, Length, Row, Rule, rule, scrollable, Slider, slider, Subscription, Text};
+use iced::futures::stream::BoxStream;
 use iced_native::{Align, HorizontalAlignment, Space, VerticalAlignment};
+use iced_native::subscription::Recipe;
 use itertools::Itertools;
+use thiserror::Error;
 use tracing::{debug, error, info};
 
 use musium_core::format_error::FormatError;
@@ -35,14 +40,15 @@ pub struct Page {
 
   is_paused: bool,
   is_stopped: bool,
+  track_position_relative: f64,
+  player_status_subscription_active: bool,
 
   prev_track_button_state: button::State,
   stop_button_state: button::State,
   toggle_play_button_state: button::State,
   next_track_button_state: button::State,
-
-  track_position_relative: f64,
   track_position_slider_state: slider::State,
+
 }
 
 #[derive(Debug)]
@@ -58,6 +64,7 @@ pub enum Message<P: Player> {
   RequestNextTrack,
   RequestSeek(f64),
   ReceiveSeek(Result<(), <P::AudioOutput as AudioOutput>::SeekToRelativeError>),
+  ReceivePlayerStatus(Result<PlayerStatus, PlayerStatusError<P>>),
 }
 
 #[derive(Debug, Eq, PartialEq)]
@@ -117,6 +124,7 @@ impl<'a> Page {
         Ok(_) => {
           self.is_paused = false;
           self.is_stopped = true;
+          self.player_status_subscription_active = false;
         }
         Err(e) => error!("Failed to stop playback: {:?}", FormatError::new(&e)),
       }
@@ -131,6 +139,7 @@ impl<'a> Page {
         Ok(is_playing) => {
           self.is_paused = !is_playing;
           self.is_stopped = false;
+          self.player_status_subscription_active = is_playing;
         }
         Err(e) => error!("Failed to toggle playback: {:?}", FormatError::new(&e)),
       }
@@ -147,8 +156,14 @@ impl<'a> Page {
           error!("Failed to seek: {:?}", FormatError::new(&e));
         }
       }
-      // RequestPrevTrack => {}
-      // RequestNextTrack => {}
+      ReceivePlayerStatus(r) => match r {
+        Ok(PlayerStatus { is_stopped, position_relative }) => {
+          self.is_stopped = is_stopped;
+          self.track_position_relative = position_relative.unwrap_or(0.0f64);
+          self.player_status_subscription_active = !is_stopped;
+        }
+        Err(e) => error!("Failed to receive player status: {:?}", FormatError::new(&e)),
+      }
       m => debug!("Unhandled message: {:?}", m)
     };
     Command::none()
@@ -160,13 +175,21 @@ impl<'a> Page {
         Action::ReceivePlay => {
           self.is_paused = false;
           self.is_stopped = false;
+          self.player_status_subscription_active = true;
         }
       }
     }
   }
 
   pub fn subscription<P: Player>(&self, player: &P) -> Subscription<Message<P>> {
-    self.source_tab.subscription(player).map(|m| Message::SourceTab(m))
+    let player_status_subscription = if self.player_status_subscription_active {
+      let player = player.clone();
+      Subscription::from_recipe(PlayerStatusSubscription { player }).map(|r| Message::ReceivePlayerStatus(r))
+    } else {
+      Subscription::none()
+    };
+    let source_subscription = self.source_tab.subscription(player).map(|m| Message::SourceTab(m));
+    Subscription::batch([player_status_subscription, source_subscription])
   }
 
   pub fn view<P: Player>(&'a mut self) -> Element<'a, Message<P>> {
@@ -275,4 +298,57 @@ impl rule::StyleSheet for HorizontalLine {
 
 fn empty<'a, M: 'a>() -> Element<'a, M> {
   Space::new(Length::Shrink, Length::Shrink).into()
+}
+
+// Player status subscription
+
+struct PlayerStatusSubscription<P: Player> {
+  player: P,
+}
+
+#[derive(Debug)]
+pub struct PlayerStatus {
+  pub is_stopped: bool,
+  pub position_relative: Option<f64>,
+}
+
+#[derive(Debug, Error)]
+pub enum PlayerStatusError<P: Player> {
+  #[error(transparent)]
+  IsStoppedFail(<P::AudioOutput as AudioOutput>::IsStoppedError),
+  #[error(transparent)]
+  GetPositionRelativeFail(<P::AudioOutput as AudioOutput>::GetPositionRelativeError),
+}
+
+impl<H, I, P: Player> Recipe<H, I> for PlayerStatusSubscription<P> where
+  H: Hasher
+{
+  type Output = Result<PlayerStatus, PlayerStatusError<P>>;
+
+  fn hash(&self, state: &mut H) {
+    // Only one player status subscription may be active, so hash just the marker struct.
+    struct Marker;
+    std::any::TypeId::of::<Marker>().hash(state);
+  }
+
+  fn stream(self: Box<Self>, input: BoxStream<I>) -> BoxStream<Self::Output> {
+    Box::pin(futures::stream::unfold((self.player, false, false), |(player, stop, delay)| async move {
+      use PlayerStatusError::*;
+      if stop {
+        return None;
+      }
+      if delay {
+        tokio::time::sleep(Duration::from_millis(250)).await;
+      }
+      let is_stopped = match player.get_audio_output().is_stopped().await {
+        Err(e) => return Some((Err(IsStoppedFail(e)), (player, true, true))),
+        Ok(v) => v,
+      };
+      let position_relative = match player.get_audio_output().get_position_relative().await {
+        Err(e) => return Some((Err(GetPositionRelativeFail(e)), (player, true, true))),
+        Ok(v) => v,
+      };
+      Some((Ok(PlayerStatus { is_stopped, position_relative }), (player, is_stopped, true)))
+    }))
+  }
 }

@@ -190,7 +190,7 @@ impl<'a> Tab {
   pub fn subscription<P: Player>(&self, player: &P) -> Subscription<Message<P>> {
     if self.sync_subscription_active {
       let player = player.clone();
-      Subscription::from_recipe(Sync { player }).map(|r| Message::ReceiveSyncStatus(r))
+      Subscription::from_recipe(SyncSubscription { player }).map(|r| Message::ReceiveSyncStatus(r))
     } else {
       Subscription::none()
     }
@@ -388,11 +388,11 @@ impl<'a> From<SpotifySource> for SpotifySourceViewModel {
 
 // Sync subscription
 
-struct Sync<P: Player> {
+struct SyncSubscription<P: Player> {
   player: P,
 }
 
-impl<H, I, P: Player> Recipe<H, I> for Sync<P> where
+impl<H, I, P: Player> Recipe<H, I> for SyncSubscription<P> where
   H: Hasher
 {
   type Output = Result<SyncStatus, <<P as Player>::Client as Client>::SyncError>;
