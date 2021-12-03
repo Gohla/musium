@@ -207,6 +207,38 @@ impl AudioOutput for KiraAudioOutput {
   }
 
 
+  type GetDurationError = !;
+  async fn get_duration(&self) -> Result<Option<f64>, Self::GetDurationError> {
+    let inner = self.inner.lock().unwrap();
+    let result = if let Some(sound_handle) = &inner.current_sound_handle {
+      Some(sound_handle.duration())
+    } else {
+      None
+    };
+    Ok(result)
+  }
+
+  type GetPositionError = !;
+  async fn get_position(&self) -> Result<Option<f64>, Self::GetPositionError> {
+    let inner = self.inner.lock().unwrap();
+    let result = if let Some(instance_handle) = &inner.current_instance_handle {
+      Some(instance_handle.position())
+    } else {
+      None
+    };
+    Ok(result)
+  }
+
+  type SeekToError = kira::CommandError;
+  async fn seek_to(&self, position: f64) -> Result<(), Self::SeekToError> {
+    let mut inner = self.inner.lock().unwrap();
+    if let Some(instance_handle) = &mut inner.current_instance_handle {
+      instance_handle.seek_to(position)?;
+    }
+    Ok(())
+  }
+
+
   type GetVolumeError = !;
   async fn get_volume(&self) -> Result<f64, Self::GetVolumeError> {
     let inner = self.inner.lock().unwrap();

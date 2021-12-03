@@ -1,3 +1,5 @@
+#![feature(never_type)]
+
 use std::fmt::{Debug, Formatter};
 use std::io::Cursor;
 use std::sync::Arc;
@@ -145,6 +147,22 @@ impl AudioOutput for RodioAudioOutput {
   type StopError = RodioError;
   async fn stop(&self) -> Result<(), Self::StopError> {
     self.send_receive(|tx| Request::Stop { tx }).await
+  }
+
+
+  type GetDurationError = !;
+  async fn get_duration(&self) -> Result<Option<f64>, Self::GetDurationError> {
+    Ok(None)
+  }
+
+  type GetPositionError = !;
+  async fn get_position(&self) -> Result<Option<f64>, Self::GetPositionError> {
+    Ok(None)
+  }
+
+  type SeekToError = !;
+  async fn seek_to(&self, _position: f64) -> Result<(), Self::SeekToError> {
+    Ok(())
   }
 
 
