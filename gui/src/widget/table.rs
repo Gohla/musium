@@ -478,7 +478,7 @@ impl<'a, T, M, R: TableRowsRenderer<'a, T, M>> Widget<M, R> for TableRows<'a, T,
 impl<'a, T, M, R: TableRowsRenderer<'a, T, M>> TableRows<'a, T, M, R> where
   T: 'a,
 {
-  fn get_row_index_at(&mut self, y: f32) -> Option<usize> {
+  fn get_row_index_at(&self, y: f32) -> Option<usize> {
     if y < 0f32 { return None; } // Out of bounds
     let spacing = self.spacing as f32;
     let row_height = self.row_height as f32;
@@ -492,7 +492,7 @@ impl<'a, T, M, R: TableRowsRenderer<'a, T, M>> TableRows<'a, T, M, R> where
     }
   }
 
-  fn get_column_index_and_layout_at<'l>(&mut self, x: f32, layout: &Layout<'l>) -> Option<(usize, Layout<'l>)> {
+  fn get_column_index_and_layout_at<'l>(&self, x: f32, layout: &Layout<'l>) -> Option<(usize, Layout<'l>)> {
     let spacing = self.spacing as f32;
     let mut offset = 0f32;
     for (column_index, column_layout) in layout.children().enumerate() {
