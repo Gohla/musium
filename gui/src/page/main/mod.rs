@@ -116,7 +116,7 @@ impl<'a> Page {
       RequestStop => {
         let player = player.clone();
         return Command::perform(
-          async move { player.get_audio_output().stop().await },
+          async move { player.stop().await },
           |r| ReceiveStop(r),
         );
       }
@@ -131,7 +131,7 @@ impl<'a> Page {
       RequestTogglePlay => {
         let player = player.clone();
         return Command::perform(
-          async move { player.get_audio_output().toggle_play().await },
+          async move { player.toggle_play().await },
           |r| ReceiveTogglePlay(r),
         );
       }
@@ -147,7 +147,7 @@ impl<'a> Page {
         self.track_position_relative = position_relative;
         let player = player.clone();
         return Command::perform(
-          async move { player.get_audio_output().seek_to_relative(position_relative).await },
+          async move { player.seek_to_relative(position_relative).await },
           |r| ReceiveSeek(r),
         );
       }

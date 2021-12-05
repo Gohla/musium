@@ -36,6 +36,16 @@ pub trait Player: 'static + Send + Sync + Clone + Debug {
 
   type PlayError: SyncError;
   async fn play_track_by_id(&self, id: i32) -> Result<(), Self::PlayError>;
+
+  async fn is_paused(&self) -> Result<bool, <Self::AudioOutput as AudioOutput>::IsPausedError>;
+  async fn pause(&self) -> Result<(), <Self::AudioOutput as AudioOutput>::PauseError>;
+  async fn toggle_play(&self) -> Result<bool, <Self::AudioOutput as AudioOutput>::TogglePlayError>;
+  async fn is_stopped(&self) -> Result<bool, <Self::AudioOutput as AudioOutput>::IsStoppedError>;
+  async fn stop(&self) -> Result<(), <Self::AudioOutput as AudioOutput>::StopError>;
+  async fn get_position_relative(&self) -> Result<Option<f64>, <Self::AudioOutput as AudioOutput>::GetPositionRelativeError>;
+  async fn seek_to_relative(&self, position_relative: f64) -> Result<(), <Self::AudioOutput as AudioOutput>::SeekToRelativeError>;
+  async fn get_volume(&self) -> Result<f64, <Self::AudioOutput as AudioOutput>::GetVolumeError>;
+  async fn set_volume(&self, volume: f64) -> Result<(), <Self::AudioOutput as AudioOutput>::SetVolumeError>;
 }
 
 #[derive(Debug, Error)]
@@ -81,12 +91,13 @@ impl<C: Client, AO: AudioOutput> Player for GenericPlayer<C, AO> {
   fn into_client_and_audio_output(self) -> (Self::Client, Self::AudioOutput) { (self.client, self.audio_output) }
 
 
-  type LoginError = <Self::Client as Client>::LoginError;
+  type LoginError = C::LoginError;
   async fn login(&self, user_login: &UserLogin) -> Result<User, Self::LoginError> {
     self.get_client().login(user_login).await
   }
 
-  type PlayError = PlayError<<Self::Client as Client>::PlaybackError, <Self::AudioOutput as AudioOutput>::SetAudioDataError, <Self::AudioOutput as AudioOutput>::PlayError>;
+
+  type PlayError = PlayError<C::PlaybackError, AO::SetAudioDataError, AO::PlayError>;
   async fn play_track_by_id(&self, id: i32) -> Result<(), Self::PlayError> {
     use PlayError::*;
     use musium_core::api::PlaySource::*;
@@ -98,6 +109,43 @@ impl<C: Client, AO: AudioOutput> Player for GenericPlayer<C, AO> {
     };
     self.get_audio_output().play().await.map_err(|e| AudioOutputPlayFail(e))?;
     Ok(())
+  }
+
+
+  async fn is_paused(&self) -> Result<bool, AO::IsPausedError> {
+    self.get_audio_output().is_paused().await
+  }
+
+  async fn pause(&self) -> Result<(), AO::PauseError> {
+    self.get_audio_output().pause().await
+  }
+
+  async fn toggle_play(&self) -> Result<bool, AO::TogglePlayError> {
+    self.get_audio_output().toggle_play().await
+  }
+
+  async fn is_stopped(&self) -> Result<bool, AO::IsStoppedError> {
+    self.get_audio_output().is_stopped().await
+  }
+
+  async fn stop(&self) -> Result<(), AO::StopError> {
+    self.get_audio_output().stop().await
+  }
+
+  async fn get_position_relative(&self) -> Result<Option<f64>, AO::GetPositionRelativeError> {
+    self.get_audio_output().get_position_relative().await
+  }
+
+  async fn seek_to_relative(&self, position_relative: f64) -> Result<(), AO::SeekToRelativeError> {
+    self.get_audio_output().seek_to_relative(position_relative).await
+  }
+
+  async fn get_volume(&self) -> Result<f64, AO::GetVolumeError> {
+    self.get_audio_output().get_volume().await
+  }
+
+  async fn set_volume(&self, volume: f64) -> Result<(), AO::SetVolumeError> {
+    self.get_audio_output().set_volume(volume).await
   }
 }
 
