@@ -1,4 +1,6 @@
-# MusicComposer
+# Musium
+
+A prototype client-server music indexer and player in Rust.
 
 ## Compiling
 
