@@ -22,36 +22,3 @@ resolver = "2"
 iced = { path = "gui/iced" }
 iced_native = { path = "gui/iced/native" }
 iced_graphics = { path = "gui/iced/graphics" }
-
-# Development profile: no debug information, some optimisations.
-[profile.dev]
-panic = "abort"
-opt-level = 2
-debug = false
-# Fully optimize all dependencies, but not our own crates, to speed up compilation.
-[profile.dev.package."*"]
-opt-level = 3
-
-# Testing: same as development profile.
-[profile.test]
-inherits = "dev"
-
-# Debug profile: full debug information, no optimisations.
-[profile.dbg]
-inherits = "dev"
-opt-level = 0
-debug = true
-panic = "unwind"
-
-# Release profile: full optimisations
-[profile.release]
-opt-level = 3
-overflow-checks = false
-debug-assertions = false
-lto = true
-debug = false
-
-# Performance profiling profile: full debug information, full optimisations.
-[profile.profile]
-inherits = "release"
-debug = true
